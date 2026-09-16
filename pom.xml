@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.zifang</groupId>
+        <artifactId>z-opc</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>z-lc</artifactId>
+    <packaging>pom</packaging>
+
+    <name>z-lc</name>
+    <description>z-lc Low-Code Platform — Phase 1: DB-driven Generic CRUD Engine</description>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <modules>
+        <module>z-lc-common</module>
+        <module>z-lc-sdk</module>
+        <module>z-lc-core</module>
+        <module>z-lc-design</module>
+        <module>z-lc-web</module>
+        <!-- z-lc-admin 已废弃: 排除 build, 避免污染 -->
+    </modules>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <compile.version>8</compile.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- 对齐 z-meta:z-boot 依赖管理 -->
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-boot-dependencies</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-boot-web-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-boot-datasource-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- z-lc 内部模块版本 -->
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-lc-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-lc-sdk</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-lc-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-lc-design</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-lc-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- z-lc-spring-boot-starter 已迁移至 z-boot/z-boot-integration-starters -->
+            <dependency>
+                <groupId>com.zifang</groupId>
+                <artifactId>z-lc-admin</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- 三个数据源依赖统一走 z-boot-datasource-starter（见上方 dependencyManagement 中的 z-boot-datasource-starter） -->
+
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-openapi3-spring-boot-starter</artifactId>
+                <version>4.1.0</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>2.7.12</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>${compile.version}</source>
+                    <target>${compile.version}</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.zifang</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>z-lc-core</artifactId>
+
+    <properties>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- Jackson databind (本模块 src/main/java 用 ObjectMapper / JsonNode 等) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!-- Log4j2 API (本模块 src/main/java 含 LogManager.getLogger 调用) -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+        </dependency>
+        <!-- 本模块 DTO -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-lc-common</artifactId>
+        </dependency>
+
+        <!-- z-lc-sdk: SPI 接口 + 注解 + 抽象基类 (Phase 2A 蒸馏自 ace-platform-sdk/engine 的设计哲学) -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-lc-sdk</artifactId>
+        </dependency>
+
+        <!-- z-util-core 提供 PageResult -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-core</artifactId>
+        </dependency>
+
+        <!-- Library-First: HTTP 能力下沉到 z-util-http，不自造 OkHttp/RestTemplate 配置 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-http</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-parser-json</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-core</artifactId>
+        </dependency>
+
+        <!-- Spring JDBC (DynamicSqlBuilder 走 JdbcTemplate) -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-jdbc</artifactId>
+        </dependency>
+
+        <!-- 数据源统一收口为 z-boot-datasource-starter（替代 mybatis-plus；entity/event CRUD 走其内部 mapper） -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-boot-datasource-starter</artifactId>
+        </dependency>
+
+        <!-- z-script: 业务脚本引擎 (CRUD 生命周期钩子) -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-script-engine</artifactId>
+        </dependency>
+
+        <!-- Caffeine 本地缓存 (降低 adapter HTTP 出口) -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- z-agent LLM Gateway (optional - AI建模功能需要) -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-agent-llm-gateway-core</artifactId>
+            <version>${project.version}</version>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+</project>

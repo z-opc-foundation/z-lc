@@ -1,0 +1,33 @@
+# server 配置已移除 - admin 模块不参与 main 构建, 避免污染 main-starter (server.port=8888)
+# 如需 standalone 启动, 请通过命令行 --server.port=18086 --server.servlet.context-path=/meta 覆盖
+
+spring:
+  application:
+    name: z-lc-bootstrap
+  datasource:
+    # 阿里云 RDS (与 z-opc 现有 main 库一致, 来自 z-opc memory)
+    url: jdbc:mysql://rm-bp108uqlgwn712k54ho.mysql.rds.aliyuncs.com:3306/oc?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: zifang
+    password: Hhzemol!
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  main:
+    allow-bean-definition-overriding: true
+  # 启动不阻塞 (DataSource lazy init, 实际调用时才连)
+  jdbc:
+    initialize:
+      continue-on-error: true
+
+# z-lc 内部 Adapter 配置
+z-lc:
+  adapter:
+    ctc:
+      base-url: http://localhost:8888
+    meta:
+      base-url: http://localhost:8888
+    script:
+      base-url: http://localhost:8888
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
