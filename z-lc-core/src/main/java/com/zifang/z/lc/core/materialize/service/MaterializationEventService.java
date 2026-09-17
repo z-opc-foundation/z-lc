@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.materialize.service;
 
+import com.zifang.util.core.lang.RandomUtil;
 import com.zifang.z.lc.core.event.entity.EventEntity;
 import com.zifang.z.lc.core.materialize.entity.MaterializationEntity;
 import com.zifang.z.lc.mapper.event.EventMapper;
@@ -11,8 +12,6 @@ import org.springframework.stereotype.Service;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
-import com.zifang.util.core.lang.RandomUtil;
 
 /**
  * 物化事件服务 — 把代码物化动作写入 z_lc_event 事件链, 实现因果可追溯.

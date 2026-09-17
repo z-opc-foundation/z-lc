@@ -73,8 +73,14 @@ public class DbTableMapperService {
             case Types.VARCHAR:
             case Types.LONGVARCHAR:
                 if (size == 1) return "BOOLEAN"; // TINYINT(1) often used as bool
-                if (size < 50) return "VARCHAR";
-                if (size < 2000) return "TEXT";
+                if (size < 50) {
+                    return "VARCHAR";
+                }
+
+                if (size < 2000) {
+                    return "TEXT";
+                }
+
                 return "TEXT";
             case Types.DATE:
                 return "DATE";
@@ -111,7 +117,9 @@ public class DbTableMapperService {
     }
 
     private static String toCamelCase(String name) {
-        if (name == null || name.isEmpty()) return name;
+        if (name == null || name.isEmpty()) {
+            return name;
+        }
         StringBuilder sb = new StringBuilder();
         boolean capitalizeNext = false;
         for (char c : name.toCharArray()) {

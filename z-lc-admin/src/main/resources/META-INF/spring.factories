@@ -1,0 +1,3 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=
+  com.zifang.z.lc.web.config.LcAutoConfiguration,\
+  com.zifang.z.lc.web.config.LcModuleDataSource

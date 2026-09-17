@@ -28,7 +28,10 @@ public class RelationServiceImpl implements RelationService {
     public RelationDTO createRelation(RelationCreateReq req) {
         RelationEntity entity = new RelationEntity();
         BeanUtils.copyProperties(req, entity);
-        if (entity.getTenantCode() == null) entity.setTenantCode("default");
+        if (entity.getTenantCode() == null) {
+            entity.setTenantCode("default");
+        }
+
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
@@ -40,11 +43,26 @@ public class RelationServiceImpl implements RelationService {
     @Override
     public RelationDTO updateRelation(RelationUpdateReq req) {
         RelationEntity entity = relationMapper.selectById(req.getId());
-        if (entity == null) return null;
-        if (req.getRelationName() != null) entity.setRelationName(req.getRelationName());
-        if (req.getRelationType() != null) entity.setRelationType(req.getRelationType());
-        if (req.getSourceFieldCode() != null) entity.setSourceFieldCode(req.getSourceFieldCode());
-        if (req.getThroughTable() != null) entity.setThroughTable(req.getThroughTable());
+        if (entity == null) {
+            return null;
+        }
+
+        if (req.getRelationName() != null) {
+            entity.setRelationName(req.getRelationName());
+        }
+
+        if (req.getRelationType() != null) {
+            entity.setRelationType(req.getRelationType());
+        }
+
+        if (req.getSourceFieldCode() != null) {
+            entity.setSourceFieldCode(req.getSourceFieldCode());
+        }
+
+        if (req.getThroughTable() != null) {
+            entity.setThroughTable(req.getThroughTable());
+        }
+
         entity.setUpdateTime(new Date());
         relationMapper.updateById(entity);
         return toDTO(entity);
@@ -53,7 +71,10 @@ public class RelationServiceImpl implements RelationService {
     @Override
     public int deleteRelation(Long id) {
         RelationEntity entity = relationMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return relationMapper.updateById(entity);

@@ -2,6 +2,7 @@ package com.zifang.z.lc.core.schema;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.core.json.JsonMapperFactory;
 import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.common.dto.AppDTO;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
@@ -26,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.sql.DataSource;
 import java.util.*;
 import java.util.stream.Collectors;
-import com.zifang.util.core.json.JsonMapperFactory;
 
 /**
  * Schema 管理服务实现: App / Entity / Field CRUD + DDL 建表
@@ -86,8 +86,14 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     public PageResult<AppDTO> listApps(String tenantCode, int page, int size) {
-        if (page < 1) page = 1;
-        if (size < 1) size = 20;
+        if (page < 1) {
+            page = 1;
+        }
+
+        if (size < 1) {
+            size = 20;
+        }
+
         size = Math.min(size, 200);
 
         QueryWrapper<AppEntity> qw = new QueryWrapper<AppEntity>()
@@ -129,9 +135,18 @@ public class SchemaAdminBizService implements SchemaAdminService {
         if (entity == null || entity.getDeleted() == 1) {
             throw new IllegalArgumentException("App not found: " + id);
         }
-        if (req.getAppName() != null) entity.setAppName(req.getAppName());
-        if (req.getDescription() != null) entity.setDescription(req.getDescription());
-        if (req.getStatus() != null) entity.setStatus(req.getStatus());
+        if (req.getAppName() != null) {
+            entity.setAppName(req.getAppName());
+        }
+
+        if (req.getDescription() != null) {
+            entity.setDescription(req.getDescription());
+        }
+
+        if (req.getStatus() != null) {
+            entity.setStatus(req.getStatus());
+        }
+
         entity.setCurrentVersion(entity.getCurrentVersion() + 1);
         entity.setUpdateTime(new Date());
         return appMapper.updateById(entity);
@@ -141,7 +156,10 @@ public class SchemaAdminBizService implements SchemaAdminService {
     @Transactional(rollbackFor = Exception.class)
     public int deleteApp(Long id) {
         AppEntity entity = appMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return appMapper.updateById(entity);
@@ -194,7 +212,10 @@ public class SchemaAdminBizService implements SchemaAdminService {
             for (int i = 0; i < req.getFields().size(); i++) {
                 FieldDefDTO fd = req.getFields().get(i);
                 FieldEntity fe = toFieldEntity(fd, tenantCode, entity.getId());
-                if (fe.getSortOrder() == null) fe.setSortOrder(i);
+                if (fe.getSortOrder() == null) {
+                    fe.setSortOrder(i);
+                }
+
                 fieldMapper.insert(fe);
             }
         }
@@ -227,7 +248,10 @@ public class SchemaAdminBizService implements SchemaAdminService {
     @Override
     public EntityDefDTO getEntity(Long id) {
         EntityEntity e = entityMapper.selectById(id);
-        if (e == null || e.getDeleted() == 1) return null;
+        if (e == null || e.getDeleted() == 1) {
+            return null;
+        }
+
         EntityDefDTO dto = toEntityDTO(e);
         dto.setFields(listFields(id));
         return dto;
@@ -240,8 +264,14 @@ public class SchemaAdminBizService implements SchemaAdminService {
         if (e == null || e.getDeleted() == 1) {
             throw new IllegalArgumentException("Entity not found: " + id);
         }
-        if (req.getEntityName() != null) e.setEntityName(req.getEntityName());
-        if (req.getDescription() != null) e.setDescription(req.getDescription());
+        if (req.getEntityName() != null) {
+            e.setEntityName(req.getEntityName());
+        }
+
+        if (req.getDescription() != null) {
+            e.setDescription(req.getDescription());
+        }
+
         e.setCurrentVersion(e.getCurrentVersion() + 1);
         e.setUpdateTime(new Date());
         int n = entityMapper.updateById(e);
@@ -262,7 +292,10 @@ public class SchemaAdminBizService implements SchemaAdminService {
             for (int i = 0; i < req.getFields().size(); i++) {
                 FieldDefDTO fd = req.getFields().get(i);
                 FieldEntity fe = toFieldEntity(fd, e.getTenantCode(), id);
-                if (fe.getSortOrder() == null) fe.setSortOrder(i);
+                if (fe.getSortOrder() == null) {
+                    fe.setSortOrder(i);
+                }
+
                 fieldMapper.insert(fe);
             }
         }
@@ -278,7 +311,10 @@ public class SchemaAdminBizService implements SchemaAdminService {
     @Transactional(rollbackFor = Exception.class)
     public int deleteEntity(Long id) {
         EntityEntity e = entityMapper.selectById(id);
-        if (e == null) return 0;
+        if (e == null) {
+            return 0;
+        }
+
         e.setDeleted(1);
         e.setUpdateTime(new Date());
         int n = entityMapper.updateById(e);
@@ -340,8 +376,14 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
         if (def.getFields() != null) {
             for (FieldDefDTO f : def.getFields()) {
-                if (f.getFieldCode() == null) continue;
-                if (!f.getFieldCode().matches("^[A-Za-z][A-Za-z0-9_]*$")) continue;
+                if (f.getFieldCode() == null) {
+                    continue;
+                }
+
+                if (!f.getFieldCode().matches("^[A-Za-z][A-Za-z0-9_]*$")) {
+                    continue;
+                }
+
                 String colType = DynamicSqlBuilder.jdbcType(f.getFieldType(), f.getFieldLength(), f.getScale());
                 sb.append("  `").append(f.getFieldCode()).append("` ").append(colType);
                 if (f.getRequired() != null && f.getRequired()) {

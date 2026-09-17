@@ -67,7 +67,10 @@ public class PipelineConfigService {
 
     public int delete(Long id) {
         PipelineConfigEntity entity = pipelineConfigMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return pipelineConfigMapper.updateById(entity);
@@ -75,7 +78,10 @@ public class PipelineConfigService {
 
     public int toggleEnabled(Long id, boolean enabled) {
         PipelineConfigEntity entity = pipelineConfigMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setEnabled(enabled ? 1 : 0);
         entity.setUpdateTime(new Date());
         return pipelineConfigMapper.updateById(entity);

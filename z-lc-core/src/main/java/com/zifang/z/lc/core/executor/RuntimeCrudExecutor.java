@@ -38,7 +38,10 @@ public class RuntimeCrudExecutor {
     }
 
     private static long longOf(Integer v, int def) {
-        if (v == null) return def;
+        if (v == null) {
+            return def;
+        }
+
         return v.longValue();
     }
 
@@ -46,7 +49,10 @@ public class RuntimeCrudExecutor {
      * 分页查询
      */
     public PageResult<Map<String, Object>> list(EntityDefDTO entity, RuntimeQueryDTO query) {
-        if (entity == null) throw new IllegalArgumentException("entity is null");
+        if (entity == null) {
+            throw new IllegalArgumentException("entity is null");
+        }
+
         // 1) count
         DynamicSqlBuilder.SqlAndParams countSql = sqlBuilder.buildCountSql(entity, query);
         Long total = jdbcTemplate.queryForObject(countSql.sql, Long.class, countSql.params.toArray());
@@ -65,7 +71,10 @@ public class RuntimeCrudExecutor {
      * 按 id 取单条
      */
     public Map<String, Object> get(EntityDefDTO entity, Long id, String tenantCode) {
-        if (id == null) throw new IllegalArgumentException("id is null");
+        if (id == null) {
+            throw new IllegalArgumentException("id is null");
+        }
+
         DynamicSqlBuilder.SqlAndParams sql = sqlBuilder.buildGetSql(entity, id, tenantCode);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql.sql, sql.params.toArray());
         return rows.isEmpty() ? null : rows.get(0);
@@ -96,7 +105,10 @@ public class RuntimeCrudExecutor {
      * UPDATE by id (返回受影响行数)
      */
     public int update(EntityDefDTO entity, Long id, RuntimeCrudDTO body, String currentUser) {
-        if (id == null) throw new IllegalArgumentException("id is null");
+        if (id == null) {
+            throw new IllegalArgumentException("id is null");
+        }
+
         DynamicSqlBuilder.SqlAndParams sql = sqlBuilder.buildUpdateSql(entity, id, body, currentUser);
         return jdbcTemplate.update(sql.sql, sql.params.toArray());
     }
@@ -105,7 +117,10 @@ public class RuntimeCrudExecutor {
      * 软删 by id
      */
     public int delete(EntityDefDTO entity, Long id, String tenantCode) {
-        if (id == null) throw new IllegalArgumentException("id is null");
+        if (id == null) {
+            throw new IllegalArgumentException("id is null");
+        }
+
         DynamicSqlBuilder.SqlAndParams sql = sqlBuilder.buildDeleteSql(entity, id, tenantCode);
         return jdbcTemplate.update(sql.sql, sql.params.toArray());
     }

@@ -108,7 +108,9 @@ public class LowCodeModelServiceCollector implements ApplicationContextAware {
      */
     public Object pickByGroupAndCode(String group, String code) {
         Map<String, Object> map = byGroupAndCode.get(group + "::" + code);
-        if (map == null || map.isEmpty()) return null;
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
         return map.values().iterator().next();
     }
 

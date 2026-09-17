@@ -49,7 +49,10 @@ public class CtcAdapter implements Adapter {
         if (o instanceof List) {
             List<String> out = new ArrayList<>();
             for (Object item : (List<?>) o) {
-                if (item != null) out.add(String.valueOf(item));
+                if (item != null) {
+                    out.add(String.valueOf(item));
+                }
+
             }
             return out;
         }
@@ -158,10 +161,18 @@ public class CtcAdapter implements Adapter {
      * 简易权限检查 (本地缓存上下文, 不再二次调用).
      */
     public boolean checkAuth(HttpServletRequest request, String permission) {
-        if (permission == null) return true;
+        if (permission == null) {
+            return true;
+        }
+
         AuthContextDTO ctx = currentContext(request);
-        if (ctx == null || ctx.getRoles() == null) return false;
-        if (ctx.getRoles().contains("admin") || ctx.getRoles().contains("ADMIN")) return true;
+        if (ctx == null || ctx.getRoles() == null) {
+            return false;
+        }
+
+        if (ctx.getRoles().contains("admin") || ctx.getRoles().contains("ADMIN")) {
+            return true;
+        }
         return ctx.getPermissions() != null && ctx.getPermissions().contains(permission);
     }
 

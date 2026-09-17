@@ -13,7 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * 与 main-starter 的关系:
  * <ul>
  *   <li>main-starter 集成 z-lc + z-ctc + z-config + z-task + z-ops + z-agent + ...</li>
- *   <li>z-lc-bootstrap 只跑 z-lc, 用于 Phase 2A 蒸馏后的端到端验证</li>
+ *   <li>z-lc-bootstrap 只跑 z-lc, 用于 Phase 2A 集成验证</li>
  *   <li>生产部署走 main-starter; 本模块是开发期 demo</li>
  * </ul>
  * <p>

@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.event;
 
+import com.zifang.util.core.lang.RandomUtil;
 import com.zifang.z.lc.common.dto.EventAppendRequest;
 import com.zifang.z.lc.common.dto.EventDTO;
 import com.zifang.z.lc.core.event.entity.EventEntity;
@@ -13,9 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Date;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
-import com.zifang.util.core.lang.RandomUtil;
 
 /**
  * 事件服务实现: append 带因果校验, 冲突 → 409

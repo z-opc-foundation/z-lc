@@ -61,8 +61,14 @@ public class RuntimeCrudController {
      * @return 转换后的 Long, 转换失败或入参为 null 时返回 null
      */
     private static Long asLong(Object o) {
-        if (o == null) return null;
-        if (o instanceof Number) return ((Number) o).longValue();
+        if (o == null) {
+            return null;
+        }
+
+        if (o instanceof Number) {
+            return ((Number) o).longValue();
+        }
+
         try {
             return Long.parseLong(o.toString());
         } catch (Exception e) {
@@ -86,9 +92,18 @@ public class RuntimeCrudController {
             @RequestParam(required = false) String tenantCode,
             @RequestParam(required = false) String appCode,
             @RequestBody(required = false) RuntimeQueryDTO query) {
-        if (query == null) query = new RuntimeQueryDTO();
-        if (tenantCode != null) query.setTenantCode(tenantCode);
-        if (appCode != null) query.setAppCode(appCode);
+        if (query == null) {
+            query = new RuntimeQueryDTO();
+        }
+
+        if (tenantCode != null) {
+            query.setTenantCode(tenantCode);
+        }
+
+        if (appCode != null) {
+            query.setAppCode(appCode);
+        }
+
         query.setEntityCode(entityCode);
         EntityDefDTO def = resolveEntity(query.getAppCode(), entityCode, query.getTenantCode());
         PageResult<Map<String, Object>> page = crudExecutor.list(def, query);
@@ -109,10 +124,16 @@ public class RuntimeCrudController {
     @PostMapping("/get")
     public Result<Map<String, Object>> get(@RequestParam String entityCode,
                                            @RequestBody RuntimeByIdDTO body) {
-        if (body == null) return Result.<Map<String, Object>>fail("body is null");
+        if (body == null) {
+            return Result.<Map<String, Object>>fail("body is null");
+        }
+
         EntityDefDTO def = resolveEntity(body.getAppCode(), entityCode, body.getTenantCode());
         Map<String, Object> row = crudExecutor.get(def, body.getId(), body.getTenantCode());
-        if (row == null) return Result.success(null);
+        if (row == null) {
+            return Result.success(null);
+        }
+
         pipeline.postRead(def, row);
         return Result.success(row);
     }
@@ -128,7 +149,10 @@ public class RuntimeCrudController {
     @PostMapping("/create")
     public Result<Long> create(@RequestParam String entityCode,
                                @RequestBody RuntimeCrudDTO body) {
-        if (body == null) return Result.<Long>fail("body is null");
+        if (body == null) {
+            return Result.<Long>fail("body is null");
+        }
+
         body.setEntityCode(entityCode);
         EntityDefDTO def = resolveEntity(body.getAppCode(), entityCode, body.getTenantCode());
         try {
@@ -181,7 +205,10 @@ public class RuntimeCrudController {
     @PostMapping("/delete")
     public Result<Integer> delete(@RequestParam String entityCode,
                                   @RequestBody RuntimeByIdDTO body) {
-        if (body == null || body.getId() == null) return Result.<Integer>fail("body.id required");
+        if (body == null || body.getId() == null) {
+            return Result.<Integer>fail("body.id required");
+        }
+
         EntityDefDTO def = resolveEntity(body.getAppCode(), entityCode, body.getTenantCode());
         int n = crudExecutor.delete(def, body.getId(), body.getTenantCode());
         return Result.success(n);

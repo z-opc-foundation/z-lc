@@ -55,7 +55,10 @@ public class SchemaAdminController {
     @Operation(summary = "创建应用")
     @PostMapping("/app/create")
     public Result<AppDTO> createApp(@RequestBody AppDTO req) {
-        if (req == null) return Result.<AppDTO>fail("body is null");
+        if (req == null) {
+            return Result.<AppDTO>fail("body is null");
+        }
+
         try {
             AppDTO created = schemaAdminService.createApp(req);
             return Result.success(created);
@@ -104,7 +107,10 @@ public class SchemaAdminController {
     @Operation(summary = "更新应用")
     @PutMapping("/app")
     public Result<Integer> updateApp(@RequestParam Long id, @RequestBody AppDTO req) {
-        if (req == null) return Result.<Integer>fail("body is null");
+        if (req == null) {
+            return Result.<Integer>fail("body is null");
+        }
+
         try {
             return Result.success(schemaAdminService.updateApp(id, req));
         } catch (IllegalArgumentException ex) {
@@ -140,7 +146,10 @@ public class SchemaAdminController {
             @RequestParam String appCode,
             @RequestParam String tenantCode,
             @RequestBody EntityDefDTO req) {
-        if (req == null) return Result.<EntityDefDTO>fail("body is null");
+        if (req == null) {
+            return Result.<EntityDefDTO>fail("body is null");
+        }
+
         try {
             EntityDefDTO created = schemaAdminService.createEntity(tenantCode, appCode, req);
             return Result.success(created);
@@ -187,7 +196,10 @@ public class SchemaAdminController {
     @Operation(summary = "更新实体")
     @PutMapping("/entity")
     public Result<Integer> updateEntity(@RequestParam Long id, @RequestBody EntityDefDTO req) {
-        if (req == null) return Result.<Integer>fail("body is null");
+        if (req == null) {
+            return Result.<Integer>fail("body is null");
+        }
+
         try {
             return Result.success(schemaAdminService.updateEntity(id, req));
         } catch (IllegalArgumentException ex) {

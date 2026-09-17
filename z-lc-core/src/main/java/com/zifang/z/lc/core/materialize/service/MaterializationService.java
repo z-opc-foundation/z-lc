@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.materialize.service;
 
+import com.zifang.util.core.time.DateUtil;
 import com.zifang.z.lc.core.executor.entity.EntityEntity;
 import com.zifang.z.lc.core.executor.entity.FieldEntity;
 import com.zifang.z.lc.core.materialize.dto.MaterializationReq;
@@ -20,12 +21,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import com.zifang.util.core.time.DateUtil;
 
 /**
  * 代码物化服务 (FEATURE006 T1).
@@ -123,7 +122,9 @@ public class MaterializationService {
 
     private void run(Long materializationId) {
         MaterializationEntity entity = materializationMapper.selectById(materializationId);
-        if (entity == null) return;
+        if (entity == null) {
+            return;
+        }
         entity.setStatus(MaterializationEntity.STATUS_GENERATING);
         entity.setUpdateTime(new Date());
         materializationMapper.updateById(entity);
@@ -238,7 +239,9 @@ public class MaterializationService {
     }
 
     private void ensureDir(Path p) {
-        if (p == null) return;
+        if (p == null) {
+            return;
+        }
         try {
             Files.createDirectories(p);
         } catch (IOException e) {
@@ -247,7 +250,10 @@ public class MaterializationService {
     }
 
     private List<String> parseEntityCodes(String json) {
-        if (json == null || json.isEmpty() || "null".equals(json)) return null;
+        if (json == null || json.isEmpty() || "null".equals(json)) {
+            return null;
+        }
+
         try {
             return new com.fasterxml.jackson.databind.ObjectMapper()
                     .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {
@@ -267,7 +273,10 @@ public class MaterializationService {
             qw.eq("tenant_code", tenantCode);
             qw.eq("app_code", appCode);
             qw.eq("deleted", 0);
-            if (codes != null && !codes.isEmpty()) qw.in("entity_code", codes);
+            if (codes != null && !codes.isEmpty()) {
+                qw.in("entity_code", codes);
+            }
+
             return entityMapper.selectList(qw);
         } catch (Exception e) {
             log.warn("loadEntities via mapper failed: {}", e.getMessage());
@@ -292,7 +301,10 @@ public class MaterializationService {
 
     public MaterializationResp getStatus(Long id) {
         MaterializationEntity e = materializationMapper.selectById(id);
-        if (e == null) return null;
+        if (e == null) {
+            return null;
+        }
+
         return toResp(e, null);
     }
 
@@ -306,10 +318,16 @@ public class MaterializationService {
      */
     public List<MaterializationResp.GeneratedFile> listFiles(Long id) {
         MaterializationEntity e = materializationMapper.selectById(id);
-        if (e == null) return new ArrayList<>();
+        if (e == null) {
+            return new ArrayList<>();
+        }
+
         Path basePath = resolvePath(e.getMaterializationPath());
         File base = basePath.toFile();
-        if (!base.exists() || !base.isDirectory()) return new ArrayList<>();
+        if (!base.exists() || !base.isDirectory()) {
+            return new ArrayList<>();
+        }
+
         List<MaterializationResp.GeneratedFile> result = new ArrayList<>();
         walkFiles(base, base, result);
         return result;
@@ -317,7 +335,9 @@ public class MaterializationService {
 
     private void walkFiles(File root, File current, List<MaterializationResp.GeneratedFile> out) {
         File[] children = current.listFiles();
-        if (children == null) return;
+        if (children == null) {
+            return;
+        }
         for (File f : children) {
             if (f.isDirectory()) {
                 walkFiles(root, f, out);
@@ -347,7 +367,10 @@ public class MaterializationService {
                 : DateUtil.format(e.getCreateTime(), "yyyy-MM-dd HH:mm:ss"));
         r.setUpdateTime(e.getUpdateTime() == null ? null
                 : DateUtil.format(e.getUpdateTime(), "yyyy-MM-dd HH:mm:ss"));
-        if (files != null) r.setFiles(files);
+        if (files != null) {
+            r.setFiles(files);
+        }
+
         return r;
     }
 }

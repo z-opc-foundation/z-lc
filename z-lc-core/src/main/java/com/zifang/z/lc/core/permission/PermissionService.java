@@ -53,8 +53,14 @@ public class PermissionService {
                         .eq("role_code", entity.getRoleCode())
                         .eq("permission", entity.getPermission())
                         .eq("tenant_code", entity.getTenantCode() != null ? entity.getTenantCode() : "default"));
-        if (existing != null) return existing;
-        if (entity.getTenantCode() == null) entity.setTenantCode("default");
+        if (existing != null) {
+            return existing;
+        }
+
+        if (entity.getTenantCode() == null) {
+            entity.setTenantCode("default");
+        }
+
         entity.setCreateTime(new Date());
         permissionMapper.insert(entity);
         log.info("Permission granted: app={} entity={} role={} perm={}", entity.getAppCode(), entity.getEntityCode(), entity.getRoleCode(), entity.getPermission());

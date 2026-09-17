@@ -32,7 +32,10 @@ public class DictAdminServiceImpl implements DictAdminService {
     public DictDTO createDict(DictDTO req) {
         DictEntity entity = new DictEntity();
         BeanUtils.copyProperties(req, entity);
-        if (entity.getTenantCode() == null) entity.setTenantCode("default");
+        if (entity.getTenantCode() == null) {
+            entity.setTenantCode("default");
+        }
+
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
@@ -44,9 +47,18 @@ public class DictAdminServiceImpl implements DictAdminService {
     @Override
     public DictDTO updateDict(DictDTO req) {
         DictEntity entity = dictMapper.selectById(req.getId());
-        if (entity == null) return null;
-        if (req.getDictName() != null) entity.setDictName(req.getDictName());
-        if (req.getDescription() != null) entity.setDescription(req.getDescription());
+        if (entity == null) {
+            return null;
+        }
+
+        if (req.getDictName() != null) {
+            entity.setDictName(req.getDictName());
+        }
+
+        if (req.getDescription() != null) {
+            entity.setDescription(req.getDescription());
+        }
+
         entity.setUpdateTime(new Date());
         dictMapper.updateById(entity);
         return toDTO(entity);
@@ -55,7 +67,10 @@ public class DictAdminServiceImpl implements DictAdminService {
     @Override
     public int deleteDict(Long id) {
         DictEntity entity = dictMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         // soft-delete all items by dictCode
         com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<DictItemEntity> itemUpdateWrapper =
                 new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<DictItemEntity>()
@@ -133,7 +148,10 @@ public class DictAdminServiceImpl implements DictAdminService {
     @Override
     public int deleteItem(Long id) {
         DictItemEntity entity = dictItemMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return dictItemMapper.updateById(entity);

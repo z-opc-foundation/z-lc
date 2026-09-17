@@ -28,7 +28,9 @@ public class CodeTemplateEngine {
      * 类名转换: snake_case → PascalCase
      */
     public static String toPascalCase(String snake) {
-        if (snake == null || snake.isEmpty()) return "Unknown";
+        if (snake == null || snake.isEmpty()) {
+            return "Unknown";
+        }
         StringBuilder sb = new StringBuilder();
         boolean upper = true;
         for (char c : snake.toCharArray()) {
@@ -46,7 +48,9 @@ public class CodeTemplateEngine {
      * snake_case → camelCase
      */
     public static String camelCase(String s) {
-        if (s == null || s.isEmpty()) return s;
+        if (s == null || s.isEmpty()) {
+            return s;
+        }
         String[] parts = s.toLowerCase().split("_");
         StringBuilder sb = new StringBuilder(parts[0]);
         for (int i = 1; i < parts.length; i++) {
@@ -59,7 +63,10 @@ public class CodeTemplateEngine {
      * Java 类型推断: 字段类型 → Java 类型
      */
     public static String javaTypeOf(String fieldType) {
-        if (fieldType == null) return "String";
+        if (fieldType == null) {
+            return "String";
+        }
+
         switch (fieldType.toUpperCase()) {
             case "INT":
             case "INTEGER":
@@ -97,9 +104,15 @@ public class CodeTemplateEngine {
                 || javaType.contains("Double") || javaType.contains("BigDecimal")) {
             return "InputNumber";
         }
-        if (javaType.contains("Boolean")) return "Switch";
-        if (javaType.contains("LocalDate")) return "DatePicker";
-        if (javaType.contains("LocalDateTime")) return "DatePicker";
+        if (javaType.contains("Boolean")) {
+            return "Switch";
+        }
+        if (javaType.contains("LocalDate")) {
+            return "DatePicker";
+        }
+        if (javaType.contains("LocalDateTime")) {
+            return "DatePicker";
+        }
         return "Input";
     }
 

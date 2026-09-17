@@ -40,14 +40,25 @@ public class DictResolveProcessor implements FieldProcessor {
 
     @Override
     public void postRead(EntityDefDTO entity, Map<String, Object> row) {
-        if (entity == null || entity.getFields() == null || row == null) return;
+        if (entity == null || entity.getFields() == null || row == null) {
+            return;
+        }
+
         String tenantCode = entity.getTenantCode();
         for (FieldDefDTO f : entity.getFields()) {
-            if (f.getDictCode() == null || f.getDictCode().isEmpty()) continue;
+            if (f.getDictCode() == null || f.getDictCode().isEmpty()) {
+                continue;
+            }
+
             Object val = row.get(f.getFieldCode());
-            if (val == null) continue;
+            if (val == null) {
+                continue;
+            }
             List<DictItemDTO> items = metaAdapter.listDictItems(tenantCode, f.getDictCode());
-            if (items == null || items.isEmpty()) continue;
+            if (items == null || items.isEmpty()) {
+                continue;
+            }
+
             for (DictItemDTO it : items) {
                 if (matches(it, val)) {
                     row.put(f.getFieldCode() + "_label", it.getItemLabel());
@@ -59,22 +70,39 @@ public class DictResolveProcessor implements FieldProcessor {
 
     @Override
     public void postReadList(EntityDefDTO entity, List<Map<String, Object>> rows) {
-        if (entity == null || entity.getFields() == null || rows == null) return;
+        if (entity == null || entity.getFields() == null || rows == null) {
+            return;
+        }
+
         // 收集本批涉及到的 dict, 一次性拉, 减少 HTTP 出口
         Map<String, List<DictItemDTO>> dictItems = new HashMap<>();
         String tenantCode = entity.getTenantCode();
         for (FieldDefDTO f : entity.getFields()) {
-            if (f.getDictCode() == null || f.getDictCode().isEmpty()) continue;
-            if (dictItems.containsKey(f.getDictCode())) continue;
+            if (f.getDictCode() == null || f.getDictCode().isEmpty()) {
+                continue;
+            }
+
+            if (dictItems.containsKey(f.getDictCode())) {
+                continue;
+            }
+
             dictItems.put(f.getDictCode(), metaAdapter.listDictItems(tenantCode, f.getDictCode()));
         }
         for (Map<String, Object> row : rows) {
             for (FieldDefDTO f : entity.getFields()) {
-                if (f.getDictCode() == null || f.getDictCode().isEmpty()) continue;
+                if (f.getDictCode() == null || f.getDictCode().isEmpty()) {
+                    continue;
+                }
+
                 Object val = row.get(f.getFieldCode());
-                if (val == null) continue;
+                if (val == null) {
+                    continue;
+                }
                 List<DictItemDTO> items = dictItems.get(f.getDictCode());
-                if (items == null || items.isEmpty()) continue;
+                if (items == null || items.isEmpty()) {
+                    continue;
+                }
+
                 for (DictItemDTO it : items) {
                     if (matches(it, val)) {
                         row.put(f.getFieldCode() + "_label", it.getItemLabel());
@@ -86,8 +114,14 @@ public class DictResolveProcessor implements FieldProcessor {
     }
 
     private boolean matches(DictItemDTO it, Object val) {
-        if (it.getItemValue() != null && it.getItemValue().equals(String.valueOf(val))) return true;
-        if (it.getItemCode() != null && it.getItemCode().equals(String.valueOf(val))) return true;
+        if (it.getItemValue() != null && it.getItemValue().equals(String.valueOf(val))) {
+            return true;
+        }
+
+        if (it.getItemCode() != null && it.getItemCode().equals(String.valueOf(val))) {
+            return true;
+        }
+
         return false;
     }
 }

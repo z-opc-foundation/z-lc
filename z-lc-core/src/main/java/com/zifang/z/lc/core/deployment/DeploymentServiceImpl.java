@@ -27,7 +27,10 @@ public class DeploymentServiceImpl implements DeploymentService {
     public DeploymentDTO createDeployment(DeploymentCreateReq req) {
         DeploymentEntity entity = new DeploymentEntity();
         BeanUtils.copyProperties(req, entity);
-        if (entity.getTenantCode() == null) entity.setTenantCode("default");
+        if (entity.getTenantCode() == null) {
+            entity.setTenantCode("default");
+        }
+
         entity.setStatus(DeploymentEntity.STATUS_PENDING);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
@@ -39,9 +42,15 @@ public class DeploymentServiceImpl implements DeploymentService {
     @Override
     public DeploymentDTO updateDeploymentStatus(Long id, String status, String deployLog) {
         DeploymentEntity entity = deploymentMapper.selectById(id);
-        if (entity == null) return null;
+        if (entity == null) {
+            return null;
+        }
+
         entity.setStatus(status);
-        if (deployLog != null) entity.setDeployLog(deployLog);
+        if (deployLog != null) {
+            entity.setDeployLog(deployLog);
+        }
+
         entity.setUpdateTime(new Date());
         deploymentMapper.updateById(entity);
         return toDTO(entity);

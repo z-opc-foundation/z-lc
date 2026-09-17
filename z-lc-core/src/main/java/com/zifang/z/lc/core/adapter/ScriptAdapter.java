@@ -64,7 +64,10 @@ public class ScriptAdapter implements Adapter {
         }
         try {
             Map<?, ?> resp = JsonUtil.fromJson(res.getBody(), Map.class);
-            if (resp == null) return null;
+            if (resp == null) {
+                return null;
+            }
+
             return resp.get("data");
         } catch (Exception ex) {
             log.warn("ScriptAdapter.eval parse failed: scriptCode={}, msg={}", scriptCode, ex.getMessage());

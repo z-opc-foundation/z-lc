@@ -68,3 +68,12 @@ docker-compose.override.yml
 *.swo
 # ===== Git 本地备份目录 (历史塌缩用) =====
 .git.bak.*/
+
+
+# ============ 跨仓借鉴 / 内部演进过程文档 (不上传) ============
+# 跨仓借鉴 / 内部演进过程涉及商业代码 / 内部决策, 不上传
+_doc/004_skill/*-distill-plan.md
+_doc/004_skill/distill-*.md
+_doc/004_skill/ace-platform-*
+_doc/004_skill/model-evolution-plan.md
+_doc/004_skill/ace-*

@@ -9,44 +9,79 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * z_lc_event 表对应 MyBatis Plus 实体
- * 注意: 列名与 _doc/_sql/z-lc.sql 完全对齐 (snake_case)
+ * z_lc_event 表对应实体类 (事件管理)
+ *
+ * @author zifang
+ * @since 1.0.0
  */
 @TableName("z_lc_event")
 public class EventEntity implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * 主键ID
+     */
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /**
+     * 租户编码
+     */
     @TableField("tenant_code")
     private String tenantCode;
 
+    /**
+     * 事件ID
+     */
     @TableField("event_id")
     private String eventId;
 
+    /**
+     * 应用编码
+     */
     @TableField("app_code")
     private String appCode;
 
+    /**
+     * 实体编码
+     */
     @TableField("entity_code")
     private String entityCode;
 
+    /**
+     * 事件类型
+     */
     @TableField("event_type")
     private String eventType;
 
+    /**
+     * 事件数据
+     */
     @TableField("event_data")
     private String eventData;
 
+    /**
+     * 事件来源
+     */
     @TableField("source")
     private String source;
 
+    /**
+     * 父事件ID
+     */
     @TableField("parent_event_id")
     private String parentEventId;
 
+    /**
+     * 申请序列号
+     */
     @TableField("apply_seq")
     private Long applySeq;
 
+    /**
+     * 申请时间
+     */
     @TableField("apply_time")
     private Date applyTime;
 

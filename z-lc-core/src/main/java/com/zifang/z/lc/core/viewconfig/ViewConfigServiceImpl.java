@@ -28,7 +28,10 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     public ViewConfigDTO createViewConfig(ViewConfigCreateReq req) {
         ViewConfigEntity entity = new ViewConfigEntity();
         BeanUtils.copyProperties(req, entity);
-        if (entity.getTenantCode() == null) entity.setTenantCode("default");
+        if (entity.getTenantCode() != null) {
+            entity.setTenantCode("default");
+        }
+
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
@@ -40,9 +43,18 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     @Override
     public ViewConfigDTO updateViewConfig(ViewConfigUpdateReq req) {
         ViewConfigEntity entity = viewConfigMapper.selectById(req.getId());
-        if (entity == null) return null;
-        if (req.getViewType() != null) entity.setViewType(req.getViewType());
-        if (req.getConfig() != null) entity.setConfig(req.getConfig());
+        if (entity == null) {
+            return null;
+        }
+
+        if (req.getViewType() != null) {
+            entity.setViewType(req.getViewType());
+        }
+
+        if (req.getConfig() != null) {
+            entity.setConfig(req.getConfig());
+        }
+
         entity.setUpdateTime(new Date());
         viewConfigMapper.updateById(entity);
         return toDTO(entity);
@@ -51,7 +63,10 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     @Override
     public int deleteViewConfig(Long id) {
         ViewConfigEntity entity = viewConfigMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return viewConfigMapper.updateById(entity);

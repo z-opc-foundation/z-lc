@@ -26,11 +26,19 @@ public class TypeConvertProcessor implements FieldProcessor {
 
     @Override
     public void preWrite(EntityDefDTO entity, RuntimeCrudDTO body) {
-        if (entity == null || entity.getFields() == null || body == null || body.getFieldValues() == null) return;
+        if (entity == null || entity.getFields() == null || body == null || body.getFieldValues() == null) {
+            return;
+        }
+
         for (FieldDefDTO f : entity.getFields()) {
-            if (f.getFieldCode() == null) continue;
+            if (f.getFieldCode() == null) {
+                continue;
+            }
+
             Object v = body.getFieldValues().get(f.getFieldCode());
-            if (v == null) continue;
+            if (v == null) {
+                continue;
+            }
             try {
                 Object coerced = sqlBuilder.coerce(v, f.getFieldType());
                 body.getFieldValues().put(f.getFieldCode(), coerced);

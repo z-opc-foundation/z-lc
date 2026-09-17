@@ -15,9 +15,18 @@ import java.util.Map;
 public class RequiredCheckProcessor implements FieldProcessor {
 
     private static boolean isEmpty(Object v) {
-        if (v == null) return true;
-        if (v instanceof String) return ((String) v).isEmpty();
-        if (v instanceof java.util.Collection) return ((java.util.Collection<?>) v).isEmpty();
+        if (v == null) {
+            return true;
+        }
+
+        if (v instanceof String) {
+            return ((String) v).isEmpty();
+        }
+
+        if (v instanceof java.util.Collection) {
+            return ((java.util.Collection<?>) v).isEmpty();
+        }
+
         return false;
     }
 
@@ -28,10 +37,16 @@ public class RequiredCheckProcessor implements FieldProcessor {
 
     @Override
     public void preWrite(EntityDefDTO entity, RuntimeCrudDTO body) {
-        if (entity == null || entity.getFields() == null) return;
+        if (entity == null || entity.getFields() == null) {
+            return;
+        }
+
         Map<String, Object> values = body.getFieldValues() == null ? java.util.Collections.emptyMap() : body.getFieldValues();
         for (FieldDefDTO f : entity.getFields()) {
-            if (f.getRequired() == null || !f.getRequired()) continue;
+            if (f.getRequired() == null || !f.getRequired()) {
+                continue;
+            }
+
             Object v = values.get(f.getFieldCode());
             if (isEmpty(v)) {
                 throw new IllegalArgumentException("字段 [" + f.getFieldName() + "] ("

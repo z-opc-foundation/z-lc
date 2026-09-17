@@ -52,7 +52,10 @@ public class WorkflowBindingService {
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
-        if (entity.getAutoSubmit() == null) entity.setAutoSubmit(1);
+        if (entity.getAutoSubmit() == null) {
+            entity.setAutoSubmit(1);
+        }
+
         workflowBindingMapper.insert(entity);
         log.info("WorkflowBinding created: app={} entity={} process={}", entity.getAppCode(), entity.getEntityCode(), entity.getProcessDefinitionKey());
         return entity;
@@ -66,7 +69,10 @@ public class WorkflowBindingService {
 
     public int delete(Long id) {
         WorkflowBindingEntity entity = workflowBindingMapper.selectById(id);
-        if (entity == null) return 0;
+        if (entity == null) {
+            return 0;
+        }
+
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return workflowBindingMapper.updateById(entity);

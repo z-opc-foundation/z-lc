@@ -1,6 +1,7 @@
 package com.zifang.z.lc.core.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.core.json.JsonMapperFactory;
 import com.zifang.z.agent.llm.gateway.adapter.UnifiedRequest;
 import com.zifang.z.agent.llm.gateway.adapter.UnifiedResponse;
 import com.zifang.z.agent.llm.gateway.service.LlmGatewayService;
@@ -9,15 +10,14 @@ import com.zifang.z.lc.core.event.EventService;
 import com.zifang.z.lc.mapper.executor.LcAppEntityMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import javax.annotation.Resource;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.zifang.util.core.json.JsonMapperFactory;
 
 /**
  * AI 对话式产品制造服务 (F035 T9-T13)

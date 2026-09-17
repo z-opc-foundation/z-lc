@@ -2,6 +2,7 @@ package com.zifang.z.lc.core.event;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.core.json.JsonMapperFactory;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.EventDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
@@ -14,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import com.zifang.util.core.json.JsonMapperFactory;
 
 /**
  * 事件回放: 把某 app 的事件链按 apply_seq 顺序 fold 出当前实体定义
@@ -74,9 +74,18 @@ public class EventReplayService {
     }
 
     private void applyCreate(EntityDefDTO def, JsonNode data) {
-        if (data.has("entityName")) def.setEntityName(data.get("entityName").asText());
-        if (data.has("tableName")) def.setTableName(data.get("tableName").asText());
-        if (data.has("description")) def.setDescription(data.get("description").asText());
+        if (data.has("entityName")) {
+            def.setEntityName(data.get("entityName").asText());
+        }
+
+        if (data.has("tableName")) {
+            def.setTableName(data.get("tableName").asText());
+        }
+
+        if (data.has("description")) {
+            def.setDescription(data.get("description").asText());
+        }
+
 
         if (data.has("fields") && data.get("fields").isArray()) {
             List<FieldDefDTO> fields = new ArrayList<>();
@@ -89,9 +98,18 @@ public class EventReplayService {
     }
 
     private void applyUpdate(EntityDefDTO def, JsonNode data) {
-        if (data.has("entityName")) def.setEntityName(data.get("entityName").asText());
-        if (data.has("tableName")) def.setTableName(data.get("tableName").asText());
-        if (data.has("description")) def.setDescription(data.get("description").asText());
+        if (data.has("entityName")) {
+            def.setEntityName(data.get("entityName").asText());
+        }
+
+        if (data.has("tableName")) {
+            def.setTableName(data.get("tableName").asText());
+        }
+
+        if (data.has("description")) {
+            def.setDescription(data.get("description").asText());
+        }
+
 
         if (data.has("fields") && data.get("fields").isArray()) {
             List<FieldDefDTO> existing = def.getFields() != null ? def.getFields() : new ArrayList<>();
@@ -108,7 +126,10 @@ public class EventReplayService {
                         break;
                     }
                 }
-                if (!replaced) existing.add(upd);
+                if (!replaced) {
+                    existing.add(upd);
+                }
+
             }
             def.setFields(existing);
         }
@@ -132,9 +153,18 @@ public class EventReplayService {
         f.setDefaultValue(n.path("defaultValue").asText(null));
         f.setDictCode(n.path("dictCode").asText(null));
         f.setRefEntity(n.path("refEntity").asText(null));
-        if (n.has("fieldLength")) f.setFieldLength(n.get("fieldLength").asInt());
-        if (n.has("scale")) f.setScale(n.get("scale").asInt());
-        if (n.has("sortOrder")) f.setSortOrder(n.get("sortOrder").asInt());
+        if (n.has("fieldLength")) {
+            f.setFieldLength(n.get("fieldLength").asInt());
+        }
+
+        if (n.has("scale")) {
+            f.setScale(n.get("scale").asInt());
+        }
+
+        if (n.has("sortOrder")) {
+            f.setSortOrder(n.get("sortOrder").asInt());
+        }
+
         f.setDescription(n.path("description").asText(null));
         return f;
     }

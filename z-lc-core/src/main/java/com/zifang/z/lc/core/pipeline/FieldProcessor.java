@@ -32,7 +32,9 @@ public interface FieldProcessor {
      * 列表读出后处理
      */
     default void postReadList(EntityDefDTO entity, List<Map<String, Object>> rows) {
-        if (rows == null) return;
+        if (rows == null) {
+            return;
+        }
         for (Map<String, Object> row : rows) {
             postRead(entity, row);
         }

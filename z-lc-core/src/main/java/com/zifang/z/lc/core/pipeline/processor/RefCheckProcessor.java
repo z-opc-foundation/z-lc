@@ -33,11 +33,19 @@ public class RefCheckProcessor implements FieldProcessor {
 
     @Override
     public void preWrite(EntityDefDTO entity, RuntimeCrudDTO body) {
-        if (entity == null || entity.getFields() == null || body == null || body.getFieldValues() == null) return;
+        if (entity == null || entity.getFields() == null || body == null || body.getFieldValues() == null) {
+            return;
+        }
+
         for (FieldDefDTO f : entity.getFields()) {
-            if (f.getRefEntity() == null || f.getRefEntity().isEmpty()) continue;
+            if (f.getRefEntity() == null || f.getRefEntity().isEmpty()) {
+                continue;
+            }
+
             Object v = body.getFieldValues().get(f.getFieldCode());
-            if (v == null) continue;
+            if (v == null) {
+                continue;
+            }
             // 仅做非空检查, 详细跨 entity 校验由 Phase 2 引入
             log.debug("RefCheck: entity={} field={} refEntity={} value={}",
                     entity.getEntityCode(), f.getFieldCode(), f.getRefEntity(), v);

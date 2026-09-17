@@ -49,7 +49,10 @@ public class MaterializationController {
     @PostMapping
     public Map<String, Object> trigger(@RequestParam String appCode,
                                        @RequestBody(required = false) MaterializationReq req) {
-        if (req == null) req = new MaterializationReq();
+        if (req == null) {
+            req = new MaterializationReq();
+        }
+
         req.setAppCode(appCode);
         MaterializationResp r = service.trigger(req, "default");
         Map<String, Object> result = new HashMap<>();

@@ -77,13 +77,14 @@
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-spring-boot-starter</artifactId>
-                <version>4.1.0</version>
-            </dependency>
+            <version>4.1.0</version>
+        </dependency>
 
         <!-- 数据源 starter (ModuleDataSourceTemplate / Druid) — 替代 mybatis-plus -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-boot-datasource-starter</artifactId>
+            <version>1.0.3</version>
         </dependency>
     </dependencies>
 

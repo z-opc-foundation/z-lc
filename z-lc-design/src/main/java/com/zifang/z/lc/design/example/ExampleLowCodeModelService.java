@@ -61,7 +61,10 @@ public class ExampleLowCodeModelService {
             log.info("[Example] FormDataInitService.init 触发: appCode={}, modelCode={}",
                     context.getAppCode(), context.getModelCode());
             // 演示: 给 data 注入默认值
-            if (data == null) data = new HashMap<>();
+            if (data == null) {
+                data = new HashMap<>();
+            }
+
             data.put("createdBy", "z-lc-demo");
             data.put("createdAt", System.currentTimeMillis());
             return Result.success(data);
@@ -99,7 +102,10 @@ public class ExampleLowCodeModelService {
         public Result<Map<String, Object>> preHandler(ExtensionServiceContext context, Map<String, Object> data) {
             log.info("[Example] FormDataSubmitPreHandlerService.preHandler 触发");
             // 演示: 自动盖时间戳
-            if (data == null) data = new HashMap<>();
+            if (data == null) {
+                data = new HashMap<>();
+            }
+
             data.put("submittedAt", System.currentTimeMillis());
             return Result.success(data);
         }
