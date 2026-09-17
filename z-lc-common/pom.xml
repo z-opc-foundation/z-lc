@@ -23,6 +23,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- Bean Validation 分组接口 (ZLcCreate/ZLcUpdate 需要继承 javax.validation.groups.Default) -->
+        <dependency>
+            <groupId>javax.validation</groupId>
+            <artifactId>validation-api</artifactId>
+        </dependency>
         <!-- z-util-core (StatusCode 接口 — ZLcEngineStatusCode 实现该接口) -->
         <dependency>
             <groupId>com.zifang</groupId>
