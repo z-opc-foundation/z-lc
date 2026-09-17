@@ -64,6 +64,23 @@ public abstract class AbstractDataModelService<T> implements DataModelService<T>
     }
 
     /**
+     * 取出业务 POJO 的 Class — 蒸馏自 ace ModelServiceCollector 用于 RPC 注册时取 @DataModel 元信息.
+     */
+    public Class<?> getGenericType() {
+        return genericType;
+    }
+
+    /**
+     * 后期注入 genericType — 用于 {@link com.zifang.z.lc.sdk.collector.ZLcModelServiceCollector}
+     * 在启动时通过反射解析 AbstractDataModelService 子类的泛型 T 并设置.
+     *
+     * <p>注意：业务子类通常通过构造函数注入即可，本 setter 仅供 Collector 使用.
+     */
+    public void setGenericType(Class<?> genericType) {
+        this.genericType = genericType;
+    }
+
+    /**
      * 解析当前调用的 appCode / modelCode.
      * 优先级：ThreadLocal Context &gt; {@code @DataModel} 注解 &gt; 系统兜底.
      *
