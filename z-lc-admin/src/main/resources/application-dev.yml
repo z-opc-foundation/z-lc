@@ -1,0 +1,39 @@
+# dev profile: H2 内存数据库, 本地零依赖启动
+# 用法: --spring.profiles.active=dev
+# H2 默认 user=sa / password="" (空密码)
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: jdbc:h2:mem:zlc;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=USER
+    username: sa
+    password: "sa"
+    h2:
+      console:
+        enabled: true
+        path: /h2-console
+
+# z-lc 模块数据源 (LcModuleDataSource 读 z.base.db.lc.* + fallback z.base.db.default.*)
+z:
+  base:
+    db:
+      default:
+        jdbc-url: jdbc:h2:mem:zlc;MODE=MySQL;DB_CLOSE_DELAY=-1
+        driver-class-name: org.h2.Driver
+        username: sa
+        password: ""
+        pool-name: lc-pool
+      lc:
+        jdbc-url: jdbc:h2:mem:zlc;MODE=MySQL;DB_CLOSE_DELAY=-1
+        driver-class-name: org.h2.Driver
+        username: sa
+        password: ""
+
+# z-lc 内部 Adapter dev 配置
+z-lc:
+  adapter:
+    ctc:
+      base-url: http://localhost:18080
+    meta:
+      base-url: http://localhost:18080
+    script:
+      base-url: http://localhost:18080

@@ -34,7 +34,7 @@
             <artifactId>z-lc-common</artifactId>
         </dependency>
 
-        <!-- z-lc-sdk: SPI 接口 + 注解 + 抽象基类 (Phase 2A 蒸馏自 ace-platform-sdk/engine 的设计哲学) -->
+        <!-- z-lc-sdk: SPI 接口 + 注解 + 抽象基类 -->
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-lc-sdk</artifactId>
@@ -68,8 +68,9 @@
 
         <!-- 数据源统一收口为 z-boot-datasource-starter（替代 mybatis-plus；entity/event CRUD 走其内部 mapper） -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-boot-datasource-starter</artifactId>
+            <version>1.0.9</version>
         </dependency>
 
         <!-- z-script: 业务脚本引擎 (CRUD 生命周期钩子) -->

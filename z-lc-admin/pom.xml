@@ -23,10 +23,33 @@
     </properties>
 
     <dependencies>
-        <!-- 只引 z-lc-spring-boot-starter (传递 sdk + design + web + core + common) -->
+        <!-- z-lc-web (含 LcModuleDataSource 数据源 + 全部 controller) -->
         <dependency>
             <groupId>com.zifang</groupId>
-            <artifactId>z-lc-spring-boot-starter</artifactId>
+            <artifactId>z-lc-web</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- z-lc-design (含 PageTemplateController + LowCodeModelService 收集器) -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-lc-design</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- z-lc-core 内部依赖传递到 admin: z-agent-llm-gateway-core (AiModelingService 用到) -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-agent-llm-gateway-core</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-lc-sdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-lc-common</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <!-- Spring Boot Web (provided 走 z-lc-web, 这里加保险) -->
@@ -48,15 +71,35 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- Log4j2 (替代 spring-boot 默认 logback) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-log4j2</artifactId>
+            <exclusions>
+                <!--
+                    排除 spring-boot-starter-log4j2 自带的 log4j-slf4j-impl 2.17.x (跟 z-util-core 拉的 log4j-slf4j2-impl 2.26.x 双版本冲突,
+                    NoSuchMethodError org.apache.logging.slf4j.Log4jLoggerFactory.<init>).
+                    只保留新版 log4j-slf4j2-impl (slf4j-api 2.x + log4j-api 2.x + log4j-core 2.x 一套).
+                -->
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- mysql-connector-j 显式引 (z-lc-core 引了但 runtime 阶段才加载, 显式保险) -->
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
+        </dependency>
+
+        <!-- H2 v1.4.200 (默认 user=sa / password=空, dev 模式免密) -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>1.4.200</version>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 

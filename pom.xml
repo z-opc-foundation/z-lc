@@ -17,14 +17,6 @@
     <name>z-lc</name>
     <description>z-lc Low-Code Platform — Phase 1: DB-driven Generic CRUD Engine</description>
 
-    <licenses>
-        <license>
-            <name>MIT License</name>
-            <url>https://opensource.org/licenses/MIT</url>
-            <distribution>repo</distribution>
-        </license>
-    </licenses>
-
     <modules>
         <module>z-lc-common</module>
         <module>z-lc-sdk</module>
@@ -53,21 +45,21 @@
 
             <!-- 对齐 z-meta:z-boot 依赖管理 -->
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-boot-dependencies</artifactId>
-                <version>${project.version}</version>
+                <version>1.0.9</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-boot-web-starter</artifactId>
-                <version>${project.version}</version>
+                <version>1.0.9</version>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-boot-datasource-starter</artifactId>
-                <version>${project.version}</version>
+                <version>1.0.9</version>
             </dependency>
 
             <!-- z-lc 内部模块版本 -->

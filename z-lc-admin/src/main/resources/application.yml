@@ -6,10 +6,11 @@ spring:
     name: z-lc-bootstrap
   datasource:
     # 阿里云 RDS (与 z-opc 现有 main 库一致, 来自 z-opc memory)
-    url: jdbc:mysql://rm-bp108uqlgwn712k54ho.mysql.rds.aliyuncs.com:3306/oc?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true
-    username: zifang
-    password: Hhzemol!
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    # ⚠️ 凭证通过环境变量注入, 严禁明文 commit
+    url: ${SPRING_DATASOURCE_URL:HIDE_IN_REPO}
+    username: ${SPRING_DATASOURCE_USERNAME:HIDE_IN_REPO}
+    password: ${SPRING_DATASOURCE_PASSWORD:HIDE_IN_REPO}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER:com.mysql.cj.jdbc.Driver}
   main:
     allow-bean-definition-overriding: true
   # 启动不阻塞 (DataSource lazy init, 实际调用时才连)
@@ -21,11 +22,11 @@ spring:
 z-lc:
   adapter:
     ctc:
-      base-url: http://localhost:8888
+      base-url: ${Z_CTC_BASE_URL:http://localhost:8888}
     meta:
-      base-url: http://localhost:8888
+      base-url: ${Z_META_BASE_URL:http://localhost:8888}
     script:
-      base-url: http://localhost:8888
+      base-url: ${Z_SCRIPT_BASE_URL:http://localhost:8888}
 
 knife4j:
   enable: true

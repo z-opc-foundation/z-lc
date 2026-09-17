@@ -1,0 +1,18 @@
+# ============ 本地配置 (含凭证) ============
+# 严禁 commit, 跟 .example 模板走
+src/main/resources/application-local.yml
+src/main/resources/application-local.yaml
+
+# ============ H2 / 构建产物 ============
+*.h2.db
+*.mv.db
+*.trace.db
+
+# ============ IDE ============
+.idea/
+*.iml
+.classpath
+.settings/
+
+# ============ 系统 ============
+.DS_Store
