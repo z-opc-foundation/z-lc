@@ -44,6 +44,11 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-core</artifactId>
         </dependency>
+        <!-- spring-context (ApplicationContextAware / AnnotatedElementUtils — TaskServiceCollector 用) -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
 
         <!-- Jackson databind (InnerDataModelServiceAdapter 反射 POJO ↔ Map 转换用) -->
         <dependency>
