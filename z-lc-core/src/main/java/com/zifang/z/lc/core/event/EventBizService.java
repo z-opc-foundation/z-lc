@@ -47,7 +47,7 @@ public class EventBizService implements EventService {
         // 3. 构建实体并 insert
         EventEntity entity = new EventEntity();
         entity.setTenantCode(req.getTenantCode());
-        entity.setEventId(RandomUtil.uuidCompact()); // 32 字符
+        entity.setEventId(RandomUtil.uuid()); // 32 字符
         entity.setAppCode(appCode);
         entity.setEntityCode(req.getEntityCode());
         entity.setEventType(req.getEventType());

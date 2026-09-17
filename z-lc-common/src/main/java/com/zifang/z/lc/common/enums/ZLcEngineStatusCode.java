@@ -1,5 +1,7 @@
 package com.zifang.z.lc.common.enums;
 
+import com.zifang.util.core.meta.StatusCode;
+
 /**
  * z-lc 引擎状态码.
  *
@@ -14,7 +16,7 @@ package com.zifang.z.lc.common.enums;
  *
  * @author zifang
  */
-public enum ZLcEngineStatusCode {
+public enum ZLcEngineStatusCode implements StatusCode {
 
     /**
      * 业务异常（通用 — Service 层抛出的所有可恢复异常用此 code）.

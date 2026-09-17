@@ -23,5 +23,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- z-util-core (StatusCode 接口 — ZLcEngineStatusCode 实现该接口) -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-util-core</artifactId>
+            <version>1.0.2-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 </project>

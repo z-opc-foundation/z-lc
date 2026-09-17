@@ -33,7 +33,7 @@ public class MaterializationEventService {
     public String recordMaterializeEvent(MaterializationEntity m, int fileCount) {
         EventEntity e = new EventEntity();
         e.setTenantCode(m.getTenantCode());
-        e.setEventId(RandomUtil.uuidCompact());
+        e.setEventId(RandomUtil.uuid());
         e.setAppCode(m.getAppCode());
         e.setEntityCode(null); // MATERIALIZE 作用于多个 entity
         e.setEventType(EVENT_TYPE_MATERIALIZE);
