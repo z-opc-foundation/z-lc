@@ -23,6 +23,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+        <!-- spring-boot-starter-aop (ZLcRetryAspect / 业务方其它 @Aspect 实现需要) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
         <!-- Bean Validation 分组接口 (ZLcCreate/ZLcUpdate 需要继承 javax.validation.groups.Default) -->
         <dependency>
             <groupId>javax.validation</groupId>
