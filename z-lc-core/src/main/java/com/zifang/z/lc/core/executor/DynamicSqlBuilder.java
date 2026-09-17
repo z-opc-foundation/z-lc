@@ -31,7 +31,10 @@ public class DynamicSqlBuilder {
      * 当前引擎不需要建表, 仅供后续 Phase 2 materialization 用.
      */
     public static String jdbcType(String fieldType, Integer length, Integer scale) {
-        if (fieldType == null) return "VARCHAR(255)";
+        if (fieldType == null) {
+            return "VARCHAR(255)";
+        }
+
         switch (fieldType.toUpperCase()) {
             case "INT":
             case "LONG":
@@ -69,17 +72,35 @@ public class DynamicSqlBuilder {
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT ");
         sql.append(joinColumns(entity.getFields(), null));
-        sql.append(" FROM ").append(quote(entity.getTableName()));
-        sql.append(" WHERE deleted = 0");
+        // 字段关联扩展列 (dict -> _label, refEntity -> _name)
+        sql.append(buildExtraSelectColumns(entity));
+        sql.append(" FROM ").append(quote(entity.getTableName())).append(" ").append("t");
+        // 字段关联 JOIN 段 (dict JOIN / refEntity JOIN)
+        sql.append(buildJoinClauses(entity));
+        sql.append(" WHERE ").append("t").append(".deleted = 0");
+        // tenant_code 主表 + JOIN 表都已 deleted=0; 仅主表加 tenant
         if (entity.getTenantCode() != null) {
-            sql.append(" AND tenant_code = ?");
+            sql.append(" AND ").append("t").append(".tenant_code = ?");
             params.add(query.getTenantCode() != null ? query.getTenantCode() : entity.getTenantCode());
+        }
+        // dictCode 参数注入 (按 buildJoinClauses 顺序)
+        if (entity.getFields() != null) {
+            for (FieldDefDTO fld : entity.getFields()) {
+                if (fld == null) {
+                    continue;
+                }
+                if (fld.getDictCode() != null && !fld.getDictCode().isEmpty()) {
+                    params.add(fld.getDictCode());
+                }
+            }
         }
         if (query != null && query.getFilters() != null) {
             for (Map.Entry<String, Object> e : query.getFilters().entrySet()) {
                 String key = e.getKey();
                 Object val = e.getValue();
-                if (val == null) continue;
+                if (val == null) {
+                    continue;
+                }
                 String[] parts = key.split(":");
                 String fieldCode = parts[0];
                 String op = parts.length > 1 ? parts[1].toLowerCase() : "eq";
@@ -120,7 +141,10 @@ public class DynamicSqlBuilder {
                             Collection<?> coll = (Collection<?>) val;
                             boolean first = true;
                             for (Object v : coll) {
-                                if (!first) sql.append(",");
+                                if (!first) {
+                                    sql.append(",");
+                                }
+
                                 sql.append("?");
                                 params.add(v);
                                 first = false;
@@ -146,7 +170,10 @@ public class DynamicSqlBuilder {
             String[] tokens = query.getOrderBy().trim().split("\\s+");
             String obField = tokens[0];
             String obDir = tokens.length > 1 ? tokens[1].toUpperCase() : "ASC";
-            if (!"ASC".equals(obDir) && !"DESC".equals(obDir)) obDir = "ASC";
+            if (!"ASC".equals(obDir) && !"DESC".equals(obDir)) {
+                obDir = "ASC";
+            }
+
             if (fieldIndex.containsKey(obField)) {
                 sql.append(" ORDER BY ").append(quote(obField)).append(" ").append(obDir);
             } else {
@@ -172,22 +199,39 @@ public class DynamicSqlBuilder {
         List<Object> params = new ArrayList<>();
         Map<String, FieldDefDTO> fieldIndex = indexFields(entity);
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT COUNT(*) FROM ").append(quote(entity.getTableName()));
-        sql.append(" WHERE deleted = 0");
+        sql.append("SELECT COUNT(*) FROM ").append(quote(entity.getTableName())).append(" ").append("t");
+        // count 也要 JOIN (否则含 LEFT JOIN 的 SQL 会漏掉行)
+        sql.append(buildJoinClauses(entity));
+        sql.append(" WHERE ").append("t").append(".deleted = 0");
         if (entity.getTenantCode() != null) {
-            sql.append(" AND tenant_code = ?");
+            sql.append(" AND ").append("t").append(".tenant_code = ?");
             params.add(query.getTenantCode() != null ? query.getTenantCode() : entity.getTenantCode());
+        }
+        // dictCode 参数注入 (与 buildJoinClauses 一致)
+        if (entity.getFields() != null) {
+            for (FieldDefDTO fld : entity.getFields()) {
+                if (fld == null) {
+                    continue;
+                }
+                if (fld.getDictCode() != null && !fld.getDictCode().isEmpty()) {
+                    params.add(fld.getDictCode());
+                }
+            }
         }
         if (query != null && query.getFilters() != null) {
             for (Map.Entry<String, Object> e : query.getFilters().entrySet()) {
                 String key = e.getKey();
                 Object val = e.getValue();
-                if (val == null) continue;
+                if (val == null) {
+                    continue;
+                }
                 String[] parts = key.split(":");
                 String fieldCode = parts[0];
                 String op = parts.length > 1 ? parts[1].toLowerCase() : "eq";
                 FieldDefDTO fd = fieldIndex.get(fieldCode);
-                if (fd == null) continue;
+                if (fd == null) {
+                    continue;
+                }
                 String col = quote(fd.getFieldCode());
                 switch (op) {
                     case "eq":
@@ -212,12 +256,18 @@ public class DynamicSqlBuilder {
                             Collection<?> coll = (Collection<?>) val;
                             boolean first = true;
                             for (Object v : coll) {
-                                if (!first) sql.append(",");
+                                if (!first) {
+                                    sql.append(",");
+                                }
+
                                 sql.append("?");
                                 params.add(v);
                                 first = false;
                             }
-                            if (coll.isEmpty()) sql.append("NULL");
+                            if (coll.isEmpty()) {
+                                sql.append("NULL");
+                            }
+
                         } else {
                             sql.append("?");
                             params.add(val);
@@ -264,7 +314,10 @@ public class DynamicSqlBuilder {
         List<String> cols = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         for (Map.Entry<String, Object> e : values.entrySet()) {
-            if (e.getValue() == null) continue;
+            if (e.getValue() == null) {
+                continue;
+            }
+
             FieldDefDTO fd = fieldIndex.get(e.getKey());
             if (fd == null) {
                 log.warn("Insert field not in whitelist, skip: {}", e.getKey());
@@ -289,7 +342,10 @@ public class DynamicSqlBuilder {
         sql.append(" (").append(String.join(",", cols)).append(")");
         sql.append(" VALUES (");
         for (int i = 0; i < params.size(); i++) {
-            if (i > 0) sql.append(",");
+            if (i > 0) {
+                sql.append(",");
+            }
+
             sql.append("?");
         }
         sql.append(")");
@@ -308,7 +364,10 @@ public class DynamicSqlBuilder {
         List<String> sets = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         for (Map.Entry<String, Object> e : values.entrySet()) {
-            if (e.getValue() == null) continue;
+            if (e.getValue() == null) {
+                continue;
+            }
+
             FieldDefDTO fd = fieldIndex.get(e.getKey());
             if (fd == null) {
                 log.warn("Update field not in whitelist, skip: {}", e.getKey());
@@ -363,32 +422,122 @@ public class DynamicSqlBuilder {
     /**
      * 根据字段类型做强类型转换 (失败抛 IllegalArgumentException)
      */
+    /**
+     * 根据字段配置 (dictCode / refEntity) 生成 LEFT JOIN 子句.
+     * 在 buildListSql / buildCountSql 的 FROM 之后, WHERE 之前注入.
+     *
+     * <p>关联模式:
+     * <ul>
+     *   <li>dict 字段 (dictCode 不为空): LEFT JOIN z_lc_dict_item 别名 ON item_code = t.field AND dict_code = '<dictCode>'</li>
+     *   <li>refEntity 字段 (refEntity 不为空): LEFT JOIN <entity.tableName> 别名 ON id = t.field</li>
+     * </ul>
+     */
+    public String buildJoinClauses(EntityDefDTO entity) {
+        StringBuilder sb = new StringBuilder();
+        if (entity == null || entity.getFields() == null) {
+            return sb.toString();
+        }
+        String alias = "t";
+        for (FieldDefDTO f : entity.getFields()) {
+            if (f == null || f.getFieldCode() == null) {
+                continue;
+            }
+            if (f.getDictCode() != null && !f.getDictCode().isEmpty()) {
+                sb.append(" LEFT JOIN z_lc_dict_item d_").append(f.getFieldCode())
+                        .append(" ON d_").append(f.getFieldCode())
+                        .append(".item_code = ").append(alias).append(".")
+                        .append(quote(f.getFieldCode()))
+                        .append(" AND d_").append(f.getFieldCode())
+                        .append(".dict_code = ? AND d_").append(f.getFieldCode())
+                        .append(".deleted = 0");
+            } else if (f.getRefEntity() != null && !f.getRefEntity().isEmpty()) {
+                sb.append(" LEFT JOIN ").append(quote(f.getRefEntity()))
+                        .append(" r_").append(f.getFieldCode())
+                        .append(" ON r_").append(f.getFieldCode())
+                        .append(".id = ").append(alias).append(".")
+                        .append(quote(f.getFieldCode()))
+                        .append(" AND r_").append(f.getFieldCode())
+                        .append(".deleted = 0");
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 根据字段配置 (dictCode / refEntity) 生成额外 SELECT 列.
+     *
+     * <p>扩展列命名约定:
+     * <ul>
+     *   <li>dict 字段: {fieldCode}_label (item_label)</li>
+     *   <li>refEntity 字段: {fieldCode}_name (entity_name)</li>
+     * </ul>
+     */
+    public String buildExtraSelectColumns(EntityDefDTO entity) {
+        StringBuilder sb = new StringBuilder();
+        if (entity == null || entity.getFields() == null) {
+            return sb.toString();
+        }
+        for (FieldDefDTO f : entity.getFields()) {
+            if (f == null || f.getFieldCode() == null) {
+                continue;
+            }
+            if (f.getDictCode() != null && !f.getDictCode().isEmpty()) {
+                sb.append(",d_").append(f.getFieldCode())
+                        .append(".item_label AS ")
+                        .append(quote(f.getFieldCode() + "_label"));
+            } else if (f.getRefEntity() != null && !f.getRefEntity().isEmpty()) {
+                sb.append(",r_").append(f.getFieldCode())
+                        .append(".entity_name AS ")
+                        .append(quote(f.getFieldCode() + "_name"));
+            }
+        }
+        return sb.toString();
+    }
+
     public Object coerce(Object raw, String fieldType) {
-        if (raw == null) return null;
-        if (fieldType == null) return raw;
+        if (raw == null) {
+            return null;
+        }
+
+        if (fieldType == null) {
+            return raw;
+        }
+
         switch (fieldType.toUpperCase()) {
             case "INT":
             case "LONG":
             case "REF":
-                if (raw instanceof Number) return ((Number) raw).longValue();
+                if (raw instanceof Number) {
+                    return ((Number) raw).longValue();
+                }
+
                 try {
                     return Long.parseLong(raw.toString());
                 } catch (Exception e) {
                     throw new IllegalArgumentException("Field requires long: " + raw);
                 }
             case "DECIMAL":
-                if (raw instanceof Number) return ((Number) raw).doubleValue();
+                if (raw instanceof Number) {
+                    return ((Number) raw).doubleValue();
+                }
+
                 try {
                     return Double.parseDouble(raw.toString());
                 } catch (Exception e) {
                     throw new IllegalArgumentException("Field requires decimal: " + raw);
                 }
             case "BOOLEAN":
-                if (raw instanceof Boolean) return raw;
+                if (raw instanceof Boolean) {
+                    return raw;
+                }
+
                 return Boolean.parseBoolean(raw.toString());
             case "DATE":
             case "DATETIME":
-                if (raw instanceof java.util.Date) return raw;
+                if (raw instanceof java.util.Date) {
+                    return raw;
+                }
+
                 try {
                     return new java.text.SimpleDateFormat(
                             "DATE".equalsIgnoreCase(fieldType) ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss")
@@ -405,7 +554,10 @@ public class DynamicSqlBuilder {
     }
 
     private void validateTable(EntityDefDTO entity) {
-        if (entity == null) throw new IllegalArgumentException("entity is null");
+        if (entity == null) {
+            throw new IllegalArgumentException("entity is null");
+        }
+
         if (entity.getTableName() == null || entity.getTableName().isEmpty()) {
             throw new IllegalArgumentException("entity.tableName is empty for " + entity.getEntityCode());
         }
@@ -419,11 +571,20 @@ public class DynamicSqlBuilder {
 
     private Map<String, FieldDefDTO> indexFields(EntityDefDTO entity) {
         Map<String, FieldDefDTO> idx = new LinkedHashMap<>();
-        if (entity.getFields() == null) return idx;
+        if (entity.getFields() == null) {
+            return idx;
+        }
+
         for (FieldDefDTO f : entity.getFields()) {
-            if (f.getFieldCode() == null) continue;
+            if (f.getFieldCode() == null) {
+                continue;
+            }
+
             // 防御性白名单: 字段名只能字母数字下划线
-            if (!f.getFieldCode().matches("^[A-Za-z][A-Za-z0-9_]*$")) continue;
+            if (!f.getFieldCode().matches("^[A-Za-z][A-Za-z0-9_]*$")) {
+                continue;
+            }
+
             idx.put(f.getFieldCode(), f);
         }
         return idx;
@@ -434,14 +595,26 @@ public class DynamicSqlBuilder {
         boolean first = true;
         if (fields != null) {
             for (FieldDefDTO f : fields) {
-                if (f.getFieldCode() == null) continue;
-                if (!first) sb.append(",");
-                if (prefix != null) sb.append(prefix);
+                if (f.getFieldCode() == null) {
+                    continue;
+                }
+
+                if (!first) {
+                    sb.append(",");
+                }
+
+                if (prefix != null) {
+                    sb.append(prefix);
+                }
+
                 sb.append(quote(f.getFieldCode()));
                 first = false;
             }
         }
-        if (!first) sb.append(",");
+        if (!first) {
+            sb.append(",");
+        }
+
         sb.append(quote("id"));
         if (!fieldHasCode(fields, "create_time")) {
             sb.append(",").append(quote("create_time"));
@@ -453,9 +626,14 @@ public class DynamicSqlBuilder {
     }
 
     private boolean fieldHasCode(List<FieldDefDTO> fields, String code) {
-        if (fields == null) return false;
+        if (fields == null) {
+            return false;
+        }
+
         for (FieldDefDTO f : fields) {
-            if (code.equals(f.getFieldCode())) return true;
+            if (code.equals(f.getFieldCode())) {
+                return true;
+            }
         }
         return false;
     }
