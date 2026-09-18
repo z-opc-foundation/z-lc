@@ -25,4 +25,15 @@ class ZLcFlagConstantsTest {
     void TRUE_shouldNotEqualFalse() {
         assertThat(ZLcFlagConstants.TRUE).isNotEqualTo(ZLcFlagConstants.FALSE);
     }
+
+    @Test
+    void shouldHavePrivateConstructor() {
+        // 验证类不能被实例化
+        java.lang.reflect.Constructor<?>[] constructors = ZLcFlagConstants.class.getDeclaredConstructors();
+        for (java.lang.reflect.Constructor<?> constructor : constructors) {
+            if (constructor.getParameterCount() == 0) {
+                assertThat(constructor.isAccessible()).isFalse();
+            }
+        }
+    }
 }
