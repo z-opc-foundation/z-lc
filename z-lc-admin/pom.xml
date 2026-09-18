@@ -20,7 +20,45 @@
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!--
+            Log4j2 全套显式锁定到 2.20.0 + slf4j-api 2.0.7:
+            修复 spring-boot-dependencies 2.7.12 强制降级 log4j-slf4j-impl 2.25.4 → 2.17.2 导致的
+            NoSuchMethodError org.apache.logging.slf4j.Log4jLoggerFactory.<init>().
+            (slf4j-api 2.x 与 log4j-slf4j-impl 2.20+ 配套; 2.17.x 是 slf4j-api 1.7 时代的产物, 不能混用.)
+        -->
+        <log4j2.version>2.20.0</log4j2.version>
+        <slf4j.version>2.0.7</slf4j.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-api</artifactId>
+                <version>${log4j2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-core</artifactId>
+                <version>${log4j2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-slf4j-impl</artifactId>
+                <version>${log4j2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-jul</artifactId>
+                <version>${log4j2.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- z-lc-web (含 LcModuleDataSource 数据源 + 全部 controller) -->

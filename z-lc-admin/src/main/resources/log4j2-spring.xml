@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    z-lc-admin log4j2 配置 (覆盖 spring-boot 默认)
+
+    目的:
+      1. 静音 Druid 连接池的 ERROR 重试日志 —
+         dev profile 下 z.base.db.default.host 缺省为 localhost,
+         z-boot-datasource-starter 1.0.0-SNAPSHOT 硬编码拼出 jdbc:mysql://localhost:3306/...
+         Druid 默认 create-retry 疯狂刷日志.
+         (root cause 修复见 z-boot-datasource-starter 下个版本)
+      2. z-lc 业务日志保留 — Root level WARN, 业务 package INFO/DEBUG.
+
+    生产 (aliyun RDS 模式) 自动 fall through — 如果 z.base.db.default.host 配了 RDS,
+    Druid 连接池不会报 Access denied, 自然不会刷 ERROR.
+-->
+<Configuration status="OFF">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} %-5p [%t] %c{1.} - %m%n"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <!-- 静音 Druid 重试日志 -->
+        <Logger name="com.alibaba.druid.pool.DruidDataSource" level="OFF"/>
+        <Logger name="com.alibaba.druid" level="WARN"/>
+
+        <!-- Spring / MyBatis 调试噪声 -->
+        <Logger name="org.springframework" level="INFO"/>
+        <Logger name="org.mybatis" level="INFO"/>
+        <Logger name="org.apache.ibatis" level="INFO"/>
+        <Logger name="com.baomidou.mybatisplus" level="INFO"/>
+
+        <!-- z-lc 业务:DEBUG 看效果,生产改 INFO -->
+        <Logger name="com.zifang.z.lc" level="DEBUG"/>
+
+        <Root level="WARN">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>
