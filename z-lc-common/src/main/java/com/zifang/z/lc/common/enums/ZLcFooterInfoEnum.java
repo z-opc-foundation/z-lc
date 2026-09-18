@@ -2,22 +2,16 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 页脚信息枚举 — 蒸馏自 ace-platform-core
- * {@code FooterInfoEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code FooterInfoEnum} ({@code com.c2f.ace.core.common}).
  *
- * <p>用于导出报表 / 打印模板时指定页脚展示哪些业务字段：
- * 组织名称 / 账套名称 / 登录用户.
+ * <p>定义打印/导出页脚信息类型: 组织名称、账套名称、登录用户.
  *
  * @author zifang
  */
 public enum ZLcFooterInfoEnum {
 
-    /** 组织名称. */
     ORG_NAME(1, "组织名称"),
-
-    /** 账套名称. */
     ACCOUNT_NAME(2, "账套名称"),
-
-    /** 登录用户. */
     USER_NAME(3, "登录用户");
 
     private final Integer code;
