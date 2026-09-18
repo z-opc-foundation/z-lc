@@ -9,35 +9,29 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * BigDecimal Jackson 序列化器 — 蒸馏自 ace-platform-core
+ * BigDecimal 金额序列化器 — 蒸馏自 ace-platform-core
  * {@code BigDecimalSerializer} ({@code com.c2f.ace.core.common.config}).
  *
- * <p>把 {@link BigDecimal} 序列化为 JSON 时统一保留 2 位小数 + 四舍五入,
- * 避免直接 writeNumber 出现 {@code 1.2300000000000001E-10} 等科学计数法浮点误差.
+ * <p>将 BigDecimal 值序列化为保留 2 位小数的字符串 (四舍五入).
+ * 蒸馏时移除了原代码中的冗余空值处理.
  *
- * <p>典型用法（Jackson 全局配置）:
- * <pre>{@code
- * @Bean
- * public Jackson2ObjectMapperBuilderCustomizer jacksonCustomizer() {
- *     return builder -> builder.serializerByType(BigDecimal.class, new ZLcBigDecimalSerializer());
- * }
- * }</pre>
+ * <p>典型场景：
+ * <ul>
+ *   <li>金额字段的 JSON 序列化</li>
+ *   <li>需要统一精度的价格字段</li>
+ * </ul>
  *
- * @author gewenjie (zifang distillation)
+ * @author zifang
  */
 public class ZLcBigDecimalSerializer extends JsonSerializer<BigDecimal> {
 
-    /** 默认保留小数位数 — 2 位 (对齐 ace 原版). */
-    public static final int DEFAULT_SCALE = 2;
-
     @Override
-    public void serialize(BigDecimal value, JsonGenerator gen, SerializerProvider serializers) throws IOException {
-        if (value == null) {
+    public void serialize(BigDecimal value, JsonGenerator gen,
+                          SerializerProvider serializers) throws IOException {
+        if (value != null) {
+            gen.writeString(value.setScale(2, RoundingMode.HALF_UP).toPlainString());
+        } else {
             gen.writeNull();
-            return;
         }
-        // 保留 2 位小数, 四舍五入
-        BigDecimal scaled = value.setScale(DEFAULT_SCALE, RoundingMode.HALF_UP);
-        gen.writeString(scaled.toPlainString());
     }
 }
