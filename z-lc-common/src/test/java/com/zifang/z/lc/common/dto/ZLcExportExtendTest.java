@@ -15,13 +15,20 @@ class ZLcExportExtendTest {
     void shouldCreateWithDefaultConstructor() {
         ZLcExportExtend extend = new ZLcExportExtend();
         assertThat(extend).isNotNull();
+        assertThat(extend.isOnlyRoot()).isFalse();
+    }
+
+    @Test
+    void shouldImplementSerializable() {
+        ZLcExportExtend extend = new ZLcExportExtend();
+        assertThat(extend).isInstanceOf(java.io.Serializable.class);
     }
 
     @Test
     void shouldSetAndGetToken() {
         ZLcExportExtend extend = new ZLcExportExtend();
-        extend.setToken("token-456");
-        assertThat(extend.getToken()).isEqualTo("token-456");
+        extend.setToken("test-token");
+        assertThat(extend.getToken()).isEqualTo("test-token");
     }
 
     @Test
@@ -34,8 +41,15 @@ class ZLcExportExtendTest {
     @Test
     void shouldSetAndGetBatchSize() {
         ZLcExportExtend extend = new ZLcExportExtend();
-        extend.setBatchSize(200);
-        assertThat(extend.getBatchSize()).isEqualTo(200);
+        extend.setBatchSize(500);
+        assertThat(extend.getBatchSize()).isEqualTo(500);
+    }
+
+    @Test
+    void shouldSetAndGetOnlyRoot() {
+        ZLcExportExtend extend = new ZLcExportExtend();
+        extend.setOnlyRoot(true);
+        assertThat(extend.isOnlyRoot()).isTrue();
     }
 
     @Test
@@ -60,17 +74,31 @@ class ZLcExportExtendTest {
     }
 
     @Test
+    void shouldSetAndGetConsecutiveSuccessPages() {
+        ZLcExportExtend extend = new ZLcExportExtend();
+        extend.setConsecutiveSuccessPages(3);
+        assertThat(extend.getConsecutiveSuccessPages()).isEqualTo(3);
+    }
+
+    @Test
     void shouldSetAndGetPageRetryCount() {
         ZLcExportExtend extend = new ZLcExportExtend();
-        extend.setPageRetryCount(3);
-        assertThat(extend.getPageRetryCount()).isEqualTo(3);
+        extend.setPageRetryCount(2);
+        assertThat(extend.getPageRetryCount()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldSetAndGetResumeRoundCount() {
+        ZLcExportExtend extend = new ZLcExportExtend();
+        extend.setResumeRoundCount(1);
+        assertThat(extend.getResumeRoundCount()).isEqualTo(1);
     }
 
     @Test
     void shouldSetAndGetCheckpointLastPk() {
         ZLcExportExtend extend = new ZLcExportExtend();
-        extend.setCheckpointLastPk("pk-123");
-        assertThat(extend.getCheckpointLastPk()).isEqualTo("pk-123");
+        extend.setCheckpointLastPk("last-pk-123");
+        assertThat(extend.getCheckpointLastPk()).isEqualTo("last-pk-123");
     }
 
     @Test
@@ -87,11 +115,5 @@ class ZLcExportExtendTest {
         assertThat(extend.getDeptId()).isNull();
         assertThat(extend.getBatchSize()).isNull();
         assertThat(extend.getLocalFilePath()).isNull();
-    }
-
-    @Test
-    void shouldImplementSerializable() {
-        ZLcExportExtend extend = new ZLcExportExtend();
-        assertThat(extend).isInstanceOf(java.io.Serializable.class);
     }
 }

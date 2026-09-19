@@ -12,26 +12,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ZLcPermissionDefinitionsTest {
 
     @Test
-    void shouldHaveDefaultConstructor() {
-        assertThat(ZLcPermissionDefinitions.class).isNotNull();
+    void shouldBeInterface() {
+        assertThat(ZLcPermissionDefinitions.class.isInterface()).isTrue();
     }
 
     @Test
-    void shouldHavePermissionConstants() {
-        // 验证权限常量存在
-        assertThat(ZLcPermissionDefinitions.class.getFields().length).isGreaterThan(0);
+    void shouldHaveProductCode() {
+        assertThat(ZLcPermissionDefinitions.PRODUCT_CODE).isEqualTo("z-lc");
     }
 
     @Test
-    void permissionConstants_shouldNotBeNull() {
-        java.lang.reflect.Field[] fields = ZLcPermissionDefinitions.class.getDeclaredFields();
-        for (java.lang.reflect.Field field : fields) {
-            try {
-                Object value = field.get(null);
-                assertThat(value).isNotNull();
-            } catch (IllegalAccessException e) {
-                // 忽略
-            }
-        }
+    void shouldHaveAppManagerPermission() {
+        assertThat(ZLcPermissionDefinitions.APP_MANAGER).isEqualTo("z-lc:app:manager");
     }
 }

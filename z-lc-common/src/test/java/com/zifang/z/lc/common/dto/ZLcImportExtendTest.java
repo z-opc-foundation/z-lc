@@ -18,10 +18,16 @@ class ZLcImportExtendTest {
     }
 
     @Test
+    void shouldImplementSerializable() {
+        ZLcImportExtend extend = new ZLcImportExtend();
+        assertThat(extend).isInstanceOf(java.io.Serializable.class);
+    }
+
+    @Test
     void shouldSetAndGetToken() {
         ZLcImportExtend extend = new ZLcImportExtend();
-        extend.setToken("token-123");
-        assertThat(extend.getToken()).isEqualTo("token-123");
+        extend.setToken("test-token");
+        assertThat(extend.getToken()).isEqualTo("test-token");
     }
 
     @Test
@@ -34,8 +40,8 @@ class ZLcImportExtendTest {
     @Test
     void shouldSetAndGetSuccessRows() {
         ZLcImportExtend extend = new ZLcImportExtend();
-        extend.setSuccessRows(95L);
-        assertThat(extend.getSuccessRows()).isEqualTo(95L);
+        extend.setSuccessRows(50L);
+        assertThat(extend.getSuccessRows()).isEqualTo(50L);
     }
 
     @Test
@@ -52,11 +58,5 @@ class ZLcImportExtendTest {
         assertThat(extend.getPeriodId()).isNull();
         assertThat(extend.getSuccessRows()).isNull();
         assertThat(extend.getFailRows()).isNull();
-    }
-
-    @Test
-    void shouldImplementSerializable() {
-        ZLcImportExtend extend = new ZLcImportExtend();
-        assertThat(extend).isInstanceOf(java.io.Serializable.class);
     }
 }
