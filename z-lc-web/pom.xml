@@ -73,6 +73,12 @@
             <artifactId>z-util-core</artifactId>
         </dependency>
 
+        <!-- 对象整形语言: /runtime/shape 把聚合出的二维行抬成任意高维结构 (版本由父 pom 管理) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-expr-obj</artifactId>
+        </dependency>
+
         <!-- API 文档 -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>

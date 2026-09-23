@@ -33,6 +33,9 @@
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <compile.version>8</compile.version>
+        <!-- z-util 抬到 1.0.12: 数据源注册/探活/方言/动态查询/内存 SQL 引擎收口在 z-util-jdbc,
+             本仓不再自建造池代码 (父 pom z-opc 的 util.version 仍是 1.0.9, 其它仓不受影响) -->
+        <util.version>1.0.12</util.version>
     </properties>
 
     <dependencyManagement>
@@ -95,6 +98,14 @@
                 <groupId>com.zifang</groupId>
                 <artifactId>z-lc-admin</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+
+            <!-- 对象整形语言 (二维分组结果 → 任意高维结构): 已安装的 z-opc BOM 里还没有这一条
+                 (它只列了 el/groovy/lua/sql/js), 所以在此显式给版本, 跟着 util.version 一起抬 -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-expr-obj</artifactId>
+                <version>${util.version}</version>
             </dependency>
 
             <!-- 三个数据源依赖统一走 z-boot-datasource-starter（见上方 dependencyManagement 中的 z-boot-datasource-starter） -->

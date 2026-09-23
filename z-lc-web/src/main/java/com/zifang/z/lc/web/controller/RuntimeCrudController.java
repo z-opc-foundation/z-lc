@@ -6,6 +6,7 @@ import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.RuntimeByIdDTO;
 import com.zifang.z.lc.common.dto.RuntimeCrudDTO;
 import com.zifang.z.lc.common.dto.RuntimeQueryDTO;
+import com.zifang.z.lc.common.dto.ShapeQueryDTO;
 import com.zifang.z.lc.core.event.EventReplayService;
 import com.zifang.z.lc.core.executor.RuntimeCrudExecutor;
 import com.zifang.z.lc.core.pipeline.Pipeline;
@@ -33,6 +34,7 @@ import java.util.Map;
  *   <li>POST /api/lc/runtime/{entityCode}/create — 新增记录</li>
  *   <li>POST /api/lc/runtime/{entityCode}/update — 按 id 更新</li>
  *   <li>POST /api/lc/runtime/{entityCode}/delete — 按 id 软删</li>
+ *   <li>POST /api/lc/runtime/shape — 分组聚合成二维后再整形为任意高维结构</li>
  *   <li>POST /api/lc/runtime/delete-batch       — 批量软删 (整批预检, 一条不能删则整批不动)</li>
  * </ul>
  *
@@ -210,6 +212,45 @@ public class RuntimeCrudController {
         } catch (IllegalArgumentException ex) {
             // 分组/聚合字段不在白名单: 明确报 400, 不能悄悄返回一份全量统计骗人
             return Result.<java.util.List<java.util.Map<String, Object>>>fail(ex.getMessage()).code(400);
+        }
+    }
+
+    /**
+     * 分组聚合并整形为任意结构: 库出原始行 → 聚合出二维分组结果 → 对象语言抬成高维文档.
+     * <p>
+     * 存在的理由是"二维不够表达一个视图": 树形视图要 parent/children, 分组小计要 region/lines/total,
+     * 透视表要行转列。这些形状属于视图, 不属于实体, 所以既不该建表也不该在前端拼。
+     * shape 就是一段 JSON 程序, 由 z-util-expr-obj 执行; 引擎报的语义错误 (未知步骤/槽位取不到)
+     * 一律 400 原样带回, 不能兜底成空结构骗过配置的人。
+     *
+     * @param entityCode 实体编码
+     * @param body       {@link ShapeQueryDTO}: 聚合入参 + shape 程序
+     * @return 整形产出的任意结构 (对象/数组/标量)
+     */
+    @Operation(summary = "分组聚合并整形为任意结构 (二维 → 高维)")
+    @PostMapping("/shape")
+    public Result<Object> shape(@RequestParam String entityCode,
+                                @RequestParam(required = false) String appCode,
+                                @RequestParam(required = false) String tenantCode,
+                                @RequestBody ShapeQueryDTO body) {
+        if (body == null) {
+            return Result.<Object>fail("body is null").code(400);
+        }
+        if (body.getShape() == null) {
+            return Result.<Object>fail("body.shape required: 对象整形程序 (JSON 步骤数组或对象)").code(400);
+        }
+        // 与 /aggregate 同口径: appCode/tenantCode 走 query 或 body 都行, query 优先.
+        String effectiveApp = appCode != null && !appCode.isEmpty() ? appCode : body.getAppCode();
+        String effectiveTenant = tenantCode != null && !tenantCode.isEmpty() ? tenantCode : body.getTenantCode();
+        body.setAppCode(effectiveApp);
+        body.setTenantCode(effectiveTenant);
+        EntityDefDTO def = resolveEntity(effectiveApp, entityCode, effectiveTenant);
+        try {
+            java.util.List<Map<String, Object>> rows = crudExecutor.aggregate(def, body);
+            return Result.success(new com.zifang.util.expr.obj.ObjEngine().shape(body.getShape(), rows));
+        } catch (IllegalArgumentException | com.zifang.util.expr.obj.ObjException ex) {
+            // 分组字段不在白名单 / 整形程序写错: 都是请求问题, 报 400 说清楚, 不返回一份空结构
+            return Result.<Object>fail(ex.getMessage()).code(400);
         }
     }
 

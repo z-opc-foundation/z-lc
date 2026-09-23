@@ -41,11 +41,13 @@ public interface DataModelConvertSqlStrategy {
     Boolean tryConnect(DatasourceSaveDTO dto);
 
     /**
-     * 把 DataSourceDO 转换为可用的 JDBC DataSource.
-     * <p>具体实现可以是 DruidDataSource / HikariDataSource.
+     * 取（或建）该数据源的连接池.
+     * <p>建池、驱动选择与探活由 z-util-jdbc {@code DataSourceRegistry} 承担：
+     * 同一定义复用同一个池，定义变更则换绑并关闭旧池.
      *
      * @param dataSourceDO 数据源 DO
-     * @return JDBC DataSource
+     * @return JDBC DataSource；定义不完整（无 URL）时返回 null
+     * @throws com.zifang.util.core.lang.exception.BusinessException 连不上时抛出，不发布不可用的池
      */
     DataSource fetchDataSource(DataSourceDO dataSourceDO);
 

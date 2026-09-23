@@ -175,6 +175,11 @@ dev(H2) 侧已经是对的，生产还没有。
 - 聚合接口 `POST /api/lc/runtime/aggregate` 已可用（group by + count/sum/avg/min/max，
   列白名单 + 函数白名单，绑字典的分组列自动带 `group_label`），
   并且**时间分桶在 SQL 里做**（`timeGroup` = DAY/MONTH/YEAR，可移植 `EXTRACT`；WEEK 故意不支持）。
+- `POST /api/lc/runtime/shape` 把这条链走完：库里拿原始行 → `/aggregate` 那套入参粗糙产出二维分组结果
+  → **对象整形语言**（`z-util-expr-obj`）把二维抬成视图要的高维结构（keyBy 成文档、order/limit 取 Top-N、
+  group+map 挂组内明细）。形状属于视图不属于实体，所以既不建表也不在前端拼。`shape` 就是一段 JSON 程序，
+  入参直接继承 `AggregateQueryDTO`（`ShapeQueryDTO` 只多一个 `shape` 字段），口径与 `/aggregate` 同一个。
+  程序写错（未知步骤/槽位取不到）一律 400 原样带回引擎的自解释报错，不退化成空结构。
 - **图表视图**（柱/折线/饼/指标卡，手写 SVG 不引图表库）已接，且命名视图**存进服务端**
   （`z_lc_view_config`，`viewType=CHART`，config 里带图表口径 + 当时的筛选条件 + `name`），
   工具栏可「保存为命名图表视图」并从切换器还原。**仪表盘也已落地（2026-09-22）**：
@@ -1063,11 +1068,14 @@ M3 连带红"关掉还焦点"是机制上的必然，写脚本时先按推理写
 默认打生产构建而不是 dev：dev 下热更新期间会残留旧的已卸载 React 实例，点上去打到死实例，
 既会假绿也会假红 —— 上面那条"HMR 结论"就是这么来的（而且证伪了我自己第一次的解释）。
 
-### P2.5 测试自身的质量问题
-`DataModelConvertMysqlSqlStrategy` 的用例会去连真实 MySQL，连不上只打一行
+### P2.5 测试自身的质量问题（2026-09-23 已改）
+`DataModelConvertMysqlSqlStrategy` 早期的用例连不上真实 MySQL 时只打一行
 `ERROR ... Communications link failure` 然后**照样算通过** —— 这类"依赖不可达就静默 pass"的测试
-等于没有测试，应该改成 `@Disabled`/`assumeTrue(可达)` 或直接拿 H2 覆盖同一段逻辑。
-`mvn test` 日志里那两条 ERROR 就是它，不是回归。
+等于没有测试。现已按本条建议收口：建池/探活交给 z-util-jdbc `DataSourceRegistry`，
+同一段逻辑改由 `DataModelConvertMysqlSqlStrategyH2Test` 在 H2 内存库上真跑
+（复用同一个池、换绑关旧池、探活不过不发布、close 释放池），
+不可达地址则显式断言"必须失败"，不再是静默通过。
+日志里仍会看到 Druid 的 `init datasource error` ERROR —— 那是这些"必须连不上"的用例在按预期报错。
 另：`npm run check` 里 vitest 曾出现过一次 1 红、随后 5 次连跑全绿的未复现失败。
 **同一类现象在批量删除那一轮真的复现并定位了**（见上文「批量删除」一节的教训 2：
 O(document) 的 accessible-name 查询把单条用例拖到 12–17 秒，饿死并发 worker，

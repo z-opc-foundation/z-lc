@@ -1,5 +1,8 @@
 package com.zifang.z.lc.core.datasource.mysql;
 
+import com.zifang.util.core.lang.exception.BusinessException;
+import com.zifang.util.db.context.DataSourceRegistry;
+import com.zifang.util.db.meta.DataSourceDTO;
 import com.zifang.z.lc.common.dto.datasource.DatasourceSaveDTO;
 import com.zifang.z.lc.common.dto.datasource.DataSourceDO;
 import com.zifang.z.lc.common.dto.datasource.DataSourceTableColumnDTO;
@@ -11,13 +14,11 @@ import org.apache.logging.log4j.Logger;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * MySQL 方言策略实现.
@@ -26,48 +27,55 @@ import java.util.Map;
  * （{@code com.c2f.ace.core.service.data.source.mysql}），精简到 z-lc 必需的功能：
  * <ul>
  *   <li>{@link #tryConnect} — 测试连接</li>
- *   <li>{@link #fetchDataSource} — 构造 DruidDataSource（带缓存）</li>
+ *   <li>{@link #fetchDataSource} — 取/建连接池（带缓存）</li>
  *   <li>{@link #fetchTableInfo} — 扫表</li>
  *   <li>{@link #fetchTableColumnInfo} — 扫列</li>
  * </ul>
+ *
+ * <p>建池、驱动选择与探活全部交给 z-util-jdbc 的 {@link DataSourceRegistry}：
+ * {@code DataSourceDO.jdbcUrl} 整串接入，方言由 URL 识别（MySQL / PostgreSQL / H2 一套代码），
+ * 探活通过才发布，池按 code 复用并在换绑、注销时关闭.
  *
  * <p>自动通过 {@link ZLcDialect} 注解注册到 {@code DataModelConvertSqlDispatch}.
  *
  * @author xuhf (distilled by zifang)
  */
 @ZLcDialect("mysql")
-public class DataModelConvertMysqlSqlStrategy implements DataModelConvertSqlStrategy {
+public class DataModelConvertMysqlSqlStrategy implements DataModelConvertSqlStrategy, AutoCloseable {
 
     private static final Logger log = LogManager.getLogger(DataModelConvertMysqlSqlStrategy.class);
-    private static final String MYSQL_DRIVER = "com.mysql.cj.jdbc.Driver";
+
+    /**
+     * z-lc 保存数据源时的历史连接默认参数：用户存的是整串 URL，这里只在 {@code jdbc:mysql} 上补齐.
+     */
     private static final String DEFAULT_JDBC_PARAM =
             "useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&zeroDateTimeBehavior=CONVERT_TO_NULL";
 
-    /**
-     * DataSource 缓存（key = jdbcUrl，避免每次新建）.
-     */
-    private static final Map<String, DataSource> DATA_SOURCE_CACHE = new LinkedHashMap<>();
+    /** 探活用的临时 code 序号：探活完即注销，不占用业务 code，也不会误关已有可用池 */
+    private static final AtomicLong PROBE_SEQ = new AtomicLong();
+
+    private final DataSourceRegistry sources = new DataSourceRegistry();
 
     @Override
     public Boolean tryConnect(DatasourceSaveDTO dto) {
         if (dto == null || dto.getJdbcUrl() == null) {
             return false;
         }
+        String code = "__probe__" + PROBE_SEQ.incrementAndGet();
         try {
-            Class.forName(MYSQL_DRIVER);
-            try (Connection conn = DriverManager.getConnection(
-                    dto.getJdbcUrl(), dto.getUsername(), dto.getPassword())) {
-                if (conn != null) {
-                    log.info("MySQL connection OK: {}", dto.getJdbcUrl());
-                    return true;
-                }
-            }
-        } catch (ClassNotFoundException e) {
-            log.error("MySQL JDBC driver not found", e);
-        } catch (SQLException e) {
-            log.error("MySQL connection failed: {}", e.getMessage());
+            sources.register(toDefinition(code, dto.getJdbcUrl(), dto.getUsername(), dto.getPassword(),
+                    dto.getSchemaMark()));
+            log.info("数据源探活通过: {}", dto.getJdbcUrl());
+            return true;
+        } catch (BusinessException e) {
+            log.error("数据源探活失败: {}", e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.error("数据源探活失败: {}", dto.getJdbcUrl(), e);
+            return false;
+        } finally {
+            sources.unregister(code);
         }
-        return false;
     }
 
     @Override
@@ -75,53 +83,41 @@ public class DataModelConvertMysqlSqlStrategy implements DataModelConvertSqlStra
         if (dataSourceDO == null || dataSourceDO.getJdbcUrl() == null) {
             return null;
         }
-        synchronized (DATA_SOURCE_CACHE) {
-            DataSource cached = DATA_SOURCE_CACHE.get(dataSourceDO.getJdbcUrl());
-            if (cached != null) {
-                return cached;
-            }
-            DataSource ds = buildDruidDataSource(dataSourceDO);
-            if (ds != null) {
-                DATA_SOURCE_CACHE.put(dataSourceDO.getJdbcUrl(), ds);
-            }
-            return ds;
-        }
-    }
-
-    private DataSource buildDruidDataSource(DataSourceDO dataSourceDO) {
-        // 简化实现：直接构造 HikariDataSource（Druid 需要额外依赖）
-        // 业务方如有 Druid 需求，覆写本方法即可
-        try {
-            Class<?> dsClass = Class.forName("com.zaxxer.hikari.HikariDataSource");
-            DataSource ds = (DataSource) dsClass.getDeclaredConstructor().newInstance();
-            dsClass.getMethod("setJdbcUrl", String.class).invoke(ds, ensureParams(dataSourceDO.getJdbcUrl()));
-            dsClass.getMethod("setUsername", String.class).invoke(ds, dataSourceDO.getUsername());
-            dsClass.getMethod("setPassword", String.class).invoke(ds, dataSourceDO.getPassword());
-            dsClass.getMethod("setDriverClassName", String.class).invoke(ds, MYSQL_DRIVER);
-            dsClass.getMethod("setMaximumPoolSize", int.class).invoke(ds, 20);
-            dsClass.getMethod("setMinimumIdle", int.class).invoke(ds, 5);
-            log.info("MySQL DataSource built: {}", dataSourceDO.getDatasourceCode());
-            return ds;
-        } catch (ClassNotFoundException e) {
-            log.error("HikariDataSource not found, please add HikariCP dependency", e);
-            return null;
-        } catch (Exception e) {
-            log.error("Failed to build MySQL DataSource", e);
-            return null;
-        }
+        DataSourceDTO def = toDefinition(codeOf(dataSourceDO), dataSourceDO.getJdbcUrl(),
+                dataSourceDO.getUsername(), dataSourceDO.getPassword(), dataSourceDO.getSchemaMark());
+        String code = def.getDatasourceCode();
+        // 同 code 且定义未变 → 复用既有池；改了地址/账号/密码 → rebind 换池（探活不过则保持原池不变）
+        DataSource cached = sources.get(code);
+        return cached != null && def.equals(sources.def(code)) ? cached : sources.rebind(def);
     }
 
     /**
-     * 给 JDBC URL 追加默认参数（如未提供）.
+     * 池的缓存键：业务 code 优先，没有 code 的旧数据退回整串 URL（与迁移前一致）.
      */
-    private String ensureParams(String url) {
-        if (url == null) {
-            return null;
+    private static String codeOf(DataSourceDO dataSourceDO) {
+        String code = dataSourceDO.getDatasourceCode();
+        return code == null || code.trim().isEmpty() ? dataSourceDO.getJdbcUrl() : code.trim();
+    }
+
+    private static DataSourceDTO toDefinition(String code, String jdbcUrl, String username, String password,
+                                              String schemaMark) {
+        DataSourceDTO def = new DataSourceDTO();
+        def.setDatasourceCode(code);
+        def.setJdbcUrl(withDefaults(jdbcUrl));
+        def.setUserName(username);
+        def.setPw(password);
+        def.setSchemaMark(schemaMark);
+        return def;
+    }
+
+    /**
+     * 给 MySQL 协议的 URL 追加默认参数（如未提供）；非 MySQL 协议原样交给方言识别.
+     */
+    static String withDefaults(String url) {
+        if (url == null || !url.startsWith("jdbc:mysql")) {
+            return url;
         }
-        if (url.contains("?")) {
-            return url + "&" + DEFAULT_JDBC_PARAM;
-        }
-        return url + "?" + DEFAULT_JDBC_PARAM;
+        return url.contains("?") ? url + "&" + DEFAULT_JDBC_PARAM : url + "?" + DEFAULT_JDBC_PARAM;
     }
 
     @Override
@@ -202,5 +198,13 @@ public class DataModelConvertMysqlSqlStrategy implements DataModelConvertSqlStra
             }
         }
         return null;
+    }
+
+    /**
+     * 释放本策略建出的全部连接池.
+     */
+    @Override
+    public void close() {
+        sources.close();
     }
 }

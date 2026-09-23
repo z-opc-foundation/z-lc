@@ -778,6 +778,68 @@ class LcHttpContractTest {
     }
 
     @Test
+    @DisplayName("整形：二维聚合结果抬成视图要的高维结构，程序写错必须 400 而不是回一份空结构")
+    void shapeTurnsAggregateRowsIntoAViewDocument() throws Exception {
+        // 看板最常见的一个形状: 以状态码为键的文档, 前端取值不用再自己 indexBy 一遍
+        JsonNode keyed = post("/api/lc/runtime/shape",
+                "{\"groupField\":\"status\",\"aggregations\":{\"amount\":[\"SUM\"]},\"shape\":["
+                        + "{\"op\":\"select\",\"fields\":{\"status\":\"group_key\","
+                        + "\"label\":\"group_label\",\"amount\":\"sum_amount\"}},"
+                        + "{\"op\":\"keyBy\",\"key\":\"status\"}]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertOk(keyed, "shape aggregate rows into a keyed document");
+        JsonNode data = D(keyed);
+        assertTrue(data.isObject() && !data.isArray(), "keyBy 的产出必须是对象, 还是数组说明程序没生效: " + data);
+        assertEquals("Done", data.path("OK").path("label").asText(), String.valueOf(data));
+        assertEquals(100.0, data.path("OK").path("amount").asDouble(), 0.001);
+
+        // 同一份二维结果, 换一个程序就是另一个形状: 排序与截断都发生在整形里, 不额外发 SQL
+        JsonNode top = post("/api/lc/runtime/shape",
+                "{\"groupField\":\"status\",\"aggregations\":{\"amount\":[\"SUM\"]},\"shape\":["
+                        + "{\"op\":\"select\",\"fields\":{\"status\":\"group_key\",\"amount\":\"sum_amount\"}},"
+                        + "{\"op\":\"order\",\"by\":[\"amount desc\"]}]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertOk(top, "shape a sorted document");
+        JsonNode sorted = D(top);
+        assertTrue(sorted.isArray() && sorted.size() >= 2, "种子至少有两档状态: " + sorted);
+        double previous = Double.MAX_VALUE;
+        for (JsonNode row : sorted) {
+            // 种子里有一档记录没有金额 (sum 为 null); desc 必须把它留在末尾,
+            // 否则"取金额最高的一档"会取回一个空桶
+            assertTrue(row.path("amount").isNull() || row.path("amount").asDouble() <= previous,
+                    "desc 必须单调不增, 且空值不参与翻转: " + sorted);
+            if (!row.path("amount").isNull()) {
+                previous = row.path("amount").asDouble();
+            }
+        }
+        assertTrue(sorted.get(0).path("amount").isNumber(), "top 档不能是空桶: " + sorted);
+
+        JsonNode one = post("/api/lc/runtime/shape",
+                "{\"groupField\":\"status\",\"aggregations\":{\"amount\":[\"SUM\"]},\"shape\":["
+                        + "{\"op\":\"select\",\"fields\":{\"status\":\"group_key\",\"amount\":\"sum_amount\"}},"
+                        + "{\"op\":\"order\",\"by\":[\"amount desc\"]},{\"op\":\"limit\",\"n\":1}]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertOk(one, "shape a top-1 document");
+        JsonNode topRows = D(one);
+        assertTrue(topRows.isArray() && topRows.size() == 1, "limit 1 应只剩一档: " + topRows);
+        assertEquals(sorted.get(0).path("status").asText(), topRows.get(0).path("status").asText(),
+                "limit 取的就是排序后的头一档");
+
+        JsonNode badOp = post("/api/lc/runtime/shape",
+                "{\"groupField\":\"status\",\"shape\":[{\"op\":\"sort\"}]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertFalse(badOp.path("success").asBoolean(), "未知步骤必须报错: " + badOp);
+        assertEquals(400, badOp.path("code").asInt(), String.valueOf(badOp));
+        assertTrue(badOp.path("message").asText().contains("对象语言可用步骤"),
+                "报错要自解释 (给出可用步骤清单), 配置的人才改得动: " + badOp);
+
+        JsonNode noShape = post("/api/lc/runtime/shape", "{\"groupField\":\"status\"}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertFalse(noShape.path("success").asBoolean(), "缺 shape 不能悄悄退化成裸聚合: " + noShape);
+        assertEquals(400, noShape.path("code").asInt(), String.valueOf(noShape));
+    }
+
+    @Test
     @DisplayName("时间分桶聚合：按月/日分桶要真在 H2 上跑得动、按时间正序，且没有日期的记录不进气泡")
     void timeBucketAggregateRunsOnRealDates() throws Exception {
         JsonNode monthResp = post("/api/lc/runtime/aggregate",

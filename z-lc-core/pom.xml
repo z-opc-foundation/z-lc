@@ -46,6 +46,12 @@
             <artifactId>z-util-core</artifactId>
         </dependency>
 
+        <!-- 数据源注册/探活/方言/动态查询 (z-lc 不再自建造池与探活代码) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-jdbc</artifactId>
+        </dependency>
+
         <!-- Library-First: HTTP 能力下沉到 z-util-http，不自造 OkHttp/RestTemplate 配置 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
@@ -54,6 +60,13 @@
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-parser-json</artifactId>
+        </dependency>
+
+        <!-- 数据源策略的可重复测试: H2 内存库, 不需要外部实例 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
         </dependency>
 
         <!-- Spring JDBC (DynamicSqlBuilder 走 JdbcTemplate) -->

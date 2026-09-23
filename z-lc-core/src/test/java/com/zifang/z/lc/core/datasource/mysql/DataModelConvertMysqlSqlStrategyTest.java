@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * DataModelConvertMysqlSqlStrategy 单元测试
@@ -70,17 +71,40 @@ public class DataModelConvertMysqlSqlStrategyTest {
     }
 
     @Test
-    public void shouldReturnNullForDataSourceWithoutHikari() {
-        // Without Hikari class in classpath, buildDruidDataSource returns null
-        // We test that the method returns null rather than throwing
+    public void unreachableAddressFailsLoudInsteadOfReturningNull() {
+        // 迁移前：反射建 Hikari 池，连不上也返回一个"看起来能用"的池（或 null）
+        // 迁移后：z-util-jdbc 探活不过就不发布，直接抛 BusinessException
         DataSourceDO dsDO = new DataSourceDO();
-        dsDO.setJdbcUrl("jdbc:mysql://localhost:3306/db");
+        dsDO.setDatasourceCode("dead");
+        dsDO.setJdbcUrl("jdbc:mysql://nonexistent-host-9999:3306/db");
         dsDO.setUsername("root");
         dsDO.setPassword("");
-        dsDO.setDatasourceCode("test");
-        // This may return null or actual DataSource depending on classpath; either is acceptable
-        javax.sql.DataSource result = strategy.fetchDataSource(dsDO);
-        // We just assert the call doesn't throw — result can be null or non-null
+        try {
+            assertNull(strategy.fetchDataSource(dsDO));
+            fail("连不上应当抛出异常, 而不是返回 null 或不可用池");
+        } catch (com.zifang.util.core.lang.exception.BusinessException expected) {
+            assertTrue(expected.getMessage().contains("dead"));
+        }
+    }
+
+    @Test
+    public void mysqlUrlKeepsPlatformConnectionDefaults() {
+        String plain = DataModelConvertMysqlSqlStrategy.withDefaults("jdbc:mysql://h:3306/db");
+        assertTrue(plain.startsWith("jdbc:mysql://h:3306/db?"));
+        assertTrue(plain.contains("characterEncoding=UTF-8"));
+        assertTrue(plain.contains("serverTimezone=Asia/Shanghai"));
+        // 已有参数串时用 & 追加, 不产生第二个 ?
+        assertTrue(DataModelConvertMysqlSqlStrategy.withDefaults("jdbc:mysql://h:3306/db?allowMultiQueries=true")
+                .contains("allowMultiQueries=true&useUnicode=true"));
+    }
+
+    @Test
+    public void nonMysqlUrlIsPassedThroughUntouched() {
+        // 整串 URL 交给方言识别, 不硬塞 MySQL 参数
+        assertEquals("jdbc:postgresql://h:5432/db",
+                DataModelConvertMysqlSqlStrategy.withDefaults("jdbc:postgresql://h:5432/db"));
+        assertEquals("jdbc:h2:mem:lc;DB_CLOSE_DELAY=-1",
+                DataModelConvertMysqlSqlStrategy.withDefaults("jdbc:h2:mem:lc;DB_CLOSE_DELAY=-1"));
     }
 
     @Test
@@ -106,21 +130,5 @@ public class DataModelConvertMysqlSqlStrategyTest {
     @Test
     public void shouldReturnNullForNullTableNameInFetchSingleTableInfo() {
         assertNull(strategy.fetchTableInfo(null, "schema", null));
-    }
-
-    @Test
-    public void mysqlDriverConstantShouldBeCorrect() throws Exception {
-        java.lang.reflect.Field f = DataModelConvertMysqlSqlStrategy.class.getDeclaredField("MYSQL_DRIVER");
-        f.setAccessible(true);
-        assertEquals("com.mysql.cj.jdbc.Driver", f.get(null));
-    }
-
-    @Test
-    public void defaultJdbcParamShouldBeDefined() throws Exception {
-        java.lang.reflect.Field f = DataModelConvertMysqlSqlStrategy.class.getDeclaredField("DEFAULT_JDBC_PARAM");
-        f.setAccessible(true);
-        String param = (String) f.get(null);
-        assertNotNull(param);
-        assertTrue(param.contains("UTF-8"));
     }
 }
