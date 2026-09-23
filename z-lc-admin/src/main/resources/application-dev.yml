@@ -1,39 +1,49 @@
-# dev profile: H2 内存数据库, 本地零依赖启动
-# 用法: --spring.profiles.active=dev
-# H2 默认 user=sa / password="" (空密码)
+# dev profile: H2 内存库 (MODE=MySQL), 本地零外部依赖启动 — 端到端验证用
+# 用法: java -jar z-lc-admin.jar --spring.profiles.active=dev
+# H2 2.x 实测可直接吃 z-opc 的 MySQL DDL (ENGINE=InnoDB / UNIQUE KEY / 内联 KEY / COMMENT / 反引号),
+# 因此 schema-h2.sql 就是从 _doc/004_sql 原样抽取的, 不需要人工翻译维护.
 spring:
   datasource:
     driver-class-name: org.h2.Driver
-    url: jdbc:h2:mem:zlc;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=USER
+    url: jdbc:h2:mem:zlc;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=VALUE,USER,KEY
     username: sa
-    password: "sa"
-    h2:
-      console:
-        enabled: true
-        path: /h2-console
+    password: ""
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema-h2.sql
+      continue-on-error: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
 
-# z-lc 模块数据源 (LcModuleDataSource 读 z.base.db.lc.* + fallback z.base.db.default.*)
+# MyBatis mapper 侧的模块数据源 (LcModuleDataSource 读 z.base.db.lc.* -> fallback default).
+# 必须与上面 spring.datasource 指向同一个 mem 库实例 + 同一套凭证, 否则 Druid 拿到
+# "Wrong password or user name is invalid".
 z:
   base:
     db:
       default:
-        jdbc-url: jdbc:h2:mem:zlc;MODE=MySQL;DB_CLOSE_DELAY=-1
+        jdbc-url: jdbc:h2:mem:zlc;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=VALUE,USER,KEY
         driver-class-name: org.h2.Driver
         username: sa
         password: ""
-        pool-name: lc-pool
       lc:
-        jdbc-url: jdbc:h2:mem:zlc;MODE=MySQL;DB_CLOSE_DELAY=-1
+        jdbc-url: jdbc:h2:mem:zlc;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=VALUE,USER,KEY
         driver-class-name: org.h2.Driver
         username: sa
         password: ""
 
-# z-lc 内部 Adapter dev 配置
+server:
+  port: ${SERVER_PORT:18090}
+
+# z-lc 内部 Adapter dev 配置 (dev 环境不依赖 z-ctc/z-meta, 鉴权由上游网关负责)
 z-lc:
   adapter:
     ctc:
-      base-url: http://localhost:18080
+      base-url: http://localhost:18090
     meta:
-      base-url: http://localhost:18080
+      base-url: http://localhost:18090
     script:
-      base-url: http://localhost:18080
+      base-url: http://localhost:18090

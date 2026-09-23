@@ -22,7 +22,12 @@ import java.util.List;
  * 引擎识别到这 3 种类型时直接生成对应 DB 列；其余类型由业务方自定义映射.
  *
  * @author zifang
+ * @deprecated 该粗粒度分类 (Time/Number/Text/Object/Array) 与引擎运行时的 fieldType 语义重复.
+ *             字段类型的唯一真相源 (cellValueType / dbType / coerce / operators / 能力位) 现由
+ *             {@code com.zifang.z.lc.core.fieldtype.FieldTypeRegistry} 提供, 新代码请勿再依赖本枚举.
+ *             仅为兼容历史蒸馏模型保留, 不删除以免破坏编译.
  */
+@Deprecated
 public enum ZLcModelFieldType {
 
     /** 时间类型 */

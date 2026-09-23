@@ -33,6 +33,7 @@ import java.util.Map;
  *   <li>POST /api/lc/runtime/{entityCode}/create — 新增记录</li>
  *   <li>POST /api/lc/runtime/{entityCode}/update — 按 id 更新</li>
  *   <li>POST /api/lc/runtime/{entityCode}/delete — 按 id 软删</li>
+ *   <li>POST /api/lc/runtime/delete-batch       — 批量软删 (整批预检, 一条不能删则整批不动)</li>
  * </ul>
  *
  * <p>所有端点执行流程: 1) 通过 {@link EventReplayService} 回放事件得到 {@link EntityDefDTO};
@@ -53,6 +54,15 @@ public class RuntimeCrudController {
 
     @Autowired
     private Pipeline pipeline;
+
+    @Autowired
+    private com.zifang.z.lc.core.undo.UndoService undoService;
+
+    @Autowired
+    private com.zifang.z.lc.core.importer.RuntimeImportService importService;
+
+    @Autowired
+    private com.zifang.z.lc.core.deleter.RuntimeBatchDeleteService batchDeleteService;
 
     /**
      * 将任意对象安全转换为 Long, 失败时返回 null.
@@ -162,8 +172,111 @@ public class RuntimeCrudController {
         } catch (RuntimeException ex) {
             return Result.<Long>fail(ex.getMessage()).code(400);
         }
-        Long id = crudExecutor.create(def, body, null);
+        String actor = com.zifang.z.lc.web.support.ActorResolver.resolve(null);
+        Long id = crudExecutor.create(def, body, actor);
+        undoService.record(body.getTenantCode(), body.getAppCode(), def, id,
+                com.zifang.z.lc.core.undo.entity.DataChangeEntity.OP_CREATE,
+                null, body.getFieldValues(), com.zifang.z.lc.web.support.ActorResolver.resolve(null));
         return Result.success(id);
+    }
+
+    /**
+     * 分组聚合. 筛选入参与 {@code /list} 同构, 所以前端把当前视图的筛选原样发过来即可.
+     *
+     * @param entityCode 实体编码
+     * @param body       {@link com.zifang.z.lc.common.dto.AggregateQueryDTO}
+     * @return 分组行列表 (未知分组字段/非法聚合会报 400, 不静默降级)
+     */
+    @Operation(summary = "分组聚合 (group by + count/sum/avg/min/max)")
+    @PostMapping("/aggregate")
+    public Result<java.util.List<java.util.Map<String, Object>>> aggregate(
+            @RequestParam String entityCode,
+            @RequestParam(required = false) String appCode,
+            @RequestParam(required = false) String tenantCode,
+            @RequestBody com.zifang.z.lc.common.dto.AggregateQueryDTO body) {
+        if (body == null) {
+            return Result.<java.util.List<java.util.Map<String, Object>>>fail("body is null").code(400);
+        }
+        body.setEntityCode(entityCode);
+        // 与 /list 保持同一口径: appCode/tenantCode 走 query 或 body 都行, query 优先.
+        // 只认 body 的话, 前端照抄 list 的调用方式就会撞上 "appCode is required".
+        String effectiveApp = appCode != null && !appCode.isEmpty() ? appCode : body.getAppCode();
+        String effectiveTenant = tenantCode != null && !tenantCode.isEmpty() ? tenantCode : body.getTenantCode();
+        body.setAppCode(effectiveApp);
+        body.setTenantCode(effectiveTenant);
+        EntityDefDTO def = resolveEntity(effectiveApp, entityCode, effectiveTenant);
+        try {
+            return Result.success(crudExecutor.aggregate(def, body));
+        } catch (IllegalArgumentException ex) {
+            // 分组/聚合字段不在白名单: 明确报 400, 不能悄悄返回一份全量统计骗人
+            return Result.<java.util.List<java.util.Map<String, Object>>>fail(ex.getMessage()).code(400);
+        }
+    }
+
+    /**
+     * 批量导入 · 第一段：只校验，零写入。
+     * <p>
+     * 校验走的是与单条 create 完全相同的 pipeline，所以"预览说能过"和"真写能过"是同一个口径。
+     *
+     * @param entityCode 实体编码
+     * @param body       records 为已映射成 fieldCode -&gt; 值 的记录数组
+     * @return total / validCount / 前 50 条行级错误
+     */
+    @Operation(summary = "批量导入 · 预检（不落库）")
+    @PostMapping("/import/preview")
+    public Result<com.zifang.z.lc.core.importer.ImportDto.Result> importPreview(
+            @RequestParam String entityCode,
+            @RequestParam(required = false) String appCode,
+            @RequestParam(required = false) String tenantCode,
+            @RequestBody com.zifang.z.lc.core.importer.ImportDto.Request body) {
+        return doImport(entityCode, appCode, tenantCode, body, false);
+    }
+
+    /**
+     * 批量导入 · 第二段：落库。
+     * <p>
+     * 保证是"只要有一行校验不过就整批不写"；写入中途意外失败则对本批已插入的行做补偿回滚。
+     * 数据库事务级别的原子性这里不提供，原因见 {@code RuntimeImportService} 的类注释。
+     */
+    @Operation(summary = "批量导入 · 提交")
+    @PostMapping("/import/commit")
+    public Result<com.zifang.z.lc.core.importer.ImportDto.Result> importCommit(
+            @RequestParam String entityCode,
+            @RequestParam(required = false) String appCode,
+            @RequestParam(required = false) String tenantCode,
+            @RequestBody com.zifang.z.lc.core.importer.ImportDto.Request body) {
+        return doImport(entityCode, appCode, tenantCode, body, true);
+    }
+
+    private Result<com.zifang.z.lc.core.importer.ImportDto.Result> doImport(
+            String entityCode,
+            String appCode,
+            String tenantCode,
+            com.zifang.z.lc.core.importer.ImportDto.Request body,
+            boolean commit) {
+        if (body == null) {
+            return Result.<com.zifang.z.lc.core.importer.ImportDto.Result>fail("body is null").code(400);
+        }
+        if (body.getRecords() == null || body.getRecords().isEmpty()) {
+            return Result.<com.zifang.z.lc.core.importer.ImportDto.Result>fail("records is empty").code(400);
+        }
+        if (body.getRecords().size() > com.zifang.z.lc.core.importer.ImportDto.MAX_ROWS) {
+            return Result.<com.zifang.z.lc.core.importer.ImportDto.Result>fail(
+                    "单次最多 " + com.zifang.z.lc.core.importer.ImportDto.MAX_ROWS + " 行，实际 "
+                            + body.getRecords().size() + " 行，请分批导入").code(400);
+        }
+        body.setEntityCode(entityCode);
+        // 与 /list、/aggregate 同口径：appCode/tenantCode 走 query 或 body 都认，query 优先。
+        String effectiveApp = appCode != null && !appCode.isEmpty() ? appCode : body.getAppCode();
+        String effectiveTenant = tenantCode != null && !tenantCode.isEmpty() ? tenantCode : body.getTenantCode();
+        body.setAppCode(effectiveApp);
+        body.setTenantCode(effectiveTenant);
+        EntityDefDTO def = resolveEntity(effectiveApp, entityCode, effectiveTenant);
+        String actor = com.zifang.z.lc.web.support.ActorResolver.resolve(null);
+        com.zifang.z.lc.core.importer.ImportDto.Result result = commit
+                ? importService.commit(def, body, actor)
+                : importService.preview(def, body);
+        return Result.success(result);
     }
 
     /**
@@ -183,6 +296,14 @@ public class RuntimeCrudController {
         Long id = asLong(body.getFieldValues().remove("id"));
         body.setEntityCode(entityCode);
         EntityDefDTO def = resolveEntity(body.getAppCode(), entityCode, body.getTenantCode());
+        // 先取现值: 一份给必填校验看"改完之后的整行", 一份做 undo 的前像
+        Map<String, Object> before = crudExecutor.get(def, id, body.getTenantCode());
+        if (before == null) {
+            // 不说清楚的话, 后面必填校验会报"某字段为必填", 而真正的原因是这条记录不存在/已删除
+            return Result.<Integer>fail("record not found: entity=" + entityCode + ", id=" + id)
+                    .code(404);
+        }
+        body.setExistingValues(before);
         try {
             pipeline.preWrite(def, body);
         } catch (PipelineException ex) {
@@ -191,6 +312,12 @@ public class RuntimeCrudController {
             return Result.<Integer>fail(ex.getMessage()).code(400);
         }
         int n = crudExecutor.update(def, id, body, null);
+        if (n > 0) {
+            undoService.record(body.getTenantCode(), body.getAppCode(), def, id,
+                    com.zifang.z.lc.core.undo.entity.DataChangeEntity.OP_UPDATE,
+                    before, crudExecutor.get(def, id, body.getTenantCode()),
+                    com.zifang.z.lc.web.support.ActorResolver.resolve(null));
+        }
         return Result.success(n);
     }
 
@@ -210,8 +337,57 @@ public class RuntimeCrudController {
         }
 
         EntityDefDTO def = resolveEntity(body.getAppCode(), entityCode, body.getTenantCode());
+        Map<String, Object> before = crudExecutor.get(def, body.getId(), body.getTenantCode());
         int n = crudExecutor.delete(def, body.getId(), body.getTenantCode());
+        if (n > 0) {
+            undoService.record(body.getTenantCode(), body.getAppCode(), def, body.getId(),
+                    com.zifang.z.lc.core.undo.entity.DataChangeEntity.OP_DELETE,
+                    before, null, com.zifang.z.lc.web.support.ActorResolver.resolve(null));
+        }
         return Result.success(n);
+    }
+
+    /**
+     * 批量软删：一次请求删一整批，且**先整批预检**。
+     * <p>
+     * 存在的理由是"删了一半"这件事：早先批量删除是浏览器 for 循环发 N 个 /delete，
+     * 中间任何一个失败就留下半删现场，也没有回滚。这里任何一条 id 不存在/读不到，
+     * 整批一条都不删；写入途中意外失败则把本批已删的还原（补偿回滚）。
+     * <p>
+     * 与 /import 同一个口径：始终返回 HTTP 200 + success 信封，成败由 body 里的
+     * applied/deletedCount/errors 说明 —— 部分失败不该变成一个笼统的 4xx。
+     *
+     * @param entityCode 实体编码
+     * @param body       请求体, 含 ids / appCode / tenantCode
+     * @return 批量删除结果
+     */
+    @Operation(summary = "批量删除 (软删, 整批预检)")
+    @PostMapping("/delete-batch")
+    public Result<com.zifang.z.lc.core.deleter.BatchDeleteDto.Result> deleteBatch(
+            @RequestParam String entityCode,
+            @RequestParam(required = false) String appCode,
+            @RequestParam(required = false) String tenantCode,
+            @RequestBody com.zifang.z.lc.core.deleter.BatchDeleteDto.Request body) {
+        if (body == null) {
+            return Result.<com.zifang.z.lc.core.deleter.BatchDeleteDto.Result>fail("body is null").code(400);
+        }
+        if (body.getIds() == null || body.getIds().isEmpty()) {
+            return Result.<com.zifang.z.lc.core.deleter.BatchDeleteDto.Result>fail("ids is empty").code(400);
+        }
+        if (body.getIds().size() > com.zifang.z.lc.core.deleter.BatchDeleteDto.MAX_IDS) {
+            return Result.<com.zifang.z.lc.core.deleter.BatchDeleteDto.Result>fail(
+                    "单次最多 " + com.zifang.z.lc.core.deleter.BatchDeleteDto.MAX_IDS + " 条，实际 "
+                            + body.getIds().size() + " 条，请分批删除").code(400);
+        }
+        body.setEntityCode(entityCode);
+        // 与 /import、/list 同口径：appCode/tenantCode 走 query 或 body 都认，query 优先。
+        String effectiveApp = appCode != null && !appCode.isEmpty() ? appCode : body.getAppCode();
+        String effectiveTenant = tenantCode != null && !tenantCode.isEmpty() ? tenantCode : body.getTenantCode();
+        body.setAppCode(effectiveApp);
+        body.setTenantCode(effectiveTenant);
+        EntityDefDTO def = resolveEntity(effectiveApp, entityCode, effectiveTenant);
+        return Result.success(batchDeleteService.deleteBatch(def, body,
+                com.zifang.z.lc.web.support.ActorResolver.resolve(null)));
     }
 
     /**

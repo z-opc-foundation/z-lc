@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.app;
 
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.zifang.z.lc.common.dto.AppCreateReq;
 import com.zifang.z.lc.common.dto.AppDTO;
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
  * AppAdminBizService 单元测试
@@ -78,6 +80,9 @@ public class AppAdminBizServiceTest {
                         }
                     }
                     return null;
+                }
+                if ("selectList".equals(name)) {
+                    return matchApps(args.length > 0 ? args[0] : null);
                 }
                 if ("selectCount".equals(name)) {
                     return 0L;
@@ -146,6 +151,23 @@ public class AppAdminBizServiceTest {
         f.set(service, value);
     }
 
+    /**
+     * selectList 的近似实现: 默认返回全部行(含软删), 只有当 QueryWrapper 里真的出现 deleted
+     * 谓词时才过滤掉软删行. 动态代理本来会彻底忽略 wrapper —— 那样"唯一性预检漏加 .eq(deleted,0)"
+     * 这一类缺陷在单测层永远暴露不出来, 而它正是软删 appCode 重新创建时报 500 的根因
+     * (uk_app_tenant_code 不含 deleted 列).
+     */
+    private List<AppEntity> matchApps(Object wrapper) {
+        List<AppEntity> rows = new ArrayList<>(store.values());
+        if (wrapper instanceof AbstractWrapper) {
+            String seg = ((AbstractWrapper<?, ?, ?>) wrapper).getSqlSegment();
+            if (seg != null && seg.contains("deleted")) {
+                rows.removeIf(e -> e.getDeleted() != null && e.getDeleted() == 1);
+            }
+        }
+        return rows;
+    }
+
     private AppCreateReq createReq() {
         AppCreateReq req = new AppCreateReq();
         req.setAppCode("crm");
@@ -185,6 +207,36 @@ public class AppAdminBizServiceTest {
         assertEquals(Integer.valueOf(0), dto.getEntityCount());
         assertEquals(Integer.valueOf(0), dto.getFieldCount());
         assertEquals(1, store.size());
+    }
+
+    @Test
+    public void createAppShouldRejectDuplicateAppCode() {
+        service.createApp(createReq());
+
+        try {
+            service.createApp(createReq());
+            throw new AssertionError("重复 appCode 应抛 IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            assertTrue("报错应带上冲突的 appCode, 实际: " + expected.getMessage(),
+                    expected.getMessage().contains("crm"));
+        }
+        assertEquals("冲突时不应插入新行", 1, store.size());
+    }
+
+    @Test
+    public void createAppShouldRejectCodeHeldBySoftDeletedApp() {
+        // 软删不会释放 app_code: uk_app_tenant_code 只包含 (tenant_code, app_code)。
+        // 预检若加上 .eq("deleted",0), 这里就会放行到 insert 撞索引 -> HTTP 500 + 索引名透给前端。
+        AppDTO created = service.createApp(createReq());
+        service.deleteApp(created.getId());
+
+        try {
+            service.createApp(createReq());
+            throw new AssertionError("被软删应用占用的 appCode 应抛 IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            assertTrue("报错应说明编码被已删除应用占用, 实际: " + expected.getMessage(),
+                    expected.getMessage().contains("已被删除"));
+        }
     }
 
     @Test

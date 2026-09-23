@@ -68,6 +68,16 @@ public class RuntimeCrudExecutor {
     }
 
     /**
+     * 分组聚合 (看板分列 / 表格页脚统计 / group-by).
+     * 返回每行形如 {group_key, group_label?, group_count, sum_x?, avg_x?};
+     * groupField 为空时只有一行总计.
+     */
+    public List<Map<String, Object>> aggregate(EntityDefDTO entity, com.zifang.z.lc.common.dto.AggregateQueryDTO query) {
+        DynamicSqlBuilder.SqlAndParams sql = sqlBuilder.buildAggregateSql(entity, query);
+        return jdbcTemplate.queryForList(sql.sql, sql.params.toArray());
+    }
+
+    /**
      * 按 id 取单条
      */
     public Map<String, Object> get(EntityDefDTO entity, Long id, String tenantCode) {
@@ -122,6 +132,18 @@ public class RuntimeCrudExecutor {
         }
 
         DynamicSqlBuilder.SqlAndParams sql = sqlBuilder.buildDeleteSql(entity, id, tenantCode);
+        return jdbcTemplate.update(sql.sql, sql.params.toArray());
+    }
+
+    /**
+     * 恢复一条被软删的记录 (undo 删除时用).
+     */
+    public int restore(EntityDefDTO entity, Long id, String tenantCode) {
+        if (id == null) {
+            throw new IllegalArgumentException("id is null");
+        }
+
+        DynamicSqlBuilder.SqlAndParams sql = sqlBuilder.buildRestoreSql(entity, id, tenantCode);
         return jdbcTemplate.update(sql.sql, sql.params.toArray());
     }
 

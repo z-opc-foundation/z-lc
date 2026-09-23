@@ -82,17 +82,20 @@ public class DictAdminController {
     @Operation(summary = "新增字典项")
     @PostMapping("/items/create")
     public Result<DictItemDTO> createItem(@RequestParam String dictCode, @RequestBody DictItemDTO request) {
-        request.setDictCode(dictCode);
-        List<DictItemDTO> result = dictAdminService.saveItems(DEFAULT_TENANT, dictCode, java.util.Collections.singletonList(request));
-        return Result.success(result != null && !result.isEmpty() ? result.get(0) : null);
+        // 注意: 这里绝不能走 saveItems —— 那是"整表替换"语义, 会把同字典下其它字典项全部软删.
+        return Result.success(dictAdminService.addItem(DEFAULT_TENANT, dictCode, request));
     }
 
     @Operation(summary = "更新字典项")
     @PostMapping("/items/update")
     public Result<DictItemDTO> updateItem(@RequestParam String dictCode, @RequestBody DictItemDTO request) {
-        request.setDictCode(dictCode);
-        List<DictItemDTO> result = dictAdminService.saveItems(DEFAULT_TENANT, dictCode, java.util.Collections.singletonList(request));
-        return Result.success(result != null && !result.isEmpty() ? result.get(0) : null);
+        return Result.success(dictAdminService.updateItem(DEFAULT_TENANT, dictCode, request));
+    }
+
+    @Operation(summary = "整体替换字典项 (先软删该字典下全部项, 再按入参重建)")
+    @PostMapping("/items/save-all")
+    public Result<List<DictItemDTO>> saveItems(@RequestParam String dictCode, @RequestBody List<DictItemDTO> items) {
+        return Result.success(dictAdminService.saveItems(DEFAULT_TENANT, dictCode, items));
     }
 
     @Operation(summary = "删除字典项")

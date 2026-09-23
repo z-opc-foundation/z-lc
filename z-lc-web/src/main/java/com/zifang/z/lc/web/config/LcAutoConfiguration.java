@@ -23,22 +23,17 @@ import org.springframework.context.annotation.FilterType;
 @Configuration
 @ComponentScans({
         @ComponentScan(basePackages = "com.zifang.z.lc.common"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.adapter"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.pipeline"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.pipeline.config"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.schema"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.materialize"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.event"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.executor"),
+        // 整包扫描 core: 原来这里逐个枚举了 16 个 core.* 子包, 新增子包 (如 core.fieldtype)
+        // 不会被扫到, 表现为"编译通过、bean 注入失败、启动直接挂", 而且报错完全不指向本文件.
+        // mapper 接口由 LcModuleDataSource 的 @MapperScan 负责, 不在这里扫.
+        @ComponentScan(
+                basePackages = "com.zifang.z.lc.core",
+                excludeFilters = @ComponentScan.Filter(
+                        type = FilterType.REGEX,
+                        pattern = "com\\.zifang\\.z\\.lc\\.mapper\\..*"
+                )
+        ),
         @ComponentScan(basePackages = "com.zifang.z.lc.core.mapper"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.app"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.dict"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.viewconfig"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.relation"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.deployment"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.permission"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.ai"),
-        @ComponentScan(basePackages = "com.zifang.z.lc.core.workflow"),
         @ComponentScan(basePackages = "com.zifang.z.lc.design"),
         @ComponentScan(basePackages = "com.zifang.z.lc.sdk"),
         @ComponentScan(

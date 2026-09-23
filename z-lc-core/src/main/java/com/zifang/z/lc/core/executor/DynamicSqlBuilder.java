@@ -1,9 +1,14 @@
 package com.zifang.z.lc.core.executor;
 
+import com.zifang.z.lc.common.dto.AggregateQueryDTO;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
+import com.zifang.z.lc.common.dto.QueryConditionDTO;
+import com.zifang.z.lc.common.dto.QuerySortDTO;
 import com.zifang.z.lc.common.dto.RuntimeCrudDTO;
 import com.zifang.z.lc.common.dto.RuntimeQueryDTO;
+import com.zifang.z.lc.core.fieldtype.CellValueType;
+import com.zifang.z.lc.core.fieldtype.FieldTypeRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Component;
@@ -19,6 +24,10 @@ import java.util.*;
  *   <li>过滤 key 后缀约定: "name" → eq, "name:like" → LIKE %x%, "name:gt" → &gt;, "name:lt" → &lt;, "name:in" → IN(...)</li>
  *   <li>filter 仅接受 EntityDefDTO.fields 中出现的字段 (白名单校验)</li>
  *   <li>INSERT 时按字段白名单 + 非 null 值写入</li>
+ *   <li>结构化查询 (conjunction/conditions/sorts): fieldCode 严格白名单校验, 未知字段直接抛
+ *       {@link IllegalArgumentException} (ControllerAdvice → 400), 绝不拼进 SQL;
+ *       ORDER BY 只能由「白名单字段 + asc/desc」的安全片段组装</li>
+ *   <li>类型语义 (jdbcType / coerce) 全部委托 {@link FieldTypeRegistry} (单一事实来源)</li>
  * </ul>
  */
 @Component
@@ -27,38 +36,26 @@ public class DynamicSqlBuilder {
     private static final Logger log = LogManager.getLogger(DynamicSqlBuilder.class);
 
     /**
+     * 结构化条件合法操作符全集 (per-type 再按 FieldTypeRegistry.operators() 二次收窄).
+     */
+    /** 可做数值聚合的逻辑类型. 与 FieldTypeRegistry 里 NUMBER 那一类保持一致. */
+    private static final Set<String> NUMERIC_FIELD_TYPES = new java.util.HashSet<String>(
+            Arrays.asList("INT", "LONG", "DECIMAL", "FLOAT", "DOUBLE"));
+
+    private static final Set<String> STRUCTURED_OPERATORS = new LinkedHashSet<>(Arrays.asList(
+            "eq", "ne", "like", "notLike", "gt", "gte", "lt", "lte", "in", "notIn", "isNull", "isNotNull"));
+
+    /**
+     * SQL 标识符白名单正则 (字段 / 表名同规则).
+     */
+    private static final String IDENT_REGEX = "^[A-Za-z][A-Za-z0-9_]*$";
+
+    /**
      * 把 fieldType (STRING/INT/...) 映射为列定义片段 (用于 CREATE TABLE 或列类型推导).
-     * 当前引擎不需要建表, 仅供后续 Phase 2 materialization 用.
+     * 语义唯一来源是 {@link FieldTypeRegistry}; 此静态入口保留以兼容既有调用方, 输出逐字符不变.
      */
     public static String jdbcType(String fieldType, Integer length, Integer scale) {
-        if (fieldType == null) {
-            return "VARCHAR(255)";
-        }
-
-        switch (fieldType.toUpperCase()) {
-            case "INT":
-            case "LONG":
-            case "REF":
-                return "BIGINT";
-            case "DECIMAL":
-                int p = length == null ? 18 : Math.max(1, length);
-                int s = scale == null ? 2 : Math.max(0, scale);
-                return "DECIMAL(" + p + "," + s + ")";
-            case "BOOLEAN":
-                return "TINYINT(1)";
-            case "DATE":
-                return "DATE";
-            case "DATETIME":
-                return "DATETIME";
-            case "TEXT":
-                return "TEXT";
-            case "JSON":
-                return "JSON";
-            case "STRING":
-            default:
-                int l = length == null ? 255 : Math.max(1, length);
-                return "VARCHAR(" + l + ")";
-        }
+        return FieldTypeRegistry.jdbcType(fieldType, length, scale);
     }
 
     /**
@@ -71,7 +68,8 @@ public class DynamicSqlBuilder {
 
         StringBuilder sql = new StringBuilder();
         sql.append("SELECT ");
-        sql.append(joinColumns(entity.getFields(), null));
+        // 别名 t. 必带: 下面 buildJoinClauses 会 JOIN 进同名列 (id 等)
+        sql.append(joinColumns(entity.getFields(), "t."));
         // 字段关联扩展列 (dict -> _label, refEntity -> _name)
         sql.append(buildExtraSelectColumns(entity));
         sql.append(" FROM ").append(quote(entity.getTableName())).append(" ").append("t");
@@ -79,21 +77,7 @@ public class DynamicSqlBuilder {
         sql.append(buildJoinClauses(entity));
         sql.append(" WHERE ").append("t").append(".deleted = 0");
         // tenant_code 主表 + JOIN 表都已 deleted=0; 仅主表加 tenant
-        if (entity.getTenantCode() != null) {
-            sql.append(" AND ").append("t").append(".tenant_code = ?");
-            params.add(query.getTenantCode() != null ? query.getTenantCode() : entity.getTenantCode());
-        }
-        // dictCode 参数注入 (按 buildJoinClauses 顺序)
-        if (entity.getFields() != null) {
-            for (FieldDefDTO fld : entity.getFields()) {
-                if (fld == null) {
-                    continue;
-                }
-                if (fld.getDictCode() != null && !fld.getDictCode().isEmpty()) {
-                    params.add(fld.getDictCode());
-                }
-            }
-        }
+        appendTenantParam(sql, params, entity, query);
         if (query != null && query.getFilters() != null) {
             for (Map.Entry<String, Object> e : query.getFilters().entrySet()) {
                 String key = e.getKey();
@@ -109,79 +93,11 @@ public class DynamicSqlBuilder {
                     log.warn("Filter field not in whitelist, skip: {}", fieldCode);
                     continue;
                 }
-                String col = quote(fd.getFieldCode());
-                switch (op) {
-                    case "eq":
-                        sql.append(" AND ").append(col).append(" = ?");
-                        params.add(val);
-                        break;
-                    case "like":
-                        sql.append(" AND ").append(col).append(" LIKE ?");
-                        params.add("%" + val + "%");
-                        break;
-                    case "gt":
-                        sql.append(" AND ").append(col).append(" > ?");
-                        params.add(val);
-                        break;
-                    case "lt":
-                        sql.append(" AND ").append(col).append(" < ?");
-                        params.add(val);
-                        break;
-                    case "gte":
-                        sql.append(" AND ").append(col).append(" >= ?");
-                        params.add(val);
-                        break;
-                    case "lte":
-                        sql.append(" AND ").append(col).append(" <= ?");
-                        params.add(val);
-                        break;
-                    case "in":
-                        sql.append(" AND ").append(col).append(" IN (");
-                        if (val instanceof Collection) {
-                            Collection<?> coll = (Collection<?>) val;
-                            boolean first = true;
-                            for (Object v : coll) {
-                                if (!first) {
-                                    sql.append(",");
-                                }
-
-                                sql.append("?");
-                                params.add(v);
-                                first = false;
-                            }
-                            if (coll.isEmpty()) {
-                                sql.append("NULL"); // 永远为空集
-                            }
-                        } else {
-                            sql.append("?");
-                            params.add(val);
-                        }
-                        sql.append(")");
-                        break;
-                    default:
-                        log.warn("Unknown operator '{}' for {}, fallback to eq", op, fieldCode);
-                        sql.append(" AND ").append(col).append(" = ?");
-                        params.add(val);
-                }
+                appendLegacyFilter(sql, params, fd, op, val, true);
             }
         }
-        if (query != null && query.getOrderBy() != null && !query.getOrderBy().isEmpty()) {
-            // 仅接受 <field> [asc|desc] 形式; field 必须在白名单中
-            String[] tokens = query.getOrderBy().trim().split("\\s+");
-            String obField = tokens[0];
-            String obDir = tokens.length > 1 ? tokens[1].toUpperCase() : "ASC";
-            if (!"ASC".equals(obDir) && !"DESC".equals(obDir)) {
-                obDir = "ASC";
-            }
-
-            if (fieldIndex.containsKey(obField)) {
-                sql.append(" ORDER BY ").append(quote(obField)).append(" ").append(obDir);
-            } else {
-                log.warn("orderBy field not in whitelist: {}", obField);
-            }
-        } else {
-            sql.append(" ORDER BY id DESC");
-        }
+        appendStructuredConditions(sql, params, fieldIndex, query);
+        appendOrderBy(sql, fieldIndex, query);
 
         int page = query == null || query.getPage() == null || query.getPage() < 1 ? 1 : query.getPage();
         int size = query == null || query.getSize() == null || query.getSize() < 1 ? 20 : Math.min(query.getSize(), 200);
@@ -203,21 +119,7 @@ public class DynamicSqlBuilder {
         // count 也要 JOIN (否则含 LEFT JOIN 的 SQL 会漏掉行)
         sql.append(buildJoinClauses(entity));
         sql.append(" WHERE ").append("t").append(".deleted = 0");
-        if (entity.getTenantCode() != null) {
-            sql.append(" AND ").append("t").append(".tenant_code = ?");
-            params.add(query.getTenantCode() != null ? query.getTenantCode() : entity.getTenantCode());
-        }
-        // dictCode 参数注入 (与 buildJoinClauses 一致)
-        if (entity.getFields() != null) {
-            for (FieldDefDTO fld : entity.getFields()) {
-                if (fld == null) {
-                    continue;
-                }
-                if (fld.getDictCode() != null && !fld.getDictCode().isEmpty()) {
-                    params.add(fld.getDictCode());
-                }
-            }
-        }
+        appendTenantParam(sql, params, entity, query);
         if (query != null && query.getFilters() != null) {
             for (Map.Entry<String, Object> e : query.getFilters().entrySet()) {
                 String key = e.getKey();
@@ -232,55 +134,259 @@ public class DynamicSqlBuilder {
                 if (fd == null) {
                     continue;
                 }
-                String col = quote(fd.getFieldCode());
-                switch (op) {
-                    case "eq":
-                        sql.append(" AND ").append(col).append(" = ?");
-                        params.add(val);
-                        break;
-                    case "like":
-                        sql.append(" AND ").append(col).append(" LIKE ?");
-                        params.add("%" + val + "%");
-                        break;
-                    case "gt":
-                        sql.append(" AND ").append(col).append(" > ?");
-                        params.add(val);
-                        break;
-                    case "lt":
-                        sql.append(" AND ").append(col).append(" < ?");
-                        params.add(val);
-                        break;
-                    case "in":
-                        sql.append(" AND ").append(col).append(" IN (");
-                        if (val instanceof Collection) {
-                            Collection<?> coll = (Collection<?>) val;
-                            boolean first = true;
-                            for (Object v : coll) {
-                                if (!first) {
-                                    sql.append(",");
-                                }
-
-                                sql.append("?");
-                                params.add(v);
-                                first = false;
-                            }
-                            if (coll.isEmpty()) {
-                                sql.append("NULL");
-                            }
-
-                        } else {
-                            sql.append("?");
-                            params.add(val);
-                        }
-                        sql.append(")");
-                        break;
-                    default:
-                        sql.append(" AND ").append(col).append(" = ?");
-                        params.add(val);
-                }
+                // 修复历史 bug: count SQL 此前不支持 gte/lte (退化为 =), 现与 list SQL 完全同源
+                appendLegacyFilter(sql, params, fd, op, val, false);
             }
         }
+        appendStructuredConditions(sql, params, fieldIndex, query);
         return new SqlAndParams(sql.toString(), params);
+    }
+
+    /**
+     * 分组聚合: {@code SELECT g, COUNT(*) [, SUM/AVG/MIN/MAX] FROM t <joins> WHERE ... GROUP BY g}.
+     * <p>
+     * 三处刻意的防护, 都对应这个引擎踩过的坑:
+     * <ul>
+     *   <li>分组列与聚合列**只能来自实体字段白名单**, 且必须是合法标识符 —— 绝不拼用户传入的字符串,
+     *       ORDER BY 那个注入面就是这么来的;</li>
+     *   <li>所有输出列都带 {@code t.} 前缀 —— 分组字段若绑了字典会 JOIN 进同名列;</li>
+     *   <li>JOIN 的 dictCode 参数必须先于 tenant 参数入队 (复用 {@link #appendTenantParam}),
+     *       顺序颠倒会让两者互相绑错、结果恒为空.</li>
+     * </ul>
+     * 分组字段绑了字典时额外取一列 {@code _label}, 前端看板/统计条直接用可读值.
+     *
+     * @return SQL + 参数; groupField 为空时退化成一行总计
+     */
+    public SqlAndParams buildAggregateSql(EntityDefDTO entity, AggregateQueryDTO query) {
+        validateTable(entity);
+        Map<String, FieldDefDTO> fieldIndex = indexFields(entity);
+        List<Object> params = new ArrayList<Object>();
+        StringBuilder sql = new StringBuilder();
+
+        FieldDefDTO group = resolveGroupField(entity, fieldIndex, query.getGroupField());
+        boolean grouped = group != null;
+        TimeBucket bucket = resolveTimeBucket(query.getTimeGroup(), group);
+        // 分桶表达式在 SELECT / GROUP BY / ORDER BY 各写一遍而不是引用列别名:
+        // ORDER BY 引用 select 别名在部分数据库 (含 H2 的一些版本) 不可靠, 而时间图必须按时间正序。
+        List<String> bucketExprs = timeBucketExpressions(bucket, group);
+
+        sql.append("SELECT ");
+        if (bucket != null) {
+            String[] alias = { "bucket_year", "bucket_month", "bucket_day" };
+            for (int i = 0; i < bucketExprs.size(); i++) {
+                if (i > 0) {
+                    sql.append(", ");
+                }
+                sql.append(bucketExprs.get(i)).append(" AS ").append(alias[i]);
+            }
+            sql.append(", ");
+        } else if (grouped) {
+            sql.append("t.").append(quote(group.getFieldCode())).append(" AS group_key");
+            if (group.getDictCode() != null && !group.getDictCode().isEmpty()) {
+                sql.append(", MAX(d_").append(group.getFieldCode()).append(".item_label) AS group_label");
+            }
+            sql.append(", ");
+        }
+        sql.append("COUNT(*) AS group_count");
+        List<String[]> numeric = numericAggregations(entity, fieldIndex, query.getAggregations());
+        for (String[] agg : numeric) {
+            String column = "t." + quote(agg[0]);
+            String expression;
+            if ("DISTINCT".equals(agg[1])) {
+                expression = "COUNT(DISTINCT " + column + ")";
+            } else if ("FILLED".equals(agg[1])) {
+                expression = "COUNT(" + column + ")";
+            } else {
+                expression = agg[1] + "(" + column + ")";
+            }
+            sql.append(", ").append(expression).append(" AS ").append(agg[1].toLowerCase()).append("_").append(agg[0]);
+        }
+
+        sql.append(" FROM ").append(quote(entity.getTableName())).append(" t");
+        sql.append(buildJoinClauses(entity));
+        sql.append(" WHERE t.deleted = 0");
+        if (bucket != null) {
+            // 时间轴只统计填了日期的记录: NULL 日期会分出一个"哪年都不是"的桶, 折线图上无处安放。
+            // 这个口径要在图表副标题里说出来, 不能让它变成一个静默的数字缺口。
+            sql.append(" AND t.").append(quote(group.getFieldCode())).append(" IS NOT NULL");
+        }
+        appendTenantParam(sql, params, entity, toQuery(query));
+
+        RuntimeQueryDTO filterCarrier = toQuery(query);
+        if (filterCarrier.getFilters() != null) {
+            for (Map.Entry<String, Object> entry : filterCarrier.getFilters().entrySet()) {
+                String key = entry.getKey();
+                Object value = entry.getValue();
+                if (value == null) {
+                    continue;
+                }
+                String[] parts = key.split(":");
+                FieldDefDTO fd = fieldIndex.get(parts[0]);
+                if (fd == null) {
+                    continue;
+                }
+                appendLegacyFilter(sql, params, fd, parts.length > 1 ? parts[1].toLowerCase() : "eq",
+                        value, false);
+            }
+        }
+        appendStructuredConditions(sql, params, fieldIndex, filterCarrier);
+
+        if (bucket != null) {
+            sql.append(" GROUP BY ").append(String.join(", ", bucketExprs));
+            sql.append(" ORDER BY ");
+            for (int i = 0; i < bucketExprs.size(); i++) {
+                if (i > 0) {
+                    sql.append(", ");
+                }
+                sql.append(bucketExprs.get(i)).append(" ASC");
+            }
+        } else if (grouped) {
+            // group_label 走 MAX() 聚合, 所以 GROUP BY 只需要分组列本身, ONLY_FULL_GROUP_BY 下合法
+            sql.append(" GROUP BY t.").append(quote(group.getFieldCode()));
+            sql.append(" ORDER BY group_count DESC, group_key ASC");
+        }
+        int limit = query.getLimit() == null ? 100 : Math.max(1, Math.min(query.getLimit(), 500));
+        if (grouped) {
+            sql.append(" LIMIT ").append(limit);
+        }
+        return new SqlAndParams(sql.toString(), params);
+    }
+
+    /**
+     * 分组字段必须能在实体里查到; 未知字段直接报错而不是静默降级成"无分组",
+     * 否则前端会看到一份看似正常其实全量的统计.
+     */
+    private FieldDefDTO resolveGroupField(EntityDefDTO entity, Map<String, FieldDefDTO> fieldIndex, String groupField) {
+        if (groupField == null || groupField.trim().isEmpty()) {
+            return null;
+        }
+        String code = groupField.trim();
+        if (!code.matches(IDENT_REGEX)) {
+            throw new IllegalArgumentException("Illegal groupField: " + groupField);
+        }
+        FieldDefDTO field = fieldIndex.get(code);
+        if (field == null) {
+            throw new IllegalArgumentException("Unknown groupField: " + code
+                    + " (entity=" + entity.getEntityCode() + ")");
+        }
+        return field;
+    }
+
+    /** 时间分桶粒度; SELECT 列顺序固定为 年 → 月 → 日. */
+    private enum TimeBucket {
+        YEAR, MONTH, DAY;
+
+        boolean includesMonth() {
+            return this != YEAR;
+        }
+
+        boolean includesDay() {
+            return this == DAY;
+        }
+    }
+
+    /**
+     * timeGroup 只在"确实按日期列分组"时成立: 缺 groupField、或分组列不是日期类型,
+     * 一律抛错而不是静默退化成无分组的总量 —— 后者会让图表显示一个看着正常的假数字。
+     */
+    private static TimeBucket resolveTimeBucket(String raw, FieldDefDTO group) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+        String key = raw.trim().toUpperCase();
+        if (!"DAY".equals(key) && !"MONTH".equals(key) && !"YEAR".equals(key)) {
+            throw new IllegalArgumentException("Unknown timeGroup: " + raw + " (expect DAY / MONTH / YEAR)");
+        }
+        if (group == null) {
+            throw new IllegalArgumentException("timeGroup requires a groupField to bucket on");
+        }
+        // 分组能力问 CellValueType, 不逐个 switch fieldType 字符串 (FieldTypeRegistry 的既定约定)
+        if (FieldTypeRegistry.getDefault().handler(group.getFieldType()).cellValueType()
+                != CellValueType.DATETIME) {
+            throw new IllegalArgumentException("timeGroup 只支持 DATE / DATETIME 字段, 当前 groupField="
+                    + group.getFieldCode() + " (type " + group.getFieldType() + ")");
+        }
+        return TimeBucket.valueOf(key);
+    }
+
+    /**
+     * EXTRACT(<unit> FROM ...) 是 SQL 标准写法, H2 与 MySQL 都吃;
+     * 刻意不用 DATE_FORMAT (MySQL 专有) / FORMATDATETIME (H2 专有), 分桶标签由前端拼。
+     */
+    private List<String> timeBucketExpressions(TimeBucket bucket, FieldDefDTO group) {
+        if (bucket == null) {
+            return Collections.emptyList();
+        }
+        String col = "t." + quote(group.getFieldCode());
+        List<String> exprs = new ArrayList<String>();
+        exprs.add("EXTRACT(YEAR FROM " + col + ")");
+        if (bucket.includesMonth()) {
+            exprs.add("EXTRACT(MONTH FROM " + col + ")");
+        }
+        if (bucket.includesDay()) {
+            exprs.add("EXTRACT(DAY FROM " + col + ")");
+        }
+        return exprs;
+    }
+
+    /**
+     * 聚合函数分两档：
+     * <ul>
+     *   <li>数值专属 SUM/AVG/MIN/MAX —— 落在文本/日期列上要么无意义要么误导；</li>
+     *   <li>任意列都可算的 DISTINCT(去重数) / FILLED(非空数)，填充率 = FILLED / group_count，
+     *       由前端算，服务端不偷偷做除法。</li>
+     * </ul>
+     * 列名与函数名都走白名单，绝不拼用户输入。
+     */
+    private static final Set<String> NUMERIC_FUNCTIONS = new java.util.HashSet<String>(
+            Arrays.asList("SUM", "AVG", "MIN", "MAX"));
+
+    private static final Set<String> UNIVERSAL_FUNCTIONS = new java.util.HashSet<String>(
+            Arrays.asList("DISTINCT", "FILLED"));
+
+    private List<String[]> numericAggregations(EntityDefDTO entity, Map<String, FieldDefDTO> fieldIndex,
+                                               Map<String, List<String>> aggregations) {
+        List<String[]> out = new ArrayList<String[]>();
+        if (aggregations == null || aggregations.isEmpty()) {
+            return out;
+        }
+        for (Map.Entry<String, List<String>> entry : aggregations.entrySet()) {
+            String code = entry.getKey() == null ? "" : entry.getKey().trim();
+            FieldDefDTO field = fieldIndex.get(code);
+            if (field == null || !code.matches(IDENT_REGEX)) {
+                throw new IllegalArgumentException("Unknown aggregation field: " + code);
+            }
+            if (entry.getValue() == null) {
+                continue;
+            }
+            for (String fn : entry.getValue()) {
+                String upper = fn == null ? "" : fn.trim().toUpperCase();
+                if (!NUMERIC_FUNCTIONS.contains(upper) && !UNIVERSAL_FUNCTIONS.contains(upper)) {
+                    throw new IllegalArgumentException("Unsupported aggregation function: " + fn);
+                }
+                if (NUMERIC_FUNCTIONS.contains(upper) && !isNumeric(field.getFieldType())) {
+                    throw new IllegalArgumentException("Field " + code + " (type " + field.getFieldType()
+                            + ") does not support numeric aggregation");
+                }
+                out.add(new String[] {code, upper});
+            }
+        }
+        return out;
+    }
+
+    private boolean isNumeric(String fieldType) {
+        return fieldType != null && NUMERIC_FIELD_TYPES.contains(fieldType.toUpperCase());
+    }
+
+    private RuntimeQueryDTO toQuery(AggregateQueryDTO query) {
+        RuntimeQueryDTO carrier = new RuntimeQueryDTO();
+        carrier.setTenantCode(query.getTenantCode());
+        carrier.setAppCode(query.getAppCode());
+        carrier.setEntityCode(query.getEntityCode());
+        carrier.setFilters(query.getFilters());
+        carrier.setConjunction(query.getConjunction());
+        carrier.setConditions(query.getConditions());
+        return carrier;
     }
 
     /**
@@ -401,6 +507,28 @@ public class DynamicSqlBuilder {
     /**
      * DELETE by id (软删)
      */
+    /**
+     * 软删的逆操作: 把 deleted 复位. undo/redo 恢复被删记录用.
+     * 与 buildDeleteSql 同构, 保证租户隔离条件一致.
+     */
+    public SqlAndParams buildRestoreSql(EntityDefDTO entity, Long id, String tenantCode) {
+        validateTable(entity);
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder();
+        sql.append("UPDATE ").append(quote(entity.getTableName()));
+        sql.append(" SET deleted = 0");
+        sql.append(", ").append(quote("update_time")).append(" = ?");
+        params.add(new java.util.Date());
+        sql.append(" WHERE id = ?");
+        params.add(id);
+        sql.append(" AND deleted = 1");
+        if (entity.getTenantCode() != null) {
+            sql.append(" AND tenant_code = ?");
+            params.add(tenantCode != null ? tenantCode : entity.getTenantCode());
+        }
+        return new SqlAndParams(sql.toString(), params);
+    }
+
     public SqlAndParams buildDeleteSql(EntityDefDTO entity, Long id, String tenantCode) {
         validateTable(entity);
         List<Object> params = new ArrayList<>();
@@ -432,6 +560,30 @@ public class DynamicSqlBuilder {
      *   <li>refEntity 字段 (refEntity 不为空): LEFT JOIN <entity.tableName> 别名 ON id = t.field</li>
      * </ul>
      */
+    /**
+     * 追加 `t.tenant_code = ?` 条件, 并保证 JDBC 占位符与参数列表顺序一致.
+     * <p>
+     * buildJoinClauses 里每个 dictCode 字段都会先于 WHERE 吐出一个 `dict_code = ?` 占位符,
+     * 所以这些参数必须先入队, 再入队 tenant 参数. 早先两处 (buildListSql / buildCountSql)
+     * 都是先 add(tenant) 再 add(dictCode), 于是 dict_code 绑到了租户值、tenant_code 绑到了
+     * 字典码 —— 含字典字段的实体分页恒为 0 条, 且租户过滤实际失效.
+     */
+    private static void appendTenantParam(StringBuilder sql, List<Object> params,
+                                          EntityDefDTO entity, RuntimeQueryDTO query) {
+        if (entity.getFields() != null) {
+            for (FieldDefDTO fld : entity.getFields()) {
+                if (fld != null && fld.getDictCode() != null && !fld.getDictCode().isEmpty()) {
+                    params.add(fld.getDictCode());
+                }
+            }
+        }
+        if (entity.getTenantCode() != null) {
+            sql.append(" AND ").append("t").append(".tenant_code = ?");
+            params.add(query != null && query.getTenantCode() != null
+                    ? query.getTenantCode() : entity.getTenantCode());
+        }
+    }
+
     public String buildJoinClauses(EntityDefDTO entity) {
         StringBuilder sb = new StringBuilder();
         if (entity == null || entity.getFields() == null) {
@@ -443,13 +595,17 @@ public class DynamicSqlBuilder {
                 continue;
             }
             if (f.getDictCode() != null && !f.getDictCode().isEmpty()) {
-                sb.append(" LEFT JOIN z_lc_dict_item d_").append(f.getFieldCode())
-                        .append(" ON d_").append(f.getFieldCode())
+                // 只 join 每个 (dict_code, item_code) 的最小 id 行: 字典项若有重复,
+                // 直接 join 物理表会把每条业务记录 fan-out 成 N 行 (分页 total 虚高)。
+                String d = "d_" + f.getFieldCode();
+                sb.append(" LEFT JOIN (SELECT i.item_code, i.item_label, i.dict_code FROM z_lc_dict_item i")
+                        .append(" WHERE i.deleted = 0 AND NOT EXISTS (SELECT 1 FROM z_lc_dict_item x")
+                        .append(" WHERE x.deleted = 0 AND x.dict_code = i.dict_code")
+                        .append(" AND x.item_code = i.item_code AND x.id < i.id)) ").append(d)
+                        .append(" ON ").append(d)
                         .append(".item_code = ").append(alias).append(".")
                         .append(quote(f.getFieldCode()))
-                        .append(" AND d_").append(f.getFieldCode())
-                        .append(".dict_code = ? AND d_").append(f.getFieldCode())
-                        .append(".deleted = 0");
+                        .append(" AND ").append(d).append(".dict_code = ?");
             } else if (f.getRefEntity() != null && !f.getRefEntity().isEmpty()) {
                 sb.append(" LEFT JOIN ").append(quote(f.getRefEntity()))
                         .append(" r_").append(f.getFieldCode())
@@ -494,63 +650,287 @@ public class DynamicSqlBuilder {
         return sb.toString();
     }
 
+    /**
+     * 根据字段类型做强类型转换 (失败抛 IllegalArgumentException).
+     * 语义唯一来源是 {@link FieldTypeRegistry}; 行为与历史实现完全一致:
+     * null → null; fieldType null → 原值; INT/LONG/REF → Long; DECIMAL → Double;
+     * BOOLEAN → Boolean.parseBoolean 宽松语义; DATE/DATETIME → SimpleDateFormat 宽松解析;
+     * TEXT/JSON/STRING/未知类型 → toString.
+     */
     public Object coerce(Object raw, String fieldType) {
-        if (raw == null) {
-            return null;
-        }
+        return FieldTypeRegistry.coerceValue(raw, fieldType);
+    }
 
-        if (fieldType == null) {
-            return raw;
-        }
+    // ===== WHERE / ORDER BY 组装 =====
 
-        switch (fieldType.toUpperCase()) {
-            case "INT":
-            case "LONG":
-            case "REF":
-                if (raw instanceof Number) {
-                    return ((Number) raw).longValue();
-                }
+    /**
+     * legacy filters (":op" 后缀) 单个片段; 未知字段由调用方先行白名单跳过 (向后兼容行为).
+     *
+     * @param warn 是否对未知操作符输出 warn 日志 (历史 list 路径 warn, count 路径不 warn)
+     */
+    private void appendLegacyFilter(StringBuilder sql, List<Object> params, FieldDefDTO fd,
+                                    String op, Object val, boolean warn) {
+        String col = quote(fd.getFieldCode());
+        switch (op) {
+            case "eq":
+                sql.append(" AND ").append(col).append(" = ?");
+                params.add(val);
+                break;
+            case "like":
+                sql.append(" AND ").append(col).append(" LIKE ?");
+                params.add("%" + val + "%");
+                break;
+            case "gt":
+                sql.append(" AND ").append(col).append(" > ?");
+                params.add(val);
+                break;
+            case "lt":
+                sql.append(" AND ").append(col).append(" < ?");
+                params.add(val);
+                break;
+            case "gte":
+                sql.append(" AND ").append(col).append(" >= ?");
+                params.add(val);
+                break;
+            case "lte":
+                sql.append(" AND ").append(col).append(" <= ?");
+                params.add(val);
+                break;
+            case "in":
+                sql.append(" AND ").append(col).append(" IN (");
+                if (val instanceof Collection) {
+                    Collection<?> coll = (Collection<?>) val;
+                    boolean first = true;
+                    for (Object v : coll) {
+                        if (!first) {
+                            sql.append(",");
+                        }
 
-                try {
-                    return Long.parseLong(raw.toString());
-                } catch (Exception e) {
-                    throw new IllegalArgumentException("Field requires long: " + raw);
+                        sql.append("?");
+                        params.add(v);
+                        first = false;
+                    }
+                    if (coll.isEmpty()) {
+                        sql.append("NULL"); // 永远为空集
+                    }
+                } else {
+                    sql.append("?");
+                    params.add(val);
                 }
-            case "DECIMAL":
-                if (raw instanceof Number) {
-                    return ((Number) raw).doubleValue();
-                }
-
-                try {
-                    return Double.parseDouble(raw.toString());
-                } catch (Exception e) {
-                    throw new IllegalArgumentException("Field requires decimal: " + raw);
-                }
-            case "BOOLEAN":
-                if (raw instanceof Boolean) {
-                    return raw;
-                }
-
-                return Boolean.parseBoolean(raw.toString());
-            case "DATE":
-            case "DATETIME":
-                if (raw instanceof java.util.Date) {
-                    return raw;
-                }
-
-                try {
-                    return new java.text.SimpleDateFormat(
-                            "DATE".equalsIgnoreCase(fieldType) ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss")
-                            .parse(raw.toString());
-                } catch (Exception e) {
-                    throw new IllegalArgumentException("Field requires date: " + raw);
-                }
-            case "JSON":
-            case "TEXT":
-            case "STRING":
+                sql.append(")");
+                break;
             default:
-                return raw.toString();
+                if (warn) {
+                    log.warn("Unknown operator '{}' for {}, fallback to eq", op, fd.getFieldCode());
+                }
+
+                sql.append(" AND ").append(col).append(" = ?");
+                params.add(val);
         }
+    }
+
+    /**
+     * 结构化 conditions 组装 (严格白名单): 未知字段 / 非法操作符 / 缺值 → IllegalArgumentException
+     * (由 LcExceptionHandler 映射为 Result{success:false, code:400}), 绝不拼进 SQL.
+     * <p>
+     * conjunction=OR 时整组条件括起后与 legacy filters 片段 AND 合并; 默认 AND.
+     */
+    private void appendStructuredConditions(StringBuilder sql, List<Object> params,
+                                            Map<String, FieldDefDTO> fieldIndex, RuntimeQueryDTO query) {
+        if (query == null || query.getConditions() == null || query.getConditions().isEmpty()) {
+            return;
+        }
+
+        boolean or = "OR".equalsIgnoreCase(query.getConjunction() == null ? "AND" : query.getConjunction().trim());
+        StringBuilder group = new StringBuilder();
+        List<Object> groupParams = new ArrayList<>();
+        for (QueryConditionDTO cond : query.getConditions()) {
+            if (cond == null) {
+                continue;
+            }
+
+            if (group.length() > 0) {
+                group.append(or ? " OR " : " AND ");
+            }
+
+            appendOneCondition(group, groupParams, fieldIndex, cond);
+        }
+        if (group.length() == 0) {
+            return;
+        }
+
+        sql.append(" AND (").append(group).append(")");
+        params.addAll(groupParams);
+    }
+
+    /**
+     * 单条结构化条件 → 安全片段. fieldCode 必须: 命中白名单 + 匹配标识符正则; 操作符必须同时满足
+     * 全集 (STRUCTURED_OPERATORS) 与该字段类型的 FieldTypeHandler.operators().
+     */
+    private void appendOneCondition(StringBuilder group, List<Object> groupParams,
+                                    Map<String, FieldDefDTO> fieldIndex, QueryConditionDTO cond) {
+        String fieldCode = cond.getFieldCode();
+        if (fieldCode == null || !fieldCode.matches(IDENT_REGEX) || !fieldIndex.containsKey(fieldCode)) {
+            throw new IllegalArgumentException("Unknown fieldCode in query conditions: " + fieldCode);
+        }
+
+        FieldDefDTO fd = fieldIndex.get(fieldCode);
+        String op = cond.getOperator() == null ? "eq" : cond.getOperator().trim();
+        if (!STRUCTURED_OPERATORS.contains(op) || !FieldTypeRegistry.getDefault().supportsOperator(fd.getFieldType(), op)) {
+            throw new IllegalArgumentException("Illegal operator '" + op + "' for field " + fieldCode
+                    + " (type " + fd.getFieldType() + ")");
+        }
+
+        String col = quote(fieldCode);
+        Object val = cond.getValue();
+        if ("isNull".equals(op)) {
+            group.append(col).append(" IS NULL");
+            return;
+        }
+
+        if ("isNotNull".equals(op)) {
+            group.append(col).append(" IS NOT NULL");
+            return;
+        }
+
+        if ("in".equals(op) || "notIn".equals(op)) {
+            if (!(val instanceof Collection)) {
+                throw new IllegalArgumentException("Operator '" + op + "' requires array value for field " + fieldCode);
+            }
+
+            Collection<?> coll = (Collection<?>) val;
+            if (coll.isEmpty()) {
+                // 空集合: in → 恒假; notIn → 恒真 (不产生任何用户输入片段)
+                group.append("in".equals(op) ? "1 = 0" : "1 = 1");
+                return;
+            }
+
+            group.append(col).append("in".equals(op) ? " IN (" : " NOT IN (");
+            boolean first = true;
+            for (Object v : coll) {
+                if (!first) {
+                    group.append(",");
+                }
+
+                group.append("?");
+                groupParams.add(v);
+                first = false;
+            }
+            group.append(")");
+            return;
+        }
+
+        if (val == null) {
+            throw new IllegalArgumentException("Operator '" + op + "' requires non-null value for field " + fieldCode
+                    + " (use isNull/isNotNull instead)");
+        }
+
+        switch (op) {
+            case "eq":
+                group.append(col).append(" = ?");
+                groupParams.add(val);
+                break;
+            case "ne":
+                group.append(col).append(" <> ?");
+                groupParams.add(val);
+                break;
+            case "like":
+                group.append(col).append(" LIKE ?");
+                groupParams.add("%" + val + "%");
+                break;
+            case "notLike":
+                group.append(col).append(" NOT LIKE ?");
+                groupParams.add("%" + val + "%");
+                break;
+            case "gt":
+                group.append(col).append(" > ?");
+                groupParams.add(val);
+                break;
+            case "gte":
+                group.append(col).append(" >= ?");
+                groupParams.add(val);
+                break;
+            case "lt":
+                group.append(col).append(" < ?");
+                groupParams.add(val);
+                break;
+            case "lte":
+                group.append(col).append(" <= ?");
+                groupParams.add(val);
+                break;
+            default:
+                // 理论不可达 (STRUCTURED_OPERATORS 已过滤)
+                throw new IllegalArgumentException("Unsupported operator: " + op);
+        }
+    }
+
+    /**
+     * ORDER BY 组装 (只允许由「白名单字段 + ASC/DESC」的安全片段构成):
+     * <ol>
+     *   <li>结构化 sorts 在前 — 严格: 未知字段 / 非标识符 / 非法 dir → IllegalArgumentException (400)</li>
+     *   <li>legacy orderBy 在后 — 保持历史宽松行为: 未知字段静默跳过 (向后兼容), 方向非 asc/desc 按 ASC</li>
+     *   <li>两者都缺省 → ORDER BY id DESC</li>
+     * </ol>
+     * orderBy 先按整体正则 ^[A-Za-z0-9_ ]+$ 预检, 任何带分号/括号/引号等字符的输入根本不会被拆分.
+     */
+    private void appendOrderBy(StringBuilder sql, Map<String, FieldDefDTO> fieldIndex, RuntimeQueryDTO query) {
+        List<String> pieces = new ArrayList<>();
+        Set<String> used = new LinkedHashSet<>();
+        if (query != null && query.getSorts() != null) {
+            for (QuerySortDTO s : query.getSorts()) {
+                if (s == null) {
+                    continue;
+                }
+
+                String f = s.getFieldCode();
+                // id / create_time / update_time 是引擎给每张受管表都建的系统列, 不在 fields[] 里,
+                // 但排序必须允许 (前端表头点排序默认就落在这几列上)
+                boolean systemColumn = "id".equals(f) || "create_time".equals(f) || "update_time".equals(f);
+                if (f == null || !f.matches(IDENT_REGEX) || (!systemColumn && !fieldIndex.containsKey(f))) {
+                    throw new IllegalArgumentException("Unknown fieldCode in query sorts: " + f);
+                }
+
+                String dir = s.getDir() == null || s.getDir().trim().isEmpty()
+                        ? "ASC" : s.getDir().trim().toUpperCase();
+                if (!"ASC".equals(dir) && !"DESC".equals(dir)) {
+                    throw new IllegalArgumentException("Illegal sort direction: " + s.getDir() + " (only asc/desc allowed)");
+                }
+
+                if (used.add(f)) {
+                    pieces.add(quote(f) + " " + dir);
+                }
+            }
+        }
+
+        if (query != null && query.getOrderBy() != null && !query.getOrderBy().isEmpty()) {
+            String raw = query.getOrderBy().trim();
+            // 结构预检: 只允许「标识符 + 空白 + 可选方向」, 含 ; ( ) " ' 等任何特殊字符直接跳过 (不进 SQL)
+            if (raw.matches("^[A-Za-z_][A-Za-z0-9_]*(\\s+[A-Za-z]+)?$")) {
+                String[] tokens = raw.split("\\s+");
+                String obField = tokens[0];
+                String obDir = tokens.length > 1 ? tokens[1].toUpperCase() : "ASC";
+                if (!"ASC".equals(obDir) && !"DESC".equals(obDir)) {
+                    obDir = "ASC";
+                }
+
+                if (fieldIndex.containsKey(obField)) {
+                    if (used.add(obField)) {
+                        pieces.add(quote(obField) + " " + obDir);
+                    }
+                } else {
+                    log.warn("orderBy field not in whitelist: {}", obField);
+                }
+            } else {
+                log.warn("orderBy rejected by structural validation: {}", raw);
+            }
+        }
+
+        if (!pieces.isEmpty()) {
+            sql.append(" ORDER BY ").append(String.join(", ", pieces));
+        } else if (query == null || query.getOrderBy() == null || query.getOrderBy().isEmpty()) {
+            sql.append(" ORDER BY id DESC");
+        }
+        // 特例保持历史行为: orderBy 给了但字段不在白名单 → 既不排序也不回退默认排序
     }
 
     private void validateTable(EntityDefDTO entity) {
@@ -615,12 +995,14 @@ public class DynamicSqlBuilder {
             sb.append(",");
         }
 
-        sb.append(quote("id"));
+        // 系统列同样要带表别名前缀: list SQL 会 LEFT JOIN z_lc_dict_item / 关联表,
+        // 它们都有自己的 id, 裸 `id` 在 H2/PG 上直接 "Ambiguous column name".
+        sb.append(prefix == null ? "" : prefix).append(quote("id"));
         if (!fieldHasCode(fields, "create_time")) {
-            sb.append(",").append(quote("create_time"));
+            sb.append(",").append(prefix == null ? "" : prefix).append(quote("create_time"));
         }
         if (!fieldHasCode(fields, "update_time")) {
-            sb.append(",").append(quote("update_time"));
+            sb.append(",").append(prefix == null ? "" : prefix).append(quote("update_time"));
         }
         return sb.toString();
     }

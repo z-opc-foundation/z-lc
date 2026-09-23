@@ -35,6 +35,7 @@ public class DictAdminServiceImpl implements DictAdminService {
         if (entity.getTenantCode() == null) {
             entity.setTenantCode("default");
         }
+        requireDictCodeFree(entity.getTenantCode(), entity.getDictCode());
 
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
@@ -42,6 +43,28 @@ public class DictAdminServiceImpl implements DictAdminService {
         dictMapper.insert(entity);
         log.info("Dict created: code={}", entity.getDictCode());
         return toDTO(entity);
+    }
+
+    /**
+     * (tenant_code, dict_code) 上有唯一索引 uk_dict_tenant_code，而该索引不含 deleted 列：
+     * 软删掉的字典依然占着这个 code。所以预检必须连 deleted=1 一起查 —— 只查 deleted=0
+     * 会放过去，insert 仍旧撞索引，出来的是 500 + 一层 JDBC 包装信息，而不是"字典已存在"。
+     */
+    private void requireDictCodeFree(String tenantCode, String dictCode) {
+        if (dictCode == null) {
+            return;
+        }
+        List<DictEntity> hits = dictMapper.selectList(new QueryWrapper<DictEntity>()
+                .eq("tenant_code", tenantCode)
+                .eq("dict_code", dictCode));
+        if (hits.isEmpty()) {
+            return;
+        }
+        DictEntity hit = hits.get(0);
+        boolean softDeleted = hit.getDeleted() != null && hit.getDeleted() == 1;
+        throw new IllegalArgumentException("字典已存在: dictCode=" + dictCode + (softDeleted
+                ? "（同编码的字典此前已被删除，唯一索引仍占用该 code，请换一个编码）"
+                : "（同租户下 dictCode 必须唯一）"));
     }
 
     @Override
@@ -106,6 +129,13 @@ public class DictAdminServiceImpl implements DictAdminService {
 
     @Override
     public List<DictItemDTO> saveItems(String tenantCode, String dictCode, List<DictItemDTO> items) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (DictItemDTO item : items) {
+            String code = item.getItemCode();
+            if (code != null && !code.isEmpty() && !seen.add(code)) {
+                throw new IllegalArgumentException("字典项重复: dictCode=" + dictCode + ", itemCode=" + code);
+            }
+        }
         // soft-delete existing items first
         com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<DictItemEntity> saveUpdateWrapper =
                 new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<DictItemEntity>()
@@ -135,6 +165,43 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    public DictItemDTO addItem(String tenantCode, String dictCode, DictItemDTO item) {
+        assertItemCodeFree(tenantCode, dictCode, item.getItemCode(), null);
+        DictItemEntity entity = new DictItemEntity();
+        BeanUtils.copyProperties(item, entity);
+        entity.setId(null);
+        entity.setDictCode(dictCode);
+        entity.setTenantCode(tenantCode);
+        entity.setDeleted(0);
+        Date now = new Date();
+        entity.setCreateTime(now);
+        entity.setUpdateTime(now);
+        dictItemMapper.insert(entity);
+        return toItemDTO(entity);
+    }
+
+    @Override
+    public DictItemDTO updateItem(String tenantCode, String dictCode, DictItemDTO item) {
+        if (item.getId() == null) {
+            throw new IllegalArgumentException("dict item id required for update");
+        }
+        DictItemEntity exists = dictItemMapper.selectById(item.getId());
+        if (exists == null || !dictCode.equals(exists.getDictCode())) {
+            throw new IllegalArgumentException("dict item not found: " + item.getId());
+        }
+        assertItemCodeFree(exists.getTenantCode(), dictCode, item.getItemCode(), item.getId());
+        // 只覆盖前端会编辑的字段, tenant/dict 归属不允许被改写
+        exists.setItemCode(item.getItemCode());
+        exists.setItemLabel(item.getItemLabel());
+        exists.setItemValue(item.getItemValue());
+        exists.setSortOrder(item.getSortOrder());
+        exists.setDescription(item.getDescription());
+        exists.setUpdateTime(new Date());
+        dictItemMapper.updateById(exists);
+        return toItemDTO(exists);
+    }
+
+    @Override
     public List<DictItemDTO> listItems(String tenantCode, String dictCode) {
         List<DictItemEntity> list = dictItemMapper.selectList(
                 new QueryWrapper<DictItemEntity>()
@@ -155,6 +222,36 @@ public class DictAdminServiceImpl implements DictAdminService {
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
         return dictItemMapper.updateById(entity);
+    }
+
+    /**
+     * 同一个 (tenant, dict) 下 item_code 必须唯一 (仅统计未软删的行).
+     * <p>
+     * z_lc_dict 有 uk_dict_tenant_code, 但字典项不能加同样的唯一索引 —— 软删后重新添加
+     * 同一个 code 会撞索引。所以唯一性由这一层守住。违反它的后果不是脏数据而已:
+     * {@code DynamicSqlBuilder} 按 {@code item_code} LEFT JOIN 字典项取 label, 重复项会让
+     * 每条业务记录被 fan-out 成 N 行, 分页 total 与页脚统计同步虚高。
+     */
+    private void assertItemCodeFree(String tenantCode, String dictCode, String itemCode, Long selfId) {
+        if (itemCode == null || itemCode.isEmpty()) {
+            return;
+        }
+
+        QueryWrapper<DictItemEntity> dup = new QueryWrapper<DictItemEntity>()
+                .eq("dict_code", dictCode)
+                .eq("item_code", itemCode)
+                .eq("deleted", 0);
+        if (tenantCode != null) {
+            dup.eq("tenant_code", tenantCode);
+        }
+        if (selfId != null) {
+            dup.ne("id", selfId);
+        }
+
+        List<DictItemEntity> hits = dictItemMapper.selectList(dup);
+        if (!hits.isEmpty()) {
+            throw new IllegalArgumentException("字典项已存在: dictCode=" + dictCode + ", itemCode=" + itemCode);
+        }
     }
 
     private DictDTO toDTO(DictEntity e) {

@@ -40,6 +40,10 @@ desktop.ini
 **/coverage/
 **/*.tsbuildinfo
 
+# ============ Python（_e2e/ 门禁脚本） ============
+**/__pycache__/
+**/*.py[cod]
+
 # ============ Logs ============
 **/logs/
 **/*.log
@@ -77,3 +81,4 @@ _doc/004_skill/distill-*.md
 _doc/004_skill/ace-platform-*
 _doc/004_skill/model-evolution-plan.md
 _doc/004_skill/ace-*
+

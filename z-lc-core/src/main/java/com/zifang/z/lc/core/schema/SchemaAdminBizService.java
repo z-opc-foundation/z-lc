@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +36,18 @@ import java.util.stream.Collectors;
 public class SchemaAdminBizService implements SchemaAdminService {
 
     private static final Logger log = LogManager.getLogger(SchemaAdminBizService.class);
+
+    /** 列名规则: 字母开头, 仅字母/数字/下划线 —— 要原样进 DDL 的反引号里. */
+    public static final Pattern FIELD_CODE_RE = Pattern.compile("^[A-Za-z][A-Za-z0-9_]*$");
+
+    /**
+     * 每张受管表都由引擎自带这几列 (见 buildCreateTableDdl). 字段编码撞上它们不是"名字不优雅",
+     * 而是建表直接 Duplicate column name —— 更要紧的是撞名的列名全都是合法标识符, 前端的格式校验放不住.
+     * 小写比较: MySQL 列名不区分大小写, `ID` 一样撞 `id`.
+     */
+    public static final Set<String> SYSTEM_COLUMN_CODES = Collections.unmodifiableSet(
+            new LinkedHashSet<>(Arrays.asList("id", "tenant_code", "deleted", "create_time", "update_time")));
+
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper jsonMapper = JsonMapperFactory.getDefault();
     @Autowired
@@ -61,14 +74,16 @@ public class SchemaAdminBizService implements SchemaAdminService {
         if (req.getTenantCode() == null || req.getTenantCode().isEmpty()) {
             throw new IllegalArgumentException("tenantCode is required");
         }
-        // 唯一性校验
-        AppEntity existing = appMapper.selectOne(
+        // 唯一性校验。uk_app_tenant_code 不含 deleted 列 —— 软删掉的 app 依旧占着这个 code，
+        // 所以这里不能加 .eq("deleted", 0)：加了会放过去，insert 撞索引变成 500 且把索引名/列名透给前端。
+        List<AppEntity> hits = appMapper.selectList(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", req.getTenantCode())
-                        .eq("app_code", req.getAppCode())
-                        .eq("deleted", 0));
-        if (existing != null) {
-            throw new IllegalArgumentException("App already exists: " + req.getAppCode());
+                        .eq("app_code", req.getAppCode()));
+        if (!hits.isEmpty()) {
+            boolean occupiedByDeleted = hits.get(0).getDeleted() != null && hits.get(0).getDeleted() == 1;
+            throw new IllegalArgumentException("App already exists: " + req.getAppCode()
+                    + (occupiedByDeleted ? "（该编码此前已被删除，唯一索引仍占着它，请换一个编码）" : ""));
         }
 
         AppEntity entity = new AppEntity();
@@ -96,16 +111,17 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
         size = Math.min(size, 200);
 
+        // COUNT 不能带 ORDER BY (见 AppAdminBizService#pageApps 的同款注释)
         QueryWrapper<AppEntity> qw = new QueryWrapper<AppEntity>()
                 .eq("deleted", 0)
-                .eq(tenantCode != null, "tenant_code", tenantCode)
-                .orderByDesc("id");
+                .eq(tenantCode != null, "tenant_code", tenantCode);
 
         Long total = appMapper.selectCount(qw);
         if (total == null || total == 0) {
             return new PageResult<>(Collections.emptyList(), 0L, page, size);
         }
 
+        qw.orderByDesc("id");
         qw.last("LIMIT " + ((page - 1) * size) + "," + size);
         List<AppEntity> list = appMapper.selectList(qw);
         List<AppDTO> dtos = list.stream().map(this::toAppDTO).collect(Collectors.toList());
@@ -196,6 +212,9 @@ public class SchemaAdminBizService implements SchemaAdminService {
         if (existing != null) {
             throw new IllegalArgumentException("Entity already exists: " + req.getEntityCode());
         }
+        // 先校验再落库: 建表要等 provision 才发生，元数据一旦写进去就是永久一份坏定义，
+        // 而且 provision-all 会在第一个坏实体上抛，把同应用其他实体的表一起挡住。
+        validateFieldCodes(req.getFields());
 
         EntityEntity entity = new EntityEntity();
         BeanUtils.copyProperties(req, entity, "id", "createTime", "updateTime");
@@ -264,6 +283,8 @@ public class SchemaAdminBizService implements SchemaAdminService {
         if (e == null || e.getDeleted() == 1) {
             throw new IllegalArgumentException("Entity not found: " + id);
         }
+        // 同样在任何写入之前: 全量替换会先把旧字段软删掉，坏编码进来后再想退回去就没退路了。
+        validateFieldCodes(req.getFields());
         if (req.getEntityName() != null) {
             e.setEntityName(req.getEntityName());
         }
@@ -369,21 +390,40 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     // ===== Internal Helpers =====
 
+    /**
+     * 字段编码在写入处就要过这道闸: 撞名要等建表才炸 (裸 500 + 整应用连坐),
+     * 不合法的编码更坏 —— 建表会静默跳过它, 于是元数据说"有这一列", 物理表里没有.
+     */
+    private void validateFieldCodes(List<FieldDefDTO> fields) {
+        if (fields == null) {
+            return;
+        }
+        for (FieldDefDTO f : fields) {
+            String code = f == null ? null : f.getFieldCode();
+            if (code == null || code.trim().isEmpty()) {
+                throw new IllegalArgumentException("fieldCode is required");
+            }
+            if (!FIELD_CODE_RE.matcher(code).matches()) {
+                throw new IllegalArgumentException("字段编码不是合法列名: " + code
+                        + " (需字母开头, 仅含字母/数字/下划线)");
+            }
+            if (SYSTEM_COLUMN_CODES.contains(code.toLowerCase(Locale.ROOT))) {
+                throw new IllegalArgumentException("字段编码撞了引擎自建列: " + code
+                        + " (保留列: " + String.join(", ", SYSTEM_COLUMN_CODES) + ")");
+            }
+        }
+    }
+
     private String buildCreateTableDdl(EntityDefDTO def) {
         StringBuilder sb = new StringBuilder();
         sb.append("CREATE TABLE IF NOT EXISTS `").append(def.getTableName()).append("` (\n");
         sb.append("  `id` BIGINT NOT NULL AUTO_INCREMENT,\n");
 
+        // 这里以前对撞名/非法编码是 `continue` 静默跳过: 建表照样返回"成功", 少几列没人知道。
+        validateFieldCodes(def.getFields());
+
         if (def.getFields() != null) {
             for (FieldDefDTO f : def.getFields()) {
-                if (f.getFieldCode() == null) {
-                    continue;
-                }
-
-                if (!f.getFieldCode().matches("^[A-Za-z][A-Za-z0-9_]*$")) {
-                    continue;
-                }
-
                 String colType = DynamicSqlBuilder.jdbcType(f.getFieldType(), f.getFieldLength(), f.getScale());
                 sb.append("  `").append(f.getFieldCode()).append("` ").append(colType);
                 if (f.getRequired() != null && f.getRequired()) {

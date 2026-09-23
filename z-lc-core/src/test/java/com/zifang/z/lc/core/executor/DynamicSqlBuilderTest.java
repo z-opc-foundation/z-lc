@@ -638,8 +638,22 @@ public class DynamicSqlBuilderTest {
         field.setDictCode("status_dict");
         entity.setFields(Collections.singletonList(field));
         String result = builder.buildJoinClauses(entity);
-        assertTrue(result.contains("LEFT JOIN z_lc_dict_item d_status"));
+        // 字典项必须先去重再 join: 直接 join 物理表时, 重复的 item_code 会把业务记录 fan-out 成多行
+        assertTrue(result.contains("FROM z_lc_dict_item i"));
+        assertTrue(result.contains("x.id < i.id"));
+        assertTrue(result.contains("d_status"));
         assertTrue(result.contains("dict_code = ?"));
+        assertEquals("每个 dictCode 字段只允许一个占位符", 1, countChar(result, '?'));
+    }
+
+    private static int countChar(String s, char c) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == c) {
+                n++;
+            }
+        }
+        return n;
     }
 
     @Test

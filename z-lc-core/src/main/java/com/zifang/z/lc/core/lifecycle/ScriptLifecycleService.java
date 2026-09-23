@@ -36,7 +36,12 @@ public class ScriptLifecycleService implements FormDataLifecycleService {
 
     private static final Logger log = LogManager.getLogger(ScriptLifecycleService.class);
 
-    @Autowired
+    /**
+     * z-script 引擎不在 z-lc 的依赖里 (standalone 部署时压根没有这个 bean).
+     * 之前 core.lifecycle 包没被 LcAutoConfiguration 枚举到, 本类从未注册, 所以这个
+     * 硬依赖一直没暴露; 改成整包扫描后必须让它可选, 否则整个应用启不来.
+     */
+    @Autowired(required = false)
     private DynamicApiExecutor scriptExecutor;
 
     /**
@@ -60,6 +65,12 @@ public class ScriptLifecycleService implements FormDataLifecycleService {
         String scriptCode = resolveScriptCode(ctx);
         if (scriptCode == null || scriptCode.isEmpty()) {
             return Result.success(true); // 没有配置脚本，正常放行
+        }
+
+        if (scriptExecutor == null) {
+            // 未接入 z-script: 记一次 warn 后放行, 不能让"没装脚本引擎"把 CRUD 主链路打死
+            log.warn("[ScriptLifecycle] z-script DynamicApiExecutor 不可用, 跳过 hook script={}", scriptCode);
+            return Result.success(true);
         }
 
         log.info("[ScriptLifecycle] event={} script={} app={} model={}",

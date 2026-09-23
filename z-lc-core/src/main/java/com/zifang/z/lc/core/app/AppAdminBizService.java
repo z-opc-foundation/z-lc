@@ -52,14 +52,16 @@ public class AppAdminBizService implements AppAdminService {
         if (req.getTenantCode() == null || req.getTenantCode().isEmpty()) {
             throw new IllegalArgumentException("tenantCode is required");
         }
-        // 唯一性校验
-        AppEntity existing = appMapper.selectOne(
+        // 唯一性校验。uk_app_tenant_code 不含 deleted 列 —— 软删掉的 app 依旧占着这个 code，
+        // 所以这里不能加 .eq("deleted", 0)：加了会放过去，insert 撞索引变成 500 且把索引名/列名透给前端。
+        List<AppEntity> hits = appMapper.selectList(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", req.getTenantCode())
-                        .eq("app_code", req.getAppCode())
-                        .eq("deleted", 0));
-        if (existing != null) {
-            throw new IllegalArgumentException("App already exists: " + req.getAppCode());
+                        .eq("app_code", req.getAppCode()));
+        if (!hits.isEmpty()) {
+            boolean occupiedByDeleted = hits.get(0).getDeleted() != null && hits.get(0).getDeleted() == 1;
+            throw new IllegalArgumentException("App already exists: " + req.getAppCode()
+                    + (occupiedByDeleted ? "（该编码此前已被删除，唯一索引仍占着它，请换一个编码）" : ""));
         }
 
         AppEntity entity = new AppEntity();
@@ -139,16 +141,19 @@ public class AppAdminBizService implements AppAdminService {
         }
         size = Math.min(size, 200);
 
+        // COUNT 语句不能带 ORDER BY: MySQL 宽松所以一直没暴露,
+        // 换成 H2(MODE=MySQL)/PostgreSQL 会直接 "Column id must be in the GROUP BY list" 报错.
+        // 排序只在取数那一条 SQL 上加.
         QueryWrapper<AppEntity> qw = new QueryWrapper<AppEntity>()
                 .eq("deleted", 0)
-                .eq(tenantCode != null, "tenant_code", tenantCode)
-                .orderByDesc("id");
+                .eq(tenantCode != null, "tenant_code", tenantCode);
 
         Long total = appMapper.selectCount(qw);
         if (total == null || total == 0) {
             return new PageResult<>(Collections.emptyList(), 0L, page, size);
         }
 
+        qw.orderByDesc("id");
         qw.last("LIMIT " + ((page - 1) * size) + "," + size);
         List<AppEntity> list = appMapper.selectList(qw);
         List<AppDTO> dtos = list.stream().map(this::toAppDTO).collect(Collectors.toList());

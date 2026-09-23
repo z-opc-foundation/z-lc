@@ -2,18 +2,21 @@ package com.zifang.z.lc.core.mapper;
 
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
+import com.zifang.z.lc.core.schema.SchemaAdminBizService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -140,8 +143,8 @@ public class DbTableMapperService {
      */
     public List<EntityDefDTO> scanTables(String tableNamePrefix, String schema) {
         List<EntityDefDTO> result = new ArrayList<>();
-        try {
-            DatabaseMetaData meta = jdbcTemplate.getDataSource().getConnection().getMetaData();
+        try (Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+            DatabaseMetaData meta = conn.getMetaData();
             String catalog = schema;
             String searchPattern = tableNamePrefix == null ? "%" : tableNamePrefix + "%";
 
@@ -169,9 +172,8 @@ public class DbTableMapperService {
      * 映射单张表为 EntityDefDTO
      */
     public EntityDefDTO mapTable(String tableName, String schema) {
-        try {
-            DatabaseMetaData meta = jdbcTemplate.getDataSource().getConnection().getMetaData();
-            return mapTable(meta, tableName, null);
+        try (Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+            return mapTable(conn.getMetaData(), tableName, null);
         } catch (Exception e) {
             throw new RuntimeException("Failed to map table: " + tableName, e);
         }
@@ -191,6 +193,7 @@ public class DbTableMapperService {
 
         // 读取列信息
         List<FieldDefDTO> fields = new ArrayList<>();
+        List<String> skippedSystemColumns = new ArrayList<>();
         Set<String> primaryKeys = new HashSet<>();
 
         // 读取主键
@@ -210,6 +213,14 @@ public class DbTableMapperService {
                 long columnSize = rs.getLong("COLUMN_SIZE");
                 int decimalDigits = rs.getInt("DECIMAL_DIGITS");
                 String isNullable = rs.getString("IS_NULLABLE");
+
+                // 这几列引擎会给每张受管表自建, 映射成业务字段就等着建表撞 Duplicate column name。
+                // 跳过必须留痕: 逆向映射的表里它们是真存在的列, 不写一句就等于静默丢数据。
+                if (colName != null
+                        && SchemaAdminBizService.SYSTEM_COLUMN_CODES.contains(colName.toLowerCase(Locale.ROOT))) {
+                    skippedSystemColumns.add(colName);
+                    continue;
+                }
 
                 field.setFieldCode(colName);
                 field.setFieldName(colRemarks != null && !colRemarks.isEmpty() ? colRemarks : colName);
@@ -247,6 +258,10 @@ public class DbTableMapperService {
             }
         }
 
+        if (!skippedSystemColumns.isEmpty()) {
+            entity.setDescription("逆向映射自: " + tableName
+                    + "; 已跳过引擎自建列: " + String.join(", ", skippedSystemColumns));
+        }
         entity.setFields(fields);
         log.info("Mapped table {} → entity={} ({} fields)", tableName, entity.getEntityCode(), fields.size());
         return entity;

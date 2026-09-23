@@ -52,38 +52,51 @@ public class EventController {
     }
 
     /**
+     * 事件链头节点: 客户端要追加事件就得先拿到它, 否则没法填 parentEventId.
+     * <p>
+     * 之前这个查询口缺失, 而 parentEventId 是因果校验的必填项, 结果就是除了内部
+     * {@code SchemaAdminBizService} 之外, 任何外部调用者追加事件都必然撞 409.
+     */
+    @Operation(summary = "获取 app 事件链的最后一个事件 (追加前用来取 parentEventId)")
+    @GetMapping("/event/last")
+    public Result<EventDTO> lastEvent(@RequestParam String appCode,
+                                      @RequestParam(required = false) String tenantCode) {
+        return Result.success(eventService.getLastEvent(tenantCode, appCode));
+    }
+
+    /**
      * 追加一个 schema 事件.
      * <p>
-     * 事件追加时会进行 {@code parent_event_id} 因果校验: 若与最新事件 ID 不一致将抛出
-     * {@link EventConflictException}, 接口层会将其映射为 HTTP 409.
+     * 事件追加时会进行 {@code parent_event_id} 因果校验, 冲突时返回 code=409.
      *
      * @param appCode 应用编码
      * @param req     事件追加请求体 (含 tenantCode, eventType, payload, parentEventId 等)
-     * @return 嵌套的 {@link Result}, 内层在因果冲突时返回 409, 参数缺失时返回 400
+     * @return 单层 {@link Result}: 因果冲突 → success:false + code 409; 参数缺失 → code 400
      */
     @Operation(summary = "追加 schema 事件")
     @PostMapping("/event")
-    public Result<Result<EventDTO>> append(@RequestParam String appCode,
-                                           @RequestBody EventAppendRequest req) {
+    public Result<EventDTO> append(@RequestParam String appCode,
+                                   @RequestBody EventAppendRequest req) {
         if (req == null) {
-            return Result.<Result<EventDTO>>fail("body is null").code(400);
+            return Result.<EventDTO>fail("body is null").code(400);
         }
         if (req.getTenantCode() == null || req.getTenantCode().isEmpty()) {
-            return Result.<Result<EventDTO>>fail("tenantCode is required").code(400);
+            return Result.<EventDTO>fail("tenantCode is required").code(400);
         }
         if (req.getEventType() == null) {
-            return Result.<Result<EventDTO>>fail("eventType is required").code(400);
+            return Result.<EventDTO>fail("eventType is required").code(400);
         }
         try {
-            EventDTO ev = eventService.append(appCode, req);
-            return Result.success(Result.success(ev));
+            return Result.success(eventService.append(appCode, req));
         } catch (EventConflictException ex) {
             log.warn("Event conflict: app={}, expected={}, actual={}",
                     appCode, ex.getExpectedParentEventId(), ex.getActualLastEventId());
-            return Result.success(Result.<EventDTO>fail(ex.getMessage()).code(409));
+            // 不能写成 Result.success(Result.fail(...)): 外层信封 success=true 会让任何
+            // 只看外层判成功的客户端 (网关 / SDK / curl) 把一次失败写入当成成功, 静默丢写.
+            return Result.<EventDTO>fail(ex.getMessage()).code(409);
         } catch (RuntimeException ex) {
             log.warn("Append event failed: app={}, msg={}", appCode, ex.getMessage());
-            return Result.<Result<EventDTO>>fail(ex.getMessage()).code(400);
+            return Result.<EventDTO>fail(ex.getMessage()).code(400);
         }
     }
 }

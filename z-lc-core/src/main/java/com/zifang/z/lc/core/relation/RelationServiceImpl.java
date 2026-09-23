@@ -31,6 +31,7 @@ public class RelationServiceImpl implements RelationService {
         if (entity.getTenantCode() == null) {
             entity.setTenantCode("default");
         }
+        requireRelationCodeFree(entity);
 
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
@@ -38,6 +39,27 @@ public class RelationServiceImpl implements RelationService {
         relationMapper.insert(entity);
         log.info("Relation created: app={} code={}", entity.getAppCode(), entity.getRelationCode());
         return toDTO(entity);
+    }
+
+    /**
+     * uk_relation_tenant_code 是 (tenant_code, app_code, relation_code)，不含 deleted ——
+     * 软删掉的关系仍然占着这个 code。预检若照抄别处的 .eq("deleted", 0)，重复编码就会放过去、
+     * insert 撞索引，前端拿到的是 500 加一句带索引名和列名的 H2 原文。
+     */
+    private void requireRelationCodeFree(RelationEntity entity) {
+        if (entity.getRelationCode() == null) {
+            return;
+        }
+        List<RelationEntity> hits = relationMapper.selectList(new QueryWrapper<RelationEntity>()
+                .eq("tenant_code", entity.getTenantCode())
+                .eq("app_code", entity.getAppCode())
+                .eq("relation_code", entity.getRelationCode()));
+        if (hits.isEmpty()) {
+            return;
+        }
+        boolean occupiedByDeleted = hits.get(0).getDeleted() != null && hits.get(0).getDeleted() == 1;
+        throw new IllegalArgumentException("关系已存在: relationCode=" + entity.getRelationCode()
+                + (occupiedByDeleted ? "（该编码此前已被删除，唯一索引仍占着它，请换一个编码）" : ""));
     }
 
     @Override

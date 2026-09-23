@@ -86,6 +86,43 @@
             <artifactId>z-boot-datasource-starter</artifactId>
             <version>1.0.3</version>
         </dependency>
+
+        <!-- 测试: Spring Boot Test (JUnit5 + MockMvc + AssertJ + Jackson) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.logback</groupId>
+                    <artifactId>logback-classic</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 测试: H2 (MODE=MySQL) 内存库, 跑真实 MetaController 契约 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            z-lc-core 把 z-agent-llm-gateway-core 声明成 <optional>true</optional>, 所以它不会传递进来.
+            AiModelingService 是 core.ai 包下的 @Component 且方法签名引用了 LlmGatewayService,
+            LcAutoConfiguration 整包扫 core 之后, 缺这个类会让上下文 introspect 直接失败
+            (NoClassDefFoundError: LlmGatewayService). 生产 standalone 由 z-lc-admin 显式引;
+            这里补齐 test scope 让集成测试能起上下文.
+        -->
+        <dependency>
+            <groupId>com.zifang</groupId>
+            <artifactId>z-agent-llm-gateway-core</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

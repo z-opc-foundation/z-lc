@@ -23,7 +23,9 @@
         <module>z-lc-core</module>
         <module>z-lc-design</module>
         <module>z-lc-web</module>
-        <!-- z-lc-admin 已废弃: 排除 build, 避免污染 -->
+        <!-- z-lc-admin: standalone 启动入口, 端到端验证用 (dev profile 走 H2, 零外部依赖).
+             生产集成仍走 main-starter, 此处恢复 build 以便独立跑通全链路. -->
+        <module>z-lc-admin</module>
     </modules>
 
     <properties>

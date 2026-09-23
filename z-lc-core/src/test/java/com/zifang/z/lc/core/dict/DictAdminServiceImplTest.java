@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.dict;
 
+import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.zifang.z.lc.common.dto.DictDTO;
 import com.zifang.z.lc.common.dto.DictItemDTO;
@@ -53,6 +54,9 @@ public class DictAdminServiceImplTest {
         InvocationHandler dictHandler = new InvocationHandler() {
             @Override
             public Object invoke(Object proxy, Method method, Object[] args) {
+                if ("selectList".equals(method.getName())) {
+                    return matchDicts(args.length > 0 ? args[0] : null);
+                }
                 return handleEntityOp(dictStore, dictIdGen, method, args);
             }
         };
@@ -130,6 +134,23 @@ public class DictAdminServiceImplTest {
         f.set(target, value);
     }
 
+    /**
+     * selectList 的近似实现: 默认返回全部字典行(含软删), 只有当 QueryWrapper 里真的出现 deleted
+     * 谓词时才过滤掉软删行. 动态代理本来会彻底忽略 wrapper —— 那样"预检漏加 .eq(deleted,0)"这类
+     * 缺陷在单测层永远暴露不出来, 而它正是软删 dictCode 重新创建时报 500 的根因
+     * (uk_dict_tenant_code 不含 deleted 列).
+     */
+    private List<DictEntity> matchDicts(Object wrapper) {
+        List<DictEntity> rows = new ArrayList<>(dictStore.values());
+        if (wrapper instanceof AbstractWrapper) {
+            String seg = ((AbstractWrapper<?, ?, ?>) wrapper).getSqlSegment();
+            if (seg != null && seg.contains("deleted")) {
+                rows.removeIf(e -> e.getDeleted() != null && e.getDeleted() == 1);
+            }
+        }
+        return rows;
+    }
+
     @Test
     public void shouldBeAnnotatedWithService() {
         assertNotNull("DictAdminServiceImpl 应当标注 @Service",
@@ -166,6 +187,41 @@ public class DictAdminServiceImplTest {
         DictDTO dto = service.createDict(req);
 
         assertEquals("t1", dto.getTenantCode());
+    }
+
+    @Test
+    public void createDictShouldRejectDuplicateDictCode() {
+        DictDTO req = new DictDTO();
+        req.setDictCode("gender");
+        req.setDictName("性别");
+        service.createDict(req);
+
+        try {
+            service.createDict(req);
+            throw new AssertionError("重复 dictCode 应抛 IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            assertTrue("报错应带上冲突的 dictCode, 实际: " + expected.getMessage(),
+                    expected.getMessage().contains("gender"));
+        }
+        assertEquals("冲突时不应插入新行", 1, dictStore.size());
+    }
+
+    @Test
+    public void createDictShouldRejectCodeHeldBySoftDeletedDict() {
+        // 软删不会释放 dict_code: uk_dict_tenant_code 只包含 (tenant_code, dict_code)。
+        // 预检若加上 .eq("deleted",0), 这里就会放行到 insert 撞索引 -> HTTP 500 + 索引名透给前端。
+        DictDTO req = new DictDTO();
+        req.setDictCode("gender");
+        DictDTO created = service.createDict(req);
+        service.deleteDict(created.getId());
+
+        try {
+            service.createDict(req);
+            throw new AssertionError("被软删字典占用的 dictCode 应抛 IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            assertTrue("报错应说明编码被已删除字典占用, 实际: " + expected.getMessage(),
+                    expected.getMessage().contains("已被删除"));
+        }
     }
 
     @Test

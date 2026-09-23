@@ -368,8 +368,10 @@ public class DynamicSqlBuilderExtendedTest {
         EntityDefDTO e = entity("lc_test", f);
 
         String join = builder.buildJoinClauses(e);
-        assertTrue(join.contains("LEFT JOIN z_lc_dict_item"));
+        assertTrue(join.contains("LEFT JOIN (SELECT"));
+        assertTrue(join.contains("FROM z_lc_dict_item i"));
         assertTrue(join.contains("d_status"));
+        assertTrue("重复字典项必须在 join 前被折叠掉", join.contains("x.id < i.id"));
     }
 
     @Test

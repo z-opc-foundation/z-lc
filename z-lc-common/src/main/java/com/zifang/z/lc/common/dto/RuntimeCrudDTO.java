@@ -26,6 +26,15 @@ public class RuntimeCrudDTO implements Serializable {
      */
     private String parentEventId;
 
+    /**
+     * 更新前的整行现值, **由服务端在 update 路径自己查出来塞进去**, 只给校验用.
+     * <p>
+     * 存在的理由: RequiredCheck 原来只看提交的 fieldValues, 于是"改一个字段"的部分更新
+     * 会因为其它必填字段没出现在请求里而被拒 —— 表格内联编辑、看板拖拽全都撞上.
+     * 校验要看的是"改完之后的那一行", 不是"这次提交了哪几列".
+     */
+    private Map<String, Object> existingValues = new LinkedHashMap<String, Object>();
+
     public String getTenantCode() {
         return tenantCode;
     }
@@ -56,6 +65,14 @@ public class RuntimeCrudDTO implements Serializable {
 
     public void setFieldValues(Map<String, Object> fieldValues) {
         this.fieldValues = fieldValues;
+    }
+
+    public Map<String, Object> getExistingValues() {
+        return existingValues;
+    }
+
+    public void setExistingValues(Map<String, Object> existingValues) {
+        this.existingValues = existingValues == null ? new LinkedHashMap<String, Object>() : existingValues;
     }
 
     public String getParentEventId() {
