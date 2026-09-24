@@ -6,7 +6,7 @@ import {
   type AggregateRequest,
   type AggregateRow,
 } from '@/api/runtime';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import {
   METRIC_LABELS,
   buildSeries,

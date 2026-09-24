@@ -18,7 +18,7 @@ import { IMPORT_MAX_ROWS_REPORTED, importCommit, importPreview } from '@/api/run
 import type { ImportRowWarning } from '@/api/runtime';
 import { autoMap, parseCsvFile } from '@/views/grid/csv';
 import type { ParsedCsv } from '@/views/grid/csv';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 
 const { Text } = Typography;
 

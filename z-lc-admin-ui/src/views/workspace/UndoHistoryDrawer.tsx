@@ -6,7 +6,7 @@ import { changeHistory, parseImage, undoLast } from '@/api/undo';
 import { getActor } from '@/api/actor';
 import { ErrorBlock } from '@/components/StateBlock';
 import type { ChangeEntry } from '@/api/undo';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import { formatTime } from '@/views/admin/_scope';
 
 const { Text } = Typography;

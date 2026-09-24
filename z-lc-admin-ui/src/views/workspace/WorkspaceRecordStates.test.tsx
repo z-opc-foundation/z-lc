@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { createWorkspaceContext, resolveEntityFields } from '@/fields';
+import { createWorkspaceContext, resolveEntityFields } from '@yuku123/render/fields';
 import { GalleryView } from '@/views/workspace/GalleryView';
 import { CalendarView } from '@/views/workspace/CalendarView';
 import { UndoHistoryDrawer } from '@/views/workspace/UndoHistoryDrawer';

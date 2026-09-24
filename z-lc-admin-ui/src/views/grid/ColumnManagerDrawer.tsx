@@ -19,7 +19,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Button, Drawer, InputNumber, Space, Switch, Tooltip, Typography } from 'antd';
 import { EyeInvisibleOutlined, EyeOutlined, HolderOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnMeta } from '@/api/types';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import { headerOf } from './csv';
 import { projectColumns } from './gridModel';
 

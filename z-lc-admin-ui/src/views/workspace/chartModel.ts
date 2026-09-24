@@ -1,7 +1,7 @@
 import { parseViewConfig } from '@/api/viewConfig';
 import type { Conjunction, QueryCondition, ViewConfigDTO } from '@/api/types';
 import type { AggregateRow, TimeGroup } from '@/api/runtime';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import { normalise } from './viewConfigModel';
 import type { WorkspaceViewState } from './viewConfigModel';
 

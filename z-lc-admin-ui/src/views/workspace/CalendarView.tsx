@@ -4,8 +4,8 @@ import { LeftOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
 import { listRecords } from '@/api/runtime';
 import { StateBlock } from '@/components/StateBlock';
 import type { Conjunction, EntityDefDTO, LcRow, QueryCondition, QuerySort } from '@/api/types';
-import type { ResolvedField } from '@/fields';
-import { readFieldValue } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
+import { readFieldValue } from '@yuku123/render/fields';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;

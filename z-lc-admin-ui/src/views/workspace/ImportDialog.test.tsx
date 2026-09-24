@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { createWorkspaceContext, resolveEntityFields } from '@/fields';
+import { createWorkspaceContext, resolveEntityFields } from '@yuku123/render/fields';
 import { ImportDialog } from '@/views/workspace/ImportDialog';
 import type { EntityDefDTO, FieldDefDTO } from '@/api/types';
 

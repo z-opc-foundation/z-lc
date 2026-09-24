@@ -21,7 +21,7 @@ import type {
 } from '@/api/types';
 import { createViewConfig, newViewConfigDraft } from '@/api/viewConfig';
 import type { TimeGroup } from '@/api/runtime';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import { StateBlock } from '@/components/StateBlock';
 import type { FilterState } from '@/views/grid/FilterBar';
 import { BarChart, LineChart, NumberCard, PieChart } from './Charts';

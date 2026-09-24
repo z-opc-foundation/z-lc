@@ -1,5 +1,5 @@
 import type { ColumnMeta, QueryCondition, QuerySort } from '@/api/types';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 
 /**
  * Pure grid model helpers: merging the entity schema with the user's persisted

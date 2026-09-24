@@ -7,6 +7,47 @@
  */
 
 /* ------------------------------------------------------------------ */
+/* 字段契约 —— 权威定义在 @yuku123/render/fields（共享渲染引擎）          */
+/*                                                                    */
+/* 字段类型注册表搬进引擎后，DTO 与算子词表跟着走，避免两边各留一份长歪。   */
+/* 本文件只做再导出，其余 z-lc 专属 DTO 仍然留在这里。                    */
+/* ------------------------------------------------------------------ */
+
+export {
+  FIELD_TYPES,
+  LEGACY_OPERATORS,
+  NULL_OPERATORS,
+  STRUCTURED_OPERATORS,
+  normalizeOperator,
+} from '@yuku123/render/fields';
+export type {
+  CellValueType,
+  Conjunction,
+  DictDTO,
+  DictItemDTO,
+  EntityDefDTO,
+  FieldDefDTO,
+  FieldType,
+  FieldTypeDescriptor,
+  FilterOperator,
+  LcRow,
+  QueryCondition,
+  QuerySort,
+  ViewConfigDTO,
+} from '@yuku123/render/fields';
+
+// 本文件下方的 z-lc 专属 DTO 仍要引用这几个形状；`export ... from` 不产生本地绑定，得单独 import。
+import type {
+  Conjunction,
+  DictDTO,
+  EntityDefDTO,
+  FieldTypeDescriptor,
+  QueryCondition,
+  QuerySort,
+  ViewConfigDTO,
+} from '@yuku123/render/fields';
+
+/* ------------------------------------------------------------------ */
 /* Envelope                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -35,25 +76,12 @@ export interface PageResult<T> {
 /* Enums / unions derived from backend constants                       */
 /* ------------------------------------------------------------------ */
 
-/** `FieldDefDTO.fieldType`. Unknown values must be tolerated at runtime. */
-export const FIELD_TYPES = [
-  'STRING',
-  'INT',
-  'LONG',
-  'DECIMAL',
-  'BOOLEAN',
-  'DATE',
-  'DATETIME',
-  'TEXT',
-  'JSON',
-  'REF',
-] as const;
-export type FieldType = (typeof FIELD_TYPES)[number];
-
-/** How a cell value is physically represented in a grid row. */
-export type CellValueType = 'String' | 'Number' | 'Boolean' | 'DateTime';
-
-/** `ViewConfigDTO.viewType`. */
+/**
+ * `ViewConfigDTO.viewType` —— 视图词表暂时留在本仓：@yuku123/render 1.0.1 的 VIEW_TYPES
+ * 还没有 PIVOT（交叉表是 z-lc 后长出来的视图），本仓的 VIEW_TABS/activeView 都按
+ * `ViewType` 收窄比较，改用引擎的会直接把 typecheck 打断。
+ * 等引擎 contract 补上 PIVOT 后，这两行跟着 FIELD_TYPES 一起再导出。
+ */
 export const VIEW_TYPES = ['LIST', 'FORM', 'DETAIL', 'KANBAN', 'GALLERY', 'CALENDAR', 'CHART', 'PIVOT'] as const;
 export type ViewType = (typeof VIEW_TYPES)[number];
 
@@ -84,79 +112,14 @@ export const APP_STATUSES = ['DRAFT', 'PUBLISHED', 'ARCHIVED'] as const;
 export type AppStatus = (typeof APP_STATUSES)[number];
 
 /**
- * Filter operators implemented by the backend.
- *
- * Two dialects exist and the UI must know both:
- *  1. LEGACY `filters` map — operator is encoded in the key suffix and
- *     `DynamicSqlBuilder.appendLegacyFilter` implements only
- *     eq/like/gt/gte/lt/lte/in, silently degrading anything else to `eq`.
- *     Every condition is ANDed.
- *  2. STRUCTURED `conditions` + `conjunction` — implements the full list below
- *     and honours AND/OR. This is what the grid sends.
+ * 字段类型集合、算子词表（legacy `filters` 与 structured `conditions` 两种方言）、
+ * 别名归一与 `LcRow` / `QueryCondition` / `QuerySort` 的权威定义都在
+ * `@yuku123/render/fields` —— 前端能用哪些算子由字段注册表决定，两处各留一份必然漂移。
  */
-export const STRUCTURED_OPERATORS = [
-  'eq',
-  'ne',
-  'like',
-  'notLike',
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-  'in',
-  'notIn',
-  'isNull',
-  'isNotNull',
-] as const;
-export type FilterOperator = (typeof STRUCTURED_OPERATORS)[number];
-
-/** Operators that the legacy `filters` map can express. */
-export const LEGACY_OPERATORS: readonly FilterOperator[] = ['eq', 'like', 'gt', 'gte', 'lt', 'lte', 'in'];
-
-/**
- * `/meta/field-types` may advertise aliases (`notNull`) that the query builder
- * spells differently (`isNotNull`). Normalise so the wire never sees a
- * silent-fallback operator.
- */
-const OPERATOR_ALIASES: Record<string, FilterOperator> = {
-  eq: 'eq', equals: 'eq',
-  ne: 'ne', neq: 'ne', notEq: 'ne',
-  like: 'like', contains: 'like',
-  notLike: 'notLike', notContains: 'notLike',
-  gt: 'gt', gte: 'gte', ge: 'gte',
-  lt: 'lt', lte: 'lte', le: 'lte',
-  in: 'in', notIn: 'notIn',
-  isNull: 'isNull', null: 'isNull',
-  isNotNull: 'isNotNull', notNull: 'isNotNull', notEmpty: 'isNotNull',
-};
-
-export function normalizeOperator(raw: string | null | undefined): FilterOperator | null {
-  if (!raw) return null;
-  return OPERATOR_ALIASES[raw] ?? OPERATOR_ALIASES[raw.toLowerCase()] ?? null;
-}
-
-/** Operators taking no value. */
-export const NULL_OPERATORS: readonly FilterOperator[] = ['isNull', 'isNotNull'];
-
-export type Conjunction = 'AND' | 'OR';
-
-export interface QueryCondition {
-  fieldCode: string;
-  operator: FilterOperator;
-  value?: unknown;
-}
-
-export interface QuerySort {
-  fieldCode: string;
-  dir: 'asc' | 'desc';
-}
 
 /* ------------------------------------------------------------------ */
 /* Runtime rows                                                        */
 /* ------------------------------------------------------------------ */
-
-/** A row from `/api/lc/runtime/list`. Keys are snake_case DB columns. */
-export type LcRow = Record<string, unknown>;
 
 /**
  * Filter map sent to the runtime list endpoint. The KEY carries the operator
@@ -219,36 +182,6 @@ export interface AppUpdateReq {
   icon?: string;
 }
 
-export interface FieldDefDTO {
-  id?: number | null;
-  tenantCode?: string | null;
-  entityId?: number | null;
-  fieldCode: string;
-  fieldName: string;
-  /** FieldType, but typed as string: the backend accepts anything and defaults to STRING. */
-  fieldType: FieldType | string;
-  required?: boolean | null;
-  defaultValue?: string | null;
-  dictCode?: string | null;
-  refEntity?: string | null;
-  fieldLength?: number | null;
-  scale?: number | null;
-  sortOrder?: number | null;
-  description?: string | null;
-}
-
-export interface EntityDefDTO {
-  id?: number | null;
-  tenantCode?: string | null;
-  appCode: string;
-  entityCode: string;
-  entityName: string;
-  tableName?: string | null;
-  description?: string | null;
-  currentVersion?: number | null;
-  fields?: FieldDefDTO[];
-}
-
 /* ------------------------------------------------------------------ */
 /* Events                                                              */
 /* ------------------------------------------------------------------ */
@@ -280,49 +213,11 @@ export interface EventDTO {
 /* Dict                                                                */
 /* ------------------------------------------------------------------ */
 
-export interface DictItemDTO {
-  id?: number | null;
-  tenantCode?: string | null;
-  dictCode: string;
-  itemCode: string;
-  itemLabel: string;
-  itemValue: string;
-  sortOrder?: number | null;
-  description?: string | null;
-}
-
-export interface DictDTO {
-  id?: number | null;
-  tenantCode?: string | null;
-  dictCode: string;
-  dictName: string;
-  description?: string | null;
-  status?: string | null;
-  createTime?: string | number | null;
-  updateTime?: string | number | null;
-  items?: DictItemDTO[];
-}
+/** `DictDTO` / `DictItemDTO` / `ViewConfigDTO` 见文件头再导出。 */
 
 /* ------------------------------------------------------------------ */
 /* View config / Relation                                              */
 /* ------------------------------------------------------------------ */
-
-export interface ViewConfigDTO {
-  id?: number | null;
-  entityCode: string;
-  appCode: string;
-  viewType: ViewType | string;
-  /**
-   * JSON *string* — must be parsed on read and stringified on write.
-   * Nullable because the `config` column is a nullable TEXT and the Java DTO
-   * is a plain `String`: a view row saved without config really does come back
-   * as `null`, so callers must handle it.
-   */
-  config: string | null;
-  tenantCode?: string | null;
-  createTime?: string | number | null;
-  updateTime?: string | number | null;
-}
 
 export interface ViewConfigCreateReq {
   entityCode: string;
@@ -506,19 +401,6 @@ export interface RawSuccessData<T> {
 /* ------------------------------------------------------------------ */
 /* Meta endpoints (added by the backend agent in parallel)             */
 /* ------------------------------------------------------------------ */
-
-export interface FieldTypeDescriptor {
-  fieldType: string;
-  cellValueType: CellValueType;
-  label: string;
-  dbType: string;
-  widget: string;
-  sortable: boolean;
-  groupable: boolean;
-  filterable: boolean;
-  inlineEditable: boolean;
-  operators: string[];
-}
 
 export interface MetaBundle {
   app: AppDTO;

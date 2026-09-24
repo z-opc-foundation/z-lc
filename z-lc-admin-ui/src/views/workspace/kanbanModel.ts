@@ -1,4 +1,4 @@
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 
 /**
  * 看板分组字段的候选与优先级.

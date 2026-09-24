@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { useState } from 'react';
 import type { ComponentProps } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { createWorkspaceContext, resolveEntityFields } from '@/fields';
+import { createWorkspaceContext, resolveEntityFields } from '@yuku123/render/fields';
 import { ChartView } from '@/views/workspace/ChartView';
 import type { EntityDefDTO, FieldDefDTO, ViewConfigDTO } from '@/api/types';
 import type { FilterState } from '@/views/grid/FilterBar';

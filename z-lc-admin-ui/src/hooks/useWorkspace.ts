@@ -1,8 +1,30 @@
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { fetchWorkspaceMeta } from '@/api/meta';
 import { getApp } from '@/api/app';
-import { createWorkspaceContext } from '@/fields';
+import { listRecords } from '@/api/runtime';
+import { createWorkspaceContext } from '@yuku123/render/fields';
+import type { FieldServices } from '@yuku123/render/fields';
 import { DEFAULT_TENANT_CODE } from '@/api/client';
+
+/**
+ * 共享渲染引擎不持传输层：REF 选择器的候选记录由这里接回 z-lc 的运行时查询。
+ * 关键字命中走 `like`，与 `DynamicSqlBuilder` 的 structured conditions 口径一致。
+ */
+const fieldServices: FieldServices = {
+  loadReference: ({ entityCode, appCode, tenantCode, labelField, keyword, page, size }) =>
+    listRecords(
+      entityCode,
+      { appCode, tenantCode },
+      {
+        page,
+        size,
+        conditions:
+          keyword && labelField
+            ? [{ fieldCode: labelField, operator: 'like' as const, value: keyword }]
+            : [],
+      },
+    ).then((result) => result.records ?? []),
+};
 
 /**
  * Shared metadata loader for an app workspace.
@@ -34,8 +56,9 @@ export function useWorkspace(appCode: string | undefined, tenantCode = DEFAULT_T
         dicts: query.data?.dicts,
         views: query.data?.views,
         fieldTypes: query.data?.fieldTypes,
+        services: fieldServices,
       })
-    : createWorkspaceContext({ appCode: appCode ?? '', tenantCode });
+    : createWorkspaceContext({ appCode: appCode ?? '', tenantCode, services: fieldServices });
 
   return { ...query, meta: query.data, ctx: context };
 }

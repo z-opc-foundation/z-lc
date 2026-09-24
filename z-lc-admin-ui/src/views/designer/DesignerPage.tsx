@@ -40,9 +40,9 @@ import {
   updateEntity,
 } from '@/api/admin';
 import { DEFAULT_TENANT_CODE } from '@/api/client';
-import { listFieldDefinitions } from '@/fields';
-import type { ConfigFieldSpec } from '@/fields';
-import { fieldCodeProblem } from '@/fields/columnRules';
+import { listFieldDefinitions } from '@yuku123/render/fields';
+import type { ConfigFieldSpec } from '@yuku123/render/fields';
+import { fieldCodeProblem } from '@yuku123/render/fields';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { StateBlock } from '@/components/StateBlock';
 

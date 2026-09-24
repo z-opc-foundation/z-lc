@@ -16,9 +16,9 @@ import {
 import { ReloadOutlined, SwapOutlined } from '@ant-design/icons';
 import type { Conjunction, EntityDefDTO, LcRow, QueryCondition } from '@/api/types';
 import { aggregateRecords, listRecords, updateRecord } from '@/api/runtime';
-import { readFieldValue } from '@/fields';
+import { readFieldValue } from '@yuku123/render/fields';
 import { groupableFields } from './kanbanModel';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import { StateBlock } from '@/components/StateBlock';
 
 const { Text } = Typography;

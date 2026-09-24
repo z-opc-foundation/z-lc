@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AggregateRow } from '@/api/runtime';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import {
   buildSeries,
   bucketLabel,

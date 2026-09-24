@@ -2,7 +2,7 @@ import { Alert, Button, Space, Tag, Tooltip, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { DeleteOutlined, ExpandAltOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { Conjunction, QueryCondition } from '@/api/types';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 import { StateBlock } from '@/components/StateBlock';
 import { BarChart, LineChart, NumberCard, PieChart } from './Charts';
 import { CHART_KIND_LABELS, chartCaption, formatNumber, type ChartConfig } from './chartModel';

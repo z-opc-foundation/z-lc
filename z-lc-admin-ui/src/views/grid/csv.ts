@@ -1,8 +1,8 @@
 import Papa from 'papaparse';
 import { MAX_PAGE_SIZE, listRecords } from '@/api/runtime';
-import { asText } from '@/fields';
+import { asText } from '@yuku123/render/fields';
 import type { Conjunction, LcRow, QueryCondition, QuerySort } from '@/api/types';
-import type { ResolvedField } from '@/fields';
+import type { ResolvedField } from '@yuku123/render/fields';
 
 /**
  * Client-side CSV import/export.
