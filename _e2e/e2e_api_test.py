@@ -307,15 +307,27 @@ ok("POST /relation/create", j)
 j, _, _ = call("GET", "/api/lc/relation/list", params={"appCode": APP})
 ok("GET /relation/list", j)
 
+# 这一格原本是 AFTER_CREATE + 只配 DICT_RESOLVE —— 引擎里既没有写后挂接点也没有那道闸,
+# 而当时只要求"别 500"就算过。#41 之后这种配置在写入口就会被拒, 所以这里换成引擎兑现得了的一份,
+# 并把 enabled 必须是 0/1 这件事钉住 (完整的开关/顺序断言在 [15p])。
 j, _, _ = call("POST", "/api/lc/pipeline-config/create",
                {"entityCode": "customer", "appCode": APP, "tenantCode": TENANT,
-                "triggerEvent": "AFTER_CREATE",
-                "stages": json.dumps([{"type": "DICT_RESOLVE", "config": {}, "order": 1}]),
+                "triggerEvent": "BEFORE_CREATE",
+                "stages": json.dumps([{"type": "REQUIRED_CHECK", "config": {}, "order": 0},
+                                      {"type": "TYPE_CONVERT", "config": {}, "order": 1},
+                                      {"type": "VALUE_VALIDATE", "config": {}, "order": 2}]),
                 "enabled": 1})
-ok("POST /pipeline-config/create", j)
-j, _, _ = call("POST", "/api/lc/pipeline-config/toggle",
+ok("POST /pipeline-config/create (引擎兑现得了的配置)", j)
+pipe_cfg_id = D(j).get("id")
+j, s, _ = call("POST", "/api/lc/pipeline-config/toggle",
                {"entityCode": "customer", "appCode": APP, "enabled": 0})
-check("pipeline toggle tolerates integer enabled", not (isinstance(j, dict) and j.get("code") == 500), str(j)[:160])
+check("toggle 少了 id 不能报成切换成功", isinstance(j, dict) and j.get("success") is False and s == 400,
+      f"http={s} body={str(j)[:160]}")
+j, _, _ = call("POST", "/api/lc/pipeline-config/toggle",
+               {"id": pipe_cfg_id, "appCode": APP, "tenantCode": TENANT, "enabled": 0})
+check("带 id 的停用按整数 0/1 接受", isinstance(j, dict) and j.get("success") is True, str(j)[:160])
+if pipe_cfg_id:
+    call("POST", "/api/lc/pipeline-config/delete", {"id": pipe_cfg_id})
 
 j, _, _ = call("POST", "/api/lc/permission/grant",
                {"appCode": APP, "entityCode": "customer", "roleCode": "editor",
@@ -605,6 +617,82 @@ for label, payload in [
           and bad.get("code") == 400, str(bad)[:150])
 ok("聚合守卫后 z_lc_app 仍在", call("GET", "/api/lc/app/list")[0])
 
+# ------------------------------------------- multi-dim grouping + pivot shape
+print("\n[15d1] 多维分组与交叉表整形 (groupFields + /runtime/shape 的 pivot 步)")
+# 行=level(字典), 列=is_vip(布尔)。第二维刻意选布尔而不是客户名: 列的基数必须是常数,
+# 否则这张表的宽度会随着导入的数据长, 下面那几条断言的口径也就跟着漂。
+PIVOT_PROGRAM = [{"op": "pivot", "by": ["group_key", "group_label"],
+                  "on": "group_label_2", "agg": "SUM", "value": "group_count"}]
+
+single = call("POST", "/api/lc/runtime/aggregate", dict(AGG_SCOPE, groupField="level"),
+              params={"entityCode": "customer"})[0]
+by_key = {r.get("group_key"): r.get("group_count") for r in (D(single) or []) if isinstance(r, dict)}
+check("交叉表用例的基准: 单维分组有至少两档", len(by_key) >= 2, single)
+
+piv = call("POST", "/api/lc/runtime/shape",
+           dict(AGG_SCOPE, groupFields=["level", "is_vip"], aggregations={}, shape=PIVOT_PROGRAM),
+           params={"entityCode": "customer"})[0]
+raw2 = D(call("POST", "/api/lc/runtime/aggregate", dict(AGG_SCOPE, groupFields=["level", "is_vip"]),
+              params={"entityCode": "customer"})[0])
+raw2 = raw2 if isinstance(raw2, list) else []
+ok("POST /runtime/shape 两维 + pivot", piv)
+grid = D(piv) if isinstance(D(piv), list) else []
+check("整形产出是行数组", len(grid) >= 2, str(piv)[:220])
+if grid:
+    DIMS = {"group_key", "group_label"}
+    cols = sorted({k for row in grid for k in row if k not in DIMS})
+    check("每一行都带行键与行标签",
+          all("group_key" in row and "group_label" in row for row in grid), str(grid[:2])[:220])
+
+    # 列键就是第二维的值本身：第二维为 NULL 时那个键是空串（18090 实测的形状）。这不是引擎坏掉，
+    # 而是"这一档没有值"本来就该有一列。引擎要保证的是列集合 == 第二维出现过的值集合；
+    # 把空键翻译成人话是显示层的事（pivotModel.pivotColumnLabel，由 UI 用例钉住）。
+    def _col_of(row):
+        v = row.get("group_label_2")
+        return "" if v is None else str(v)
+
+    observed = {_col_of(r) for r in raw2 if isinstance(r, dict)}
+    check("列集合 == 第二维在原始行里取到的值 (NULL 折成空键，不是整列不见)",
+          set(cols) == observed, f"cols={cols} observed={sorted(observed)}")
+    unfilled = [r for r in raw2 if isinstance(r, dict) and _col_of(r) == ""]
+    if check("第二维确有未填写的记录 (否则下面那条是空断言)", bool(unfilled), str(raw2)[:200]):
+        want = {}
+        for r in unfilled:
+            want[r.get("group_key")] = want.get(r.get("group_key"), 0) + (r.get("group_count") or 0)
+        misfiled = [row for row in grid
+                    if (row.get("") or 0) != want.get(row.get("group_key"), 0)]
+        check("「未填写」那一列数的是各自行自己的空值记录", not misfiled, str(misfiled[:2])[:220])
+    check("每行的列数一致 (缺的那一格是 null, 不是整列不见)",
+          {len([k for k in row if k not in DIMS]) for row in grid} == {len(cols)},
+          [(r.get("group_key"), sorted(k for k in r if k not in DIMS)) for r in grid][:3])
+
+    def _cells(row):
+        return sum(v for k, v in row.items()
+                   if k not in DIMS and isinstance(v, int) and not isinstance(v, bool))
+
+    broken = [row for row in grid if _cells(row) != by_key.get(row.get("group_key"))]
+    # 这条守恒是整个交叉表的地基: pivot 里再数一次 COUNT(*) 恒为 1, GROUP BY 少一维会把
+    # 两档并成一档 —— 两种写法画出来都是"一张像模像样的表", 只有守恒能抓住。
+    check("守恒: 每行格子相加 == 同一档在单维分组里的记录数", not broken, str(broken[:2])[:300])
+
+for label, payload in [
+    ("未知第二维", {"groupFields": ["level", "nope"]}),
+    ("重复维度", {"groupFields": ["level", "level"]}),
+    ("注入型第二维", {"groupFields": ["level", "is_vip) FROM t_customer t2 WHERE 1=1 --"]}),
+    ("timeGroup 与多维同时", {"groupFields": ["level", "is_vip"], "timeGroup": "MONTH"}),
+]:
+    bad = call("POST", "/api/lc/runtime/shape",
+               dict(AGG_SCOPE, aggregations={}, shape=PIVOT_PROGRAM, **payload),
+               params={"entityCode": "customer"})[0]
+    check(f"shape 拒绝 {label}", isinstance(bad, dict) and bad.get("success") is False
+          and bad.get("code") == 400, str(bad)[:160])
+
+modern = call("POST", "/api/lc/runtime/aggregate", dict(AGG_SCOPE, groupFields=["level"]),
+              params={"entityCode": "customer"})[0]
+check("一维 groupFields 与沿用 groupField 返回同一批分组 (老调用方不换口径)",
+      D(modern) == D(single), f"{str(D(modern))[:140]} != {str(D(single))[:140]}")
+ok("多维守卫后 z_lc_app 仍在", call("GET", "/api/lc/app/list")[0])
+
 # ---------------------------------------------------------------- time buckets
 print("\n[15d2] 时间分桶 timeGroup（图表时间轴的地基）")
 # 图表时间轴不能靠"拉一页记录前端自己数"：数据一多就被分页静默截断，画出来的趋势是半张图。
@@ -726,6 +814,29 @@ ok("看板拖拽式单列更新", kanban_move)
 check("分组字段确实换了", D(call("POST", "/api/lc/runtime/get", dict(AGG_SCOPE, id=cid),
                                 params={"entityCode": "customer"})[0]).get("level") == "B",
       "stage move did not persist")
+
+# 部分更新里 null 与"根本没提交这一列"是同义的（18090 实测：给 null 之后记录原样留着 B）。
+# 这条口径要是不钉住，交叉表那个"未填写"档就说不清是哪来的 —— 前端清空一格走的是空串，
+# 而库里空串存的就是空串（不是 NULL），两件事都得是实测的而不是猜的。
+null_update = call("POST", "/api/lc/runtime/update",
+                   dict(AGG_SCOPE, fieldValues={"id": cid, "level": None}),
+                   params={"entityCode": "customer"})[0]
+ok("提交 level:null 不报错", null_update)
+check("null 与「没提交这一列」同义：值保持原样",
+      D(call("POST", "/api/lc/runtime/get", dict(AGG_SCOPE, id=cid),
+             params={"entityCode": "customer"})[0]).get("level") == "B",
+      str(D(call("POST", "/api/lc/runtime/get", dict(AGG_SCOPE, id=cid),
+                 params={"entityCode": "customer"})[0]))[:160])
+empty_update = call("POST", "/api/lc/runtime/update",
+                    dict(AGG_SCOPE, fieldValues={"id": cid, "level": ""}),
+                    params={"entityCode": "customer"})[0]
+ok("提交 level:\"\" 是一次数值写入（不是空操作）", empty_update)
+cleared_row = D(call("POST", "/api/lc/runtime/get", dict(AGG_SCOPE, id=cid),
+                     params={"entityCode": "customer"})[0])
+check("空串才真的清空这一列，且库里存的是空串不是 NULL",
+      cleared_row.get("level") == "", str(cleared_row)[:160])
+call("POST", "/api/lc/runtime/update", dict(AGG_SCOPE, fieldValues={"id": cid, "level": "B"}),
+     params={"entityCode": "customer"})
 
 # ---------------------------------------------------------------- batch import
 print("\n[15f] 服务端批量导入（preview 零写入 / commit 整批 all-or-nothing）")
@@ -1010,7 +1121,305 @@ j, s, _ = call("POST", "/api/lc/admin/app/create", sa_body)
 check("设计器路由复用已删除 appCode 也被拒", isinstance(j, dict) and j.get("success") is False, f"http={s} body={str(j)[:200]}")
 check("文案要说清设计器路由此前已被删除", "已被删除" in str((j or {}).get("message")), str(j)[:200])
 
+# ------------------------------------------------- field-code guard (#34/#35)
+# 引擎给每张受管表自建 id/tenant_code/deleted/create_time/update_time 这 5 列，
+# 而这 5 个全是"合法标识符" —— 旧的那道正则拦不住：entity/create HTTP 200 收下元数据，
+# 要等 provision 建表才炸裸 500，且 provision-all 在第一个坏实体上抛、同应用干净实体一起没建成。
+# 这一节盯的是**写入口**：create 与 update 两个调用点各自一组断言（注入摘掉任一个都会红）。
+print("\n[15j] 字段编码撞引擎自建列 / 非法列名：在写入口拒，不到建表才炸")
+
+FC_APP = f"e2efc{SUF}"
+FC_TABLE = f"e2e_fc_{SUF}"
+RESERVED = ["id", "tenant_code", "deleted", "create_time", "update_time"]
+LEGAL_COLS = ["order_no", "amount", "note"]
+
+
+def fc_field(code, order=1):
+    return {"fieldCode": code, "fieldName": "探针列", "fieldType": "STRING",
+            "fieldLength": 32, "sortOrder": order}
+
+
+def fc_entity(code, entity_code):
+    return {"tenantCode": TENANT, "appCode": FC_APP, "entityCode": entity_code,
+            "entityName": "编码探针", "tableName": FC_TABLE, "description": "e2e",
+            "fields": [fc_field(code)]}
+
+
+def create_entity(req):
+    return call("POST", "/api/lc/admin/app/entity/create", req,
+                params={"appCode": FC_APP, "tenantCode": TENANT})
+
+
+ok("POST /admin/app/create (字段编码探针应用)",
+   call("POST", "/api/lc/admin/app/create",
+        {"tenantCode": TENANT, "appCode": FC_APP, "appName": "编码探针"})[0])
+
+for code in RESERVED:
+    j, s, _ = create_entity(fc_entity(code, f"fc_{code}"))
+    msg = str((j or {}).get("message") or "")
+    check(f"撞自建列 {code} 在 entity/create 就被拒(不是等建表才炸)",
+          isinstance(j, dict) and j.get("success") is False and j.get("code") == 400,
+          f"http={s} body={str(j)[:200]}")
+    check(f"撞自建列 {code} 的文案列出保留列，且不带 SQL/物理表名细节",
+          "撞了引擎自建列" in msg and "保留列: id, tenant_code, deleted, create_time, update_time" in msg
+          and leak_free(j), msg[:200])
+
+# MySQL/H2 列名不分大小写，所以 `ID` 照样撞 —— 这条专门盯 toLowerCase。
+j, s, _ = create_entity(fc_entity("ID", "fc_upper_id"))
+msg = str((j or {}).get("message") or "")
+check("大写 ID 同样被拒（撞名比较不分大小写）",
+      isinstance(j, dict) and j.get("success") is False and "撞了引擎自建列" in msg,
+      f"http={s} body={msg[:200]}")
+check("文案回显的是用户实际写进去的那个大小写", "ID" in msg, msg[:200])
+
+for i, (bad, want) in enumerate((("2bad", "不是合法列名"), ("我的字段", "不是合法列名"),
+                                 ("has space", "不是合法列名"), ("", "fieldCode is required"))):
+    j, s, _ = create_entity(fc_entity(bad, f"fc_bad_{i}"))
+    msg = str((j or {}).get("message") or "")
+    check(f"非法列名 {bad!r} 被拒且说的是列名规则",
+          isinstance(j, dict) and j.get("success") is False and want in msg,
+          f"http={s} body={msg[:200]}")
+    # #35 的另一半：非法编码在 buildCreateTableDdl 里原本是 continue 静默跳过 ——
+    # 建表照样返回成功，于是元数据说有这一列、物理表里没有。所以文案必须指名**哪一列**。
+    check(f"非法列名 {bad!r} 的文案指名是哪一列（不是笼统一句失败）",
+          (bad in msg) if bad else ("required" in msg), msg[:200])
+
+j, _, _ = call("GET", "/api/lc/admin/app/entity/list", params={"appCode": FC_APP, "tenantCode": TENANT})
+ok("GET /admin/app/entity/list (探针应用)", j)
+listed = D(j) if isinstance(D(j), list) else []
+check("上面那些被拒的提交一行都没落库（闸在写入之前，不是事后回滚）",
+      listed == [], [e.get("entityCode") for e in listed])
+
+j, _, _ = create_entity({"tenantCode": TENANT, "appCode": FC_APP, "entityCode": "fc_clean",
+                         "entityName": "干净实体", "tableName": FC_TABLE, "description": "e2e",
+                         "fields": [fc_field(c, i + 1) for i, c in enumerate(LEGAL_COLS)]})
+ok("合法编码的实体照常建成（这道闸没把正常路径一起按住）", j)
+fc_ent_id = D(j).get("id")
+
+j, s, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": fc_ent_id})
+ok("POST /admin/entity/provision (干净实体建表不被闸误伤)", j)
+j, s, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 5, "conditions": []},
+               params={"appCode": FC_APP, "tenantCode": TENANT, "entityCode": "fc_clean"})
+ok("新表随即可查（元数据与物理表一致，不是静默少列）", j)
+check("空表读到 total=0", D(j).get("total") == 0, str(j)[:200])
+
+j, s, _ = call("POST", "/api/lc/admin/db/table/import",
+               params={"tableName": FC_TABLE, "tenantCode": TENANT, "appCode": FC_APP,
+                       "entityCode": f"fc_mapped_{SUF}", "autoProvision": "false"})
+ok("POST /admin/db/table/import (逆向映射刚建好的物理表)", j)
+# mapped 可能是 fail 信封（注入实验里就会这样），D() 会塌成 {}；这里不兜住的话
+# 后面 (None).get 会让整个 [15j] 抛异常退出，那一轮就变成"跑不完"而不是"哪条红"。
+mapped = D(j) or {}
+map_codes = [f.get("fieldCode") for f in (mapped.get("fields") or [])]
+check("逆向映射跳过引擎自建列（一律拒绝会把 /table/import 打死：真表的 id/deleted 是合法物理列）",
+      bool(map_codes) and all(c not in RESERVED for c in map_codes), map_codes)
+check("用户列一列不少地映射回来", map_codes == LEGAL_COLS, map_codes)
+check("跳过的清单写进 description，不是静默丢掉",
+      "已跳过引擎自建列" in str(mapped.get("description") or ""), str(mapped.get("description"))[:200])
+
+# update 探针放在最后，而不是紧跟 fc_clean 的创建：它一旦被放过，fc_clean 的元数据就变成
+# [deleted]，后面 provision 会撞 Duplicate column name、/runtime/list 与 /table/import 一起翻车。
+# 那时"哪个入口漏了"这个问题就有 6 种答案，注入实验再也指不回 updateEntity 这一支。
+j, s, _ = call("PUT", "/api/lc/admin/entity", {"id": fc_ent_id, "tenantCode": TENANT,
+                                               "appCode": FC_APP, "entityCode": "fc_clean",
+                                               "entityName": "干净实体", "tableName": FC_TABLE,
+                                               "fields": [fc_field("deleted")]},
+               params={"id": fc_ent_id})
+check("updateEntity 是第二个写入口：改成撞名列同样被拒",
+      isinstance(j, dict) and j.get("success") is False and "撞了引擎自建列" in str(j.get("message") or ""),
+      f"http={s} body={str(j)[:200]}")
+j, _, _ = call("GET", "/api/lc/admin/entity", params={"id": fc_ent_id})
+kept = [f.get("fieldCode") for f in (D(j).get("fields") or [])]
+check("被拒的 update 一行都没改（字段还是原来那三列、原顺序）", kept == LEGAL_COLS, kept)
+
+call("DELETE", "/api/lc/admin/entity", params={"id": fc_ent_id})
+if mapped.get("id"):
+    call("DELETE", "/api/lc/admin/entity", params={"id": mapped.get("id")})
+call("POST", "/api/lc/app/delete", {"appCode": FC_APP})
+
+# ------------------------------------------------- pipeline wiring (#41)
+# 这一轮之前, z_lc_pipeline_config 里的 order/enabled/stages 对运行时一个都不影响: Pipeline 跑的是
+# 按类名字典序排好的全部 Spring bean, 而配置页宣传"校验、字典解析、外部通知按 order 执行" ——
+# WEBHOOK / SCRIPT 连执行器都没有, AFTER_* 连挂接点都没有, 保存成功和真的在跑是两件事。
+# 这一节盯两层: 写入口拒掉引擎兑现不了的配置; 收下的配置真的决定跑哪几段、按什么顺序跑。
+# 顺序的可观察证据是错误消息里点名的处理器 —— [RequiredCheck] 为必填 vs [TypeConvert] 类型转换失败:
+# 同一份请求体, 只改配置, 消息跟着换。别的都能骗过这一格, 执行顺序骗不过。
+print("\n[15p] 流水线配置决定执行链：没接线的在写入口拒，收下的按 order 真跑")
+
+PP_APP = f"e2epp{SUF}"
+PP_TABLE = f"e2e_pipe_{SUF}"
+GATES = ["REQUIRED_CHECK", "TYPE_CONVERT", "VALUE_VALIDATE"]
+BLANK_AMOUNT = {"amount": "", "note": "ok"}
+
+
+def pp_stages(*types):
+    return json.dumps([{"type": t, "config": {}, "order": i} for i, t in enumerate(types)])
+
+
+def pp_config(entity="pipe_probe", trigger="BEFORE_CREATE", st=None, enabled=1, app=None):
+    return {"tenantCode": TENANT, "appCode": PP_APP if app is None else app, "entityCode": entity,
+            "triggerEvent": trigger, "stages": pp_stages(*GATES) if st is None else st,
+            "enabled": enabled}
+
+
+def cfg_rejected(name, body, want):
+    j, s, _ = call("POST", "/api/lc/pipeline-config/create", body)
+    msg = str((j or {}).get("message") or "")
+    check(name, isinstance(j, dict) and j.get("success") is False and j.get("code") == 400 and s == 400,
+          f"http={s} body={str(j)[:180]}")
+    # 光拒不够, 还得说清要什么 —— 否则界面只能显示一句"不合法"
+    check(f"{name}：文案点名要什么", want in msg and leak_free(j), msg[:200])
+
+
+def pp_write(entity, values):
+    return call("POST", "/api/lc/runtime/create",
+                {"entityCode": entity, "appCode": PP_APP, "tenantCode": TENANT, "fieldValues": values},
+                params={"entityCode": entity})
+
+
+def env_msg(env):
+    return str((env or {}).get("message") or "")
+
+
+def pp_list(entity="pipe_probe"):
+    j, _, _ = call("GET", "/api/lc/pipeline-config/list", params={"appCode": PP_APP, "entityCode": entity})
+    return D(j) if isinstance(D(j), list) else []
+
+
+# 被拒探针现在各占一个实体, 所以"一行都没落库"必须按**应用**数, 按实体数只会数到那个干净的。
+def pp_list_app():
+    j, _, _ = call("GET", "/api/lc/pipeline-config/list", params={"appCode": PP_APP})
+    return D(j) if isinstance(D(j), list) else []
+
+
+ok("POST /admin/app/create (流水线探针应用)",
+   call("POST", "/api/lc/admin/app/create",
+        {"tenantCode": TENANT, "appCode": PP_APP, "appName": "流水线探针"})[0])
+
+PP_FIELDS = [
+    {"fieldCode": "amount", "fieldName": "金额", "fieldType": "INT", "required": True, "sortOrder": 1},
+    {"fieldCode": "note", "fieldName": "备注", "fieldType": "STRING", "fieldLength": 5, "sortOrder": 2},
+]
+for ent, table in (("pipe_probe", PP_TABLE), ("pipe_other", PP_TABLE + "_2")):
+    je, _, _ = call("POST", "/api/lc/admin/app/entity/create",
+                    {"tenantCode": TENANT, "appCode": PP_APP, "entityCode": ent,
+                     "entityName": "流水线探针表", "tableName": table, "description": "e2e",
+                     "fields": PP_FIELDS},
+                    params={"appCode": PP_APP, "tenantCode": TENANT})
+    ok(f"探针实体 {ent} 建成", je)
+    ok(f"POST /admin/entity/provision ({ent})",
+       call("POST", "/api/lc/admin/entity/provision", params={"id": D(je).get("id")})[0])
+
+# ---- 写入口: 引擎兑现不了的配置一律不收
+# 每条被拒的提交各占一个实体, 这不是随手起的名字: 同一个 (实体, 挂接点) 上, 前一行落库会让后一行
+# 被**另一道闸**拒掉, 于是那条检查照样绿。实测过这种遮蔽 —— 摘掉 "没有执行器" 那道闸之后
+# WEBHOOK 那行落地, SCRIPT 那行紧接着被 "同一挂接点已经有一份启用" 顶回来, "阶段 SCRIPT -> 拒"
+# 一条都不红。一行只测一道规则, 注入才指得回它打掉的到底是哪一道。
+REJECTS = [
+    ("webhook", dict(st=pp_stages(*GATES, "WEBHOOK")), "没有执行器", "阶段 WEBHOOK 没有执行器 -> 拒"),
+    ("script", dict(st=pp_stages(*GATES, "SCRIPT")), "没有执行器", "阶段 SCRIPT 没有执行器 -> 拒"),
+    ("after_create", dict(trigger="AFTER_CREATE"), "没有挂接点", "触发事件 AFTER_CREATE 没有挂接点 -> 拒"),
+    ("after_update", dict(trigger="AFTER_UPDATE"), "没有挂接点", "触发事件 AFTER_UPDATE 没有挂接点 -> 拒"),
+    ("after_delete", dict(trigger="AFTER_DELETE"), "没有挂接点", "触发事件 AFTER_DELETE 没有挂接点 -> 拒"),
+    ("no_gates", dict(st=pp_stages("DICT_RESOLVE")), "REQUIRED_CHECK",
+     "摘掉三道闸门 -> 拒（等于让该实体的写入绕过校验）"),
+    ("inverted", dict(st=pp_stages("VALUE_VALIDATE", "TYPE_CONVERT", "REQUIRED_CHECK")), "之后",
+     "值校验排在类型转换之前 -> 拒"),
+    ("dup_stage", dict(st=pp_stages("REQUIRED_CHECK", "TYPE_CONVERT", "VALUE_VALIDATE", "TYPE_CONVERT")),
+     "重复配置", "同一阶段重复配置 -> 拒"),
+    ("empty_chain", dict(st="[]"), "非空 JSON 数组", "空阶段链 -> 拒"),
+    ("not_array", dict(st='{"type":"TYPE_CONVERT"}'), "非空 JSON 数组", "阶段链不是数组 -> 拒"),
+    ("frac_order", dict(st='[{"type":"REQUIRED_CHECK","order":1.5},{"type":"TYPE_CONVERT"},'
+                          '{"type":"VALUE_VALIDATE"}]'), "整数", "order 不是整数 -> 拒"),
+    ("lower_type", dict(st=pp_stages("required_check", *GATES[1:])), "required_check",
+     "未知阶段类型大小写不放过 -> 拒"),
+    ("enabled_bogus", dict(enabled=2), "enabled",
+     "enabled=2 -> 拒（这一行在 listByEvent 里永远查不到，等于存了条死数据）"),
+]
+for _slug, _kw, _want, _name in REJECTS:
+    cfg_rejected(_name, pp_config(entity=f"pipe_r_{_slug}", **_kw), _want)
+cfg_rejected("缺 appCode 的配置永远不会被执行 -> 拒", pp_config(entity="pipe_r_no_app", app=""), "appCode")
+cfg_rejected("缺 entityCode 的配置永远不会被执行 -> 拒", pp_config(entity="  "), "entityCode")
+
+# ---- 反向: 兑现得了的必须收, 而且只落这一行
+j, s, _ = call("POST", "/api/lc/pipeline-config/create",
+               pp_config(st=pp_stages("TYPE_CONVERT", "REQUIRED_CHECK", "VALUE_VALIDATE")))
+if ok("引擎兑现得了的配置照收（只测拒绝会把校验写成永远抛异常也能全绿）", j):
+    pp_cfg_id = D(j).get("id")
+    check("创建回带 id", bool(pp_cfg_id), str(j)[:160])
+else:
+    pp_cfg_id = None
+listed = pp_list_app()
+check("上面 15 次被拒的提交一行都没落库（闸在写入之前）", len(listed) == 1,
+      [(c.get("entityCode"), c.get("triggerEvent")) for c in listed])
+cfg_rejected("同一挂接点上第二份启用配置 -> 拒（一个挂接点只跑一条链）", pp_config(), "已经有一份启用")
+check("被拒的第二份没有把第一份顶掉", len(pp_list_app()) == 1,
+      [(c.get("entityCode"), c.get("enabled")) for c in pp_list_app()])
+
+# ---- toggle 的含糊请求
+j, s, _ = call("POST", "/api/lc/pipeline-config/toggle", {"appCode": PP_APP, "enabled": 0})
+check("toggle 缺 id 不能报成切换成功", isinstance(j, dict) and j.get("success") is False and s == 400,
+      f"http={s} body={str(j)[:160]}")
+j, s, _ = call("POST", "/api/lc/pipeline-config/toggle", {"id": pp_cfg_id, "appCode": PP_APP})
+check("toggle 缺 enabled 不能按停用处理", isinstance(j, dict) and j.get("success") is False and s == 400,
+      f"http={s} body={str(j)[:160]}")
+rows_now = pp_list()
+check("两次被拒的 toggle 一次都没改到那一行", len(rows_now) == 1 and rows_now[0].get("enabled") == 1,
+      [c.get("enabled") for c in rows_now])
+j, s, _ = call("POST", "/api/lc/pipeline-config/toggle",
+               {"id": (rows_now[0] or {}).get("id"), "appCode": PP_APP, "enabled": 99})
+check("enabled 只认 0/1，给个 99 不能当成开启", isinstance(j, dict) and j.get("success") is False, str(j)[:160])
+
+# ---- 收下的配置真的决定执行链
+j, s, _ = pp_write("pipe_probe", BLANK_AMOUNT)
+check("配置链里 TYPE_CONVERT 在前 -> 空串先撞类型转换", isinstance(j, dict) and "[TypeConvert]" in env_msg(j),
+      str(j)[:200])
+check("runtime 的业务级失败是 HTTP 200 + 信封 code 400（前端必须读信封）", s == 200 and (j or {}).get("code") == 400,
+      f"http={s} body={str(j)[:160]}")
+
+j, _, _ = call("POST", "/api/lc/pipeline-config/toggle",
+               {"id": pp_cfg_id, "appCode": PP_APP, "tenantCode": TENANT, "enabled": 0})
+ok("停用这份配置", j)
+j, _, _ = pp_write("pipe_probe", BLANK_AMOUNT)
+check("停用后退回默认链（字典序 RequiredCheck 在前）：同一请求换一条消息",
+      "[RequiredCheck]" in env_msg(j) and "为必填" in env_msg(j), str(j)[:200])
+j, _, _ = call("POST", "/api/lc/pipeline-config/toggle",
+               {"id": pp_cfg_id, "appCode": PP_APP, "tenantCode": TENANT, "enabled": 1})
+ok("再启用这份配置", j)
+j, _, _ = pp_write("pipe_probe", BLANK_AMOUNT)
+check("再启用又换回 [TypeConvert]：enabled 与 order 都是真的在起作用", "[TypeConvert]" in env_msg(j), str(j)[:200])
+
+j, _, _ = pp_write("pipe_other", BLANK_AMOUNT)
+check("同一应用的另一个实体没配流水线，走的还是默认链（配置不串）", "[RequiredCheck]" in env_msg(j), str(j)[:200])
+
+j, _, _ = pp_write("pipe_probe", {"amount": 7, "note": "备注长得放不下"})
+check("三道闸门都在配置链里：值校验报出上限", "[ValueValidate]" in env_msg(j) and "上限 5" in env_msg(j),
+      str(j)[:200])
+j, _, _ = pp_write("pipe_probe", {"amount": 7, "note": "短"})
+ok("合法写入照常通过（这道闸没把正常路径一起按住）", j)
+pp_row_id = D(j)
+
+j, _, _ = call("POST", "/api/lc/pipeline-config/create", pp_config(trigger="BEFORE_UPDATE", st=pp_stages(*GATES)))
+ok("同一实体的 BEFORE_UPDATE 另有一份启用配置（挂接点不同，不算重复）", j)
+pp_upd_id = D(j).get("id")
+j, s, _ = call("POST", "/api/lc/runtime/update",
+               {"entityCode": "pipe_probe", "appCode": PP_APP, "tenantCode": TENANT,
+                "fieldValues": {"id": pp_row_id, "amount": ""}},
+               params={"entityCode": "pipe_probe"})
+check("两个写前挂接点各自生效：更新走 REQUIRED_CHECK 在前的那条链",
+      isinstance(j, dict) and "[RequiredCheck]" in env_msg(j), str(j)[:200])
+j, _, _ = pp_write("pipe_probe", BLANK_AMOUNT)
+check("而同一条空值在创建挂接点上仍是 TypeConvert 先报（两条链互不顶替）", "[TypeConvert]" in env_msg(j),
+      str(j)[:200])
+
+for cfg_id in (pp_cfg_id, pp_upd_id):
+    if cfg_id:
+        call("POST", "/api/lc/pipeline-config/delete", {"id": cfg_id})
+check("配置删掉后列表清空（delete 是真删这一行）", pp_list() == [], pp_list())
+call("POST", "/api/lc/app/delete", {"appCode": PP_APP})
+
 # ---------------------------------------------------------------- cleanup
+
 print("\n[16] teardown")
 j, _, _ = call("POST", "/api/lc/dict/items/delete", {"id": (items[0] or {}).get("id") if items else None})
 check("dict item delete responds", isinstance(j, dict), str(j)[:120])

@@ -19,7 +19,10 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -238,10 +241,18 @@ class LcHttpContractTest {
         MvcResult result = mockMvc.perform(builder
                 .contentType(MediaType.APPLICATION_JSON)
                 .characterEncoding(StandardCharsets.UTF_8.name())).andReturn();
+        lastHttpStatus = result.getResponse().getStatus();
         String body = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertFalse(body == null || body.isEmpty(), "empty body for " + builder);
         return json.readTree(body);
     }
+
+    /**
+     * 最近一次请求的 HTTP 状态码。信封里的 code 和状态码是**两半契约**：
+     * z-lc 的坏消息有两种载体 (见 {@link #pipelineBadNewsHasTwoCarriersAndTheFrontendMustKnowBoth})，
+     * 只看其中一个会把"其实没成功"读成成功。
+     */
+    private int lastHttpStatus;
 
     private JsonNode get(String path, String... kv) throws Exception {
         MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.get(path);
@@ -839,6 +850,103 @@ class LcHttpContractTest {
         assertEquals(400, noShape.path("code").asInt(), String.valueOf(noShape));
     }
 
+    /**
+     * 交叉表（透视）走真 H2：这是唯一能在数据库面前证明"二维分组喂得进 pivot"的地方。
+     * <p>
+     * 断言刻意不依赖种子的行数（别的用例会增删记录），改成两条与数据无关的守恒律：
+     * <ul>
+     *   <li>透视表每一行的格子加总 == 同一状态在单维聚合里的合计 —— 若 GROUP BY 漏掉第二维，
+     *       每个格子都会拿到整行的合计，加总立刻翻倍；若 pivot 的桶切错，加总会缺一块；</li>
+     *   <li>行列标签来自 group_label / COALESCE(...)，所以"字典项被删"也不会冒出一个叫 null 的列。</li>
+     * </ul>
+     */
+    @Test
+    @DisplayName("整形：状态 x 客户的交叉表，行加总必须等于同一状态的单维合计")
+    void pivotMatrixConservesEachRowTotal() throws Exception {
+        String program = "{\"groupFields\":[\"status\",\"name\"],\"aggregations\":{\"amount\":[\"SUM\"]},\"shape\":["
+                + "{\"op\":\"pivot\",\"by\":[\"group_key\",\"group_label\"],\"on\":\"group_label_2\","
+                + "\"agg\":\"SUM\",\"value\":\"sum_amount\"}]}";
+        JsonNode pivot = post("/api/lc/runtime/shape", program,
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertOk(pivot, "2D aggregate + pivot");
+        JsonNode matrix = D(pivot);
+        assertTrue(matrix.isArray() && matrix.size() >= 2, "种子至少两档状态: " + matrix);
+
+        JsonNode single = post("/api/lc/runtime/aggregate",
+                "{\"groupField\":\"status\",\"aggregations\":{\"amount\":[\"SUM\"]}}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertOk(single, "single-dimension aggregate for the same measure");
+        Map<String, Double> byStatus = new LinkedHashMap<String, Double>();
+        for (JsonNode row : D(single)) {
+            byStatus.put(row.path("group_key").asText(), row.path("sum_amount").asDouble());
+        }
+
+        for (JsonNode row : matrix) {
+            String status = row.path("group_key").asText();
+            assertTrue(byStatus.containsKey(status), "透视表凭空多出一档状态 " + status + ": " + matrix);
+            double cells = 0d;
+            int measured = 0;
+            Iterator<String> fields = row.fieldNames();
+            while (fields.hasNext()) {
+                String field = fields.next();
+                if ("group_key".equals(field) || "group_label".equals(field)) {
+                    continue;
+                }
+                // 空格子是 null (不是 0)：SUM 的空桶与"真的加了 0"是两件事
+                if (!row.path(field).isNull()) {
+                    cells += row.path(field).asDouble();
+                    measured++;
+                }
+            }
+            assertTrue(measured >= 1, "行 " + status + " 一个格子都没有: " + row);
+            assertEquals(byStatus.get(status), cells, 0.001,
+                    "行加总必须等于单维合计 (GROUP BY 漏第二维会让它翻倍): " + row);
+            // 行维度是字典列：有字典项就显示标签，没有就退回编码本身。
+            // 别的用例会塞进字典里不存在的状态 (如 NOPE)，那一列必须落成 "NOPE" 而不是 null ——
+            // 一个名为 null 的列会把所有"字典项被删"的记录折在一起，看上去是一档真实状态。
+            String label = row.path("group_label").asText();
+            assertFalse(label.isEmpty() || "null".equals(label), "标签列不能为空: " + row);
+            if ("OK".equals(status) || "PENDING".equals(status)) {
+                assertEquals("OK".equals(status) ? "Done" : "Pending", label, String.valueOf(row));
+            } else {
+                assertEquals(status, label, "无字典项的维度必须退回编码而不是 null: " + row);
+            }
+        }
+
+        Iterator<String> headFields = matrix.get(0).fieldNames();
+        while (headFields.hasNext()) {
+            String field = headFields.next();
+            assertFalse("null".equals(field) || field.isEmpty(),
+                    "列头不能出现 null 列 (字典项被删的记录会被折进它): " + matrix.get(0));
+        }
+    }
+
+    /** 维度白名单在 HTTP 层也要挡住：多维是 GROUP BY 新增的注入面，不能只靠单测。 */
+    @Test
+    @DisplayName("整形：非法的第二个分组维度必须 400，不能退化成单维统计")
+    void badSecondDimensionIsRejectedOverHttp() throws Exception {
+        JsonNode unknown = post("/api/lc/runtime/shape",
+                "{\"groupFields\":[\"status\",\"nope\"],\"shape\":[{\"op\":\"pivot\","
+                        + "\"by\":\"group_key\",\"on\":\"group_label_2\"}]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertFalse(unknown.path("success").asBoolean(), "未知维度必须报错: " + unknown);
+        assertEquals(400, unknown.path("code").asInt(), String.valueOf(unknown));
+        assertTrue(unknown.path("message").asText().contains("nope"),
+                "报错要点出是哪个维度: " + unknown);
+
+        JsonNode dup = post("/api/lc/runtime/shape",
+                "{\"groupFields\":[\"status\",\"status\"],\"shape\":[]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertFalse(dup.path("success").asBoolean(), "重复维度不能悄悄去重: " + dup);
+        assertEquals(400, dup.path("code").asInt(), String.valueOf(dup));
+
+        JsonNode injection = post("/api/lc/runtime/shape",
+                "{\"groupFields\":[\"status\",\"name) FROM lc_demo_order t2 WHERE 1=1 --\"],\"shape\":[]}",
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertFalse(injection.path("success").asBoolean(), "GROUP BY 的列名必须过标识符白名单: " + injection);
+        assertEquals(400, injection.path("code").asInt(), String.valueOf(injection));
+    }
+
     @Test
     @DisplayName("时间分桶聚合：按月/日分桶要真在 H2 上跑得动、按时间正序，且没有日期的记录不进气泡")
     void timeBucketAggregateRunsOnRealDates() throws Exception {
@@ -1353,6 +1461,149 @@ class LcHttpContractTest {
             assertTrue(after <= before.get(i), "池 " + i + " 的 active 从 " + before.get(i)
                     + " 涨到 " + after + " —— 有连接借出去没还");
         }
+    }
+
+    /**
+     * 缺陷 #41 的配置面半边: 流水线的 stage / trigger 词表与引擎真实能力对齐。
+     * <p>
+     * 修之前 {@code /pipeline-config/create} 什么都收 (WEBHOOK、SCRIPT、AFTER_* 照单全收),
+     * 而 {@code PipelineConfigService.listByEvent} 在生产代码里零调用者 —— 也就是说"保存成功"
+     * 和"真的在跑"是两件毫不相干的事, 配置页是一层纯装饰。现在写入口只收引擎兑现得了的配置。
+     */
+    @Test
+    @DisplayName("缺陷#41 回归：流水线配置写入口拒掉引擎兑现不了的阶段与触发事件")
+    void pipelineConfigWriteEntranceRejectsWhatTheEngineCannotRun() throws Exception {
+        String entity = "pipe_guard_" + System.currentTimeMillis() % 1000000;
+        String good = "[{\"type\":\"TYPE_CONVERT\",\"order\":1},{\"type\":\"REQUIRED_CHECK\",\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]";
+
+        // 这两个阶段历史上列在配置页里, 后端连执行器都没有
+        for (String ghost : new String[]{"WEBHOOK", "SCRIPT"}) {
+            JsonNode rejected = post("/api/lc/pipeline-config/create",
+                    pipelineBody(entity, "BEFORE_CREATE",
+                            good.substring(0, good.length() - 1) + ",{\"type\":\"" + ghost + "\",\"order\":4}]"));
+            assertFalse(rejected.path("success").asBoolean(), ghost + " 没有执行器, 不该被收下: " + rejected);
+            String msg = rejected.path("message").asText();
+            assertTrue(msg.contains(ghost), "消息要点名是哪个阶段: " + msg);
+            assertTrue(msg.contains("没有执行器") && msg.contains("TYPE_CONVERT"),
+                    "消息要说明为什么 (并顺手教一遍支持什么): " + msg);
+        }
+
+        // 写后事件没有任何挂接点: 回调根本没有落点
+        for (String trigger : new String[]{"AFTER_CREATE", "AFTER_UPDATE", "AFTER_DELETE"}) {
+            JsonNode rejected = post("/api/lc/pipeline-config/create", pipelineBody(entity, trigger, good));
+            assertFalse(rejected.path("success").asBoolean(), trigger + " 没有挂接点: " + rejected);
+            assertTrue(rejected.path("message").asText().contains(trigger),
+                    "消息要点名 " + trigger + ": " + rejected.path("message").asText());
+            assertTrue(rejected.path("message").asText().contains("没有挂接点"));
+        }
+
+        // 摘掉必填阶段 = 该实体的写入绕过必填/类型/值三道闸; 只留 DICT_RESOLVE 就是这样一份配置
+        JsonNode bypass = post("/api/lc/pipeline-config/create",
+                pipelineBody(entity, "BEFORE_CREATE", "[{\"type\":\"DICT_RESOLVE\",\"order\":1}]"));
+        assertFalse(bypass.path("success").asBoolean(), "绕过三道闸的配置必须被拒: " + bypass);
+        String bypassMsg = bypass.path("message").asText();
+        for (String must : new String[]{"REQUIRED_CHECK", "TYPE_CONVERT", "VALUE_VALIDATE"}) {
+            assertTrue(bypassMsg.contains(must), "缺哪个必填阶段就要点名哪个: " + bypassMsg);
+        }
+
+        // 值校验放到类型转换之前, 会把合法数字按字符长度拒掉 —— 这条顺序不是偏好, 是约束
+        JsonNode inverted = post("/api/lc/pipeline-config/create",
+                pipelineBody(entity, "BEFORE_CREATE", "[{\"type\":\"VALUE_VALIDATE\",\"order\":1},"
+                        + "{\"type\":\"TYPE_CONVERT\",\"order\":2},{\"type\":\"REQUIRED_CHECK\",\"order\":3}]"));
+        assertFalse(inverted.path("success").asBoolean(), "违反 order 约束的配置必须被拒: " + inverted);
+        assertTrue(inverted.path("message").asText().contains("之后"),
+                "消息要说清是哪条约束: " + inverted.path("message").asText());
+
+        // 反向: 一份引擎兑现得了的配置必须收 —— 只测拒绝的话, 把校验写成永远抛异常也能全绿
+        JsonNode accepted = post("/api/lc/pipeline-config/create", pipelineBody(entity, "BEFORE_CREATE", good));
+        assertOk(accepted, "合法配置应当收下");
+        assertTrue(accepted.path("data").path("id").asLong() > 0, "创建要回 id: " + accepted);
+
+        JsonNode listed = get("/api/lc/pipeline-config/list", "appCode", APP, "entityCode", entity);
+        assertOk(listed, "list");
+        assertEquals(1, listed.path("data").size(),
+                "被拒的 7 份配置一行都不该落库 (只有最后那份合法的在): " + listed.path("data"));
+    }
+
+    @Test
+    @DisplayName("缺陷#41：坏消息有两种载体 —— 配置写入口 HTTP 400, runtime 业务错误 HTTP 200+code:400")
+    void pipelineBadNewsHasTwoCarriersAndTheFrontendMustKnowBoth() throws Exception {
+        // 这一格是历史欠账 #38: 两种载体从来没人钉过, 于是"看 code 还是看状态码"全凭前端猜。
+        JsonNode badConfig = post("/api/lc/pipeline-config/create",
+                pipelineBody("pipe_carrier_check", "AFTER_CREATE",
+                        "[{\"type\":\"TYPE_CONVERT\",\"order\":1},{\"type\":\"REQUIRED_CHECK\",\"order\":2},"
+                                + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]"));
+        assertFalse(badConfig.path("success").asBoolean());
+        assertEquals(400, badConfig.path("code").asInt());
+        assertEquals(400, lastHttpStatus, "配置写入口走全局异常处理, 状态码也要说 400");
+
+        Map<String, Object> emptyIds = new LinkedHashMap<>();
+        emptyIds.put("ids", new ArrayList<Long>());
+        JsonNode badRuntime = post("/api/lc/runtime/delete-batch", emptyIds,
+                "entityCode", ENTITY, "appCode", APP, "tenantCode", TENANT);
+        assertFalse(badRuntime.path("success").asBoolean(), "空 ids 不能算成功: " + badRuntime);
+        assertEquals(400, badRuntime.path("code").asInt());
+        assertEquals(200, lastHttpStatus, "runtime 的业务级失败是 HTTP 200 + 信封 code 400 (前端必须读信封)");
+    }
+
+    @Test
+    @DisplayName("缺陷#41：/pipeline-config/toggle 少了 id 或 enabled 不能报成切换成功")
+    void pipelineToggleRejectsAmbiguousRequests() throws Exception {
+        String entity = "pipe_toggle_" + System.currentTimeMillis() % 1000000;
+        String good = "[{\"type\":\"TYPE_CONVERT\",\"order\":1},{\"type\":\"REQUIRED_CHECK\",\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]";
+        JsonNode created = post("/api/lc/pipeline-config/create", pipelineBody(entity, "BEFORE_CREATE", good));
+        assertOk(created, "先收一份合法配置");
+        long id = created.path("data").path("id").asLong();
+
+        // 控制器过去无条件 return success(true): 漏带 id 的请求会"成功"而什么都没改
+        Map<String, Object> noId = new LinkedHashMap<>();
+        noId.put("enabled", 0);
+        JsonNode rejected = post("/api/lc/pipeline-config/toggle", noId);
+        assertFalse(rejected.path("success").asBoolean(), "不知道改哪一条就不能报成功: " + rejected);
+        assertEquals(400, rejected.path("code").asInt());
+
+        // 缺 enabled 就按 0 处理的话, 一次漏字段的请求会把别人正在跑的流水线悄悄停用
+        Map<String, Object> noEnabled = new LinkedHashMap<>();
+        noEnabled.put("id", id);
+        JsonNode rejected2 = post("/api/lc/pipeline-config/toggle", noEnabled);
+        assertFalse(rejected2.path("success").asBoolean(), "缺 enabled 必须拒: " + rejected2);
+        assertEquals(400, rejected2.path("code").asInt());
+
+        JsonNode stillEnabled = get("/api/lc/pipeline-config/list", "appCode", APP, "entityCode", entity);
+        assertEquals(1, stillEnabled.path("data").get(0).path("enabled").asInt(),
+                "两次被拒的开关一次都不该改动那一行: " + stillEnabled.path("data"));
+
+        // enabled 只认 0/1: 旧代码 `getEnabled() == 1` 会把 2/-1 当成"关", 调用方以为自己在启用
+        Map<String, Object> bogus = new LinkedHashMap<>();
+        bogus.put("id", id);
+        bogus.put("enabled", 2);
+        JsonNode rejected3 = post("/api/lc/pipeline-config/toggle", bogus);
+        assertFalse(rejected3.path("success").asBoolean(), "enabled=2 不能悄悄变成停用: " + rejected3);
+        assertEquals(400, rejected3.path("code").asInt());
+        assertEquals(1, get("/api/lc/pipeline-config/list", "appCode", APP, "entityCode", entity)
+                .path("data").get(0).path("enabled").asInt(), "enabled=2 那次请求改到了这一行");
+
+        // 反向: 带齐 id + enabled 的切换必须真的改到那一行
+        Map<String, Object> proper = new LinkedHashMap<>();
+        proper.put("id", id);
+        proper.put("enabled", 0);
+        assertOk(post("/api/lc/pipeline-config/toggle", proper), "正常切换");
+        JsonNode after = get("/api/lc/pipeline-config/list", "appCode", APP, "entityCode", entity);
+        assertEquals(0, after.path("data").get(0).path("enabled").asInt(),
+                "切换没落到那一行: " + after.path("data"));
+    }
+
+    private Map<String, Object> pipelineBody(String entityCode, String trigger, String stages) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("appCode", APP);
+        m.put("entityCode", entityCode);
+        m.put("tenantCode", TENANT);
+        m.put("triggerEvent", trigger);
+        m.put("enabled", 1);
+        m.put("stages", stages);
+        return m;
     }
 
     /** 只统计 getConnection/close，不改任何行为。 */

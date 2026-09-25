@@ -216,6 +216,11 @@ export type TimeGroup = 'DAY' | 'MONTH' | 'YEAR';
 
 export interface AggregateRequest {
   groupField?: string;
+  /**
+   * 多列分组（交叉表要用「行维度 x 列维度」）。非空时后端整体接管 `groupField`，
+   * 只有一项时与 `groupField` 等价；与 `timeGroup` 互斥。
+   */
+  groupFields?: string[];
   /** groupField 是日期列时按 日/月/年 分桶。 */
   timeGroup?: TimeGroup;
   aggregations?: Record<string, string[]>;
@@ -245,6 +250,45 @@ export function aggregateRecords(
       conditions: query.conditions ?? [],
       conjunction: query.conjunction ?? 'AND',
       limit: query.limit ?? 100,
+    },
+  });
+}
+
+/**
+ * `POST /runtime/shape` 的入参：聚合口径 + 一段对象整形程序。
+ * `shape` 是原样交给后端 z-util-expr-obj 执行的 JSON（步骤数组或对象），前端不解释它。
+ */
+export interface ShapeRequest extends AggregateRequest {
+  shape: unknown;
+}
+
+/**
+ * 二维聚合结果 → 高维视图结构（交叉表、分组小计、树）。
+ * <p>
+ * 返回的是程序自己决定的形状（数组/对象/标量），所以类型只能是 `unknown`：
+ * 把它 cast 成某个具体形状就等于"假设程序没写错"，而程序写错时后端给的是 400，
+ * 调用方要区分的是「请求失败」和「请求成功但结构不合预期」。
+ */
+export function shapeRecords(
+  entityCode: string,
+  ctx: RuntimeScope,
+  query: ShapeRequest,
+): Promise<unknown> {
+  return request<unknown>('/runtime/shape', {
+    method: 'POST',
+    query: { entityCode, appCode: ctx.appCode, tenantCode: tenantOf(ctx) },
+    body: {
+      appCode: ctx.appCode,
+      tenantCode: tenantOf(ctx),
+      groupField: query.groupField,
+      groupFields: query.groupFields,
+      timeGroup: query.timeGroup,
+      aggregations: query.aggregations ?? {},
+      filters: query.filters ?? {},
+      conditions: query.conditions ?? [],
+      conjunction: query.conjunction ?? 'AND',
+      limit: query.limit ?? 100,
+      shape: query.shape,
     },
   });
 }

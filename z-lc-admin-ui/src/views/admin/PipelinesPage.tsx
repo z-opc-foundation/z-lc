@@ -17,11 +17,16 @@ import type { ColumnsType } from 'antd/es/table';
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { PipelineConfigEntity, PipelineStage, TriggerEvent } from '@/api/types';
 import {
+  PIPELINE_STAGE_TYPES,
+  PIPELINE_SUPPORTED_TRIGGERS,
+  PIPELINE_TRIGGER_LABELS,
   createPipelineConfig,
   deletePipelineConfig,
+  isPipelineTriggerSupported,
   listPipelineConfigs,
   newPipelineDraft,
   parseStages,
+  stageTypeLabel,
   stringifyStages,
   togglePipelineConfig,
   updatePipelineConfig,
@@ -32,23 +37,6 @@ import { AdminScaffold, ListBanner } from './_shared';
 import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
-
-const TRIGGER_LABELS: Record<string, string> = {
-  BEFORE_CREATE: '创建前',
-  BEFORE_UPDATE: '更新前',
-  AFTER_CREATE: '创建后',
-  AFTER_UPDATE: '更新后',
-  AFTER_DELETE: '删除后',
-};
-
-const STAGE_TYPES = [
-  'DICT_RESOLVE',
-  'TYPE_CONVERT',
-  'REQUIRED_CHECK',
-  'REF_CHECK',
-  'WEBHOOK',
-  'SCRIPT',
-];
 
 export function PipelinesPage() {
   const { appCode, setAppCode, options, error: appError, reload: reloadApps } = useAppSelection();
@@ -94,22 +82,45 @@ export function PipelinesPage() {
     {
       title: '触发时机',
       dataIndex: 'triggerEvent',
-      width: 130,
-      render: (value: TriggerEvent | string) => <Tag>{TRIGGER_LABELS[String(value)] ?? value}</Tag>,
+      width: 150,
+      render: (value: TriggerEvent | string, row) => {
+        const trigger = String(value);
+        // 历史数据里可能存在 AFTER_* 这种没有挂接点的行: 说清"不会执行", 不要给个中文标签蒙过去
+        return isPipelineTriggerSupported(trigger) ? (
+          <Tag data-testid={`pipeline-trigger-${row.id ?? 'draft'}`}>{PIPELINE_TRIGGER_LABELS[trigger] ?? trigger}</Tag>
+        ) : (
+          <Tag color="red" data-testid={`pipeline-trigger-${row.id ?? 'draft'}`}>
+            {trigger} 无挂接点
+          </Tag>
+        );
+      },
     },
     {
       title: '阶段链',
       dataIndex: 'stages',
       render: (_v, row) => {
         const list = parseStages(row.stages);
-        if (!list.length) return <Text type="secondary">空</Text>;
+        if (!list.length)
+          return (
+            <Text type="danger" data-testid={`pipeline-empty-chain-${row.id ?? 'draft'}`}>
+              空链（保存会被拒）
+            </Text>
+          );
         return (
           <Space size={4} wrap>
-            {list.map((stage, index) => (
-              <Tag key={`${stage.type}-${index}`} color="blue">
-                {index + 1}. {stage.type || '未命名'}
-              </Tag>
-            ))}
+            {list.map((stage, index) => {
+              const meta = PIPELINE_STAGE_TYPES.find((item) => item.type === stage.type);
+              return (
+                <Tag
+                  key={`${stage.type}-${index}`}
+                  color={meta ? (meta.noOpOnWrite ? 'default' : 'blue') : 'red'}
+                  data-testid={`pipeline-stage-${row.id ?? 'draft'}-${index}`}
+                >
+                  {index + 1}. {meta ? `${stageTypeLabel(stage.type)} ${stage.type}` : `${stage.type} 无执行器`}
+                  {meta?.noOpOnWrite ? '（写路径暂不做事）' : ''}
+                </Tag>
+              );
+            })}
           </Space>
         );
       },
@@ -168,7 +179,7 @@ export function PipelinesPage() {
   return (
     <AdminScaffold
       title="处理流水线"
-      description="挂在实体生命周期上的阶段链（校验、字典解析、外部通知等），按 order 顺序执行。"
+      description="写在提交之前跑的处理器链：一次写入只跑「应用+实体+触发事件」匹配的那一条，按链里的顺序执行。引擎目前只在写前有挂接点（创建前/更新前），必填校验、类型转换、值域校验三道闸门必须留在链里；字典解析、引用检查今天在写路径上不改变数据。"
       appCode={appCode}
       onAppCode={setAppCode}
       appOptions={options}
@@ -218,7 +229,8 @@ export function PipelinesPage() {
               <Select
                 style={{ minWidth: 160 }}
                 value={editing.triggerEvent}
-                options={Object.entries(TRIGGER_LABELS).map(([value, label]) => ({ value, label }))}
+                // AFTER_* 不再提供: 引擎里没有任何写后回调落点, 选了就是存一行永远不跑的配置
+                options={PIPELINE_SUPPORTED_TRIGGERS.map((value) => ({ value, label: PIPELINE_TRIGGER_LABELS[value] }))}
                 onChange={(triggerEvent) => setEditing({ ...editing, triggerEvent })}
               />
               <Space size={6}>
@@ -238,24 +250,34 @@ export function PipelinesPage() {
                 <Button
                   size="small"
                   icon={<PlusOutlined />}
-                  onClick={() => setStages((prev) => [...prev, { type: STAGE_TYPES[0] ?? '', config: {}, order: prev.length }])}
+                  onClick={() => setStages((prev) => [
+                    ...prev,
+                    {
+                      type: PIPELINE_STAGE_TYPES[prev.length % PIPELINE_STAGE_TYPES.length]?.type ?? '',
+                      config: {},
+                      order: prev.length,
+                    },
+                  ])}
                 >
                   添加阶段
                 </Button>
               }
             >
               {stages.length === 0 ? (
-                <Text type="secondary">还没有阶段</Text>
+                <Text type="danger">还没有阶段 —— 空链保存会被后端拒绝，因为它绕过必填/类型/值域三道闸门</Text>
               ) : (
                 stages.map((stage, index) => (
                   <Space key={index} style={{ display: 'flex', marginBottom: 8 }} align="start">
                     <Tag style={{ minWidth: 24, textAlign: 'center' }}>{index + 1}</Tag>
                     <Select
                       size="small"
-                      style={{ width: 180 }}
+                      style={{ width: 240 }}
                       value={stage.type || undefined}
                       placeholder="阶段类型"
-                      options={STAGE_TYPES.map((type) => ({ value: type, label: type }))}
+                      options={PIPELINE_STAGE_TYPES.map((item) => ({
+                        value: item.type,
+                        label: `${item.label} ${item.type}${item.mandatory ? '（必填）' : ''}${item.noOpOnWrite ? '（写路径暂不做事）' : ''}`,
+                      }))}
                       onChange={(type) => patchStage(index, { type })}
                     />
                     <Input.TextArea
@@ -263,7 +285,7 @@ export function PipelinesPage() {
                       style={{ width: 260 }}
                       rows={1}
                       value={JSON.stringify(stage.config ?? {})}
-                      placeholder='{"url":"https://..."}'
+                      placeholder="阶段参数（当前引擎不读取，保留给后续实现）"
                       onChange={(event) => {
                         try {
                           patchStage(index, { config: JSON.parse(event.target.value || '{}') as Record<string, unknown> });

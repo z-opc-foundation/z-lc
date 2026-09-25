@@ -54,7 +54,7 @@ export type FieldType = (typeof FIELD_TYPES)[number];
 export type CellValueType = 'String' | 'Number' | 'Boolean' | 'DateTime';
 
 /** `ViewConfigDTO.viewType`. */
-export const VIEW_TYPES = ['LIST', 'FORM', 'DETAIL', 'KANBAN', 'GALLERY', 'CALENDAR', 'CHART'] as const;
+export const VIEW_TYPES = ['LIST', 'FORM', 'DETAIL', 'KANBAN', 'GALLERY', 'CALENDAR', 'CHART', 'PIVOT'] as const;
 export type ViewType = (typeof VIEW_TYPES)[number];
 
 /** `RelationDTO.relationType`. */

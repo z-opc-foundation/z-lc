@@ -85,12 +85,18 @@ export function bucketLabel(row: AggregateRow, timeGroup?: TimeGroup): string | 
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
+/**
+ * 空值分组的统一叫法。交叉表的列头要复用这个常量而不是各写一份：
+ * 同一个 NULL 在柱状图叫「（未填写）」、在交叉表叫"(空)"，用户会以为是两档不同的数据。
+ */
+export const UNFILLED_GROUP_LABEL = '（未填写）';
+
 /** 空值分组要显式说出来：图上冒出一个没人认领的柱子，比标成「未填写」更容易被误读。 */
 export function categoryLabel(row: AggregateRow): string {
   const label = row.group_label;
   if (label !== null && label !== undefined && String(label) !== '') return String(label);
   const key = row.group_key;
-  if (key === null || key === undefined || String(key) === '') return '（未填写）';
+  if (key === null || key === undefined || String(key) === '') return UNFILLED_GROUP_LABEL;
   return String(key);
 }
 

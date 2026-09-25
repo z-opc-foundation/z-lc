@@ -59,12 +59,16 @@ public class RuntimeImportService {
         List<ImportDto.RowError> errors = new ArrayList<ImportDto.RowError>();
         List<ImportDto.RowWarning> warnings = new ArrayList<ImportDto.RowWarning>();
         Map<String, Set<String>> codeCache = new LinkedHashMap<String, Set<String>>();
+        // 整批解析一次执行链: 逐行查配置表的话 2000 行就是 2000 次查询, 而且中途改配置会让
+        // 一批数据一半按旧链校验、一半按新链校验。preview 与 commit 各自解析, 但两边口径相同,
+        // 所以"预览说能过"不会在真写时才翻车。
+        Pipeline.Chain chain = pipeline.writeChain(request.getAppCode(), entity, Pipeline.BEFORE_CREATE);
         int valid = 0;
         for (int index = 0; index < request.getRecords().size(); index++) {
             Map<String, Object> record = request.getRecords().get(index);
             try {
                 RuntimeCrudDTO dto = dtoFor(entity, request, record);
-                pipeline.preWrite(entity, dto);
+                chain.run(entity, dto);
                 valid++;
                 collectDictWarnings(entity, request, index, dto.getFieldValues(), codeCache, warnings);
             } catch (RuntimeException ex) {
@@ -90,11 +94,12 @@ public class RuntimeImportService {
         Map<String, Set<String>> codeCache = new LinkedHashMap<String, Set<String>>();
         List<RuntimeCrudDTO> prepared = new ArrayList<RuntimeCrudDTO>();
 
+        Pipeline.Chain chain = pipeline.writeChain(request.getAppCode(), entity, Pipeline.BEFORE_CREATE);
         for (int index = 0; index < request.getRecords().size(); index++) {
             Map<String, Object> record = request.getRecords().get(index);
             try {
                 RuntimeCrudDTO dto = dtoFor(entity, request, record);
-                pipeline.preWrite(entity, dto);
+                chain.run(entity, dto);
                 prepared.add(dto);
                 collectDictWarnings(entity, request, index, dto.getFieldValues(), codeCache, warnings);
             } catch (RuntimeException ex) {

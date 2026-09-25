@@ -168,7 +168,7 @@ public class RuntimeCrudController {
         body.setEntityCode(entityCode);
         EntityDefDTO def = resolveEntity(body.getAppCode(), entityCode, body.getTenantCode());
         try {
-            pipeline.preWrite(def, body);
+            pipeline.preWrite(body.getAppCode(), def, body, Pipeline.BEFORE_CREATE);
         } catch (PipelineException ex) {
             return Result.<Long>fail(ex.getMessage()).code(400);
         } catch (RuntimeException ex) {
@@ -346,7 +346,7 @@ public class RuntimeCrudController {
         }
         body.setExistingValues(before);
         try {
-            pipeline.preWrite(def, body);
+            pipeline.preWrite(body.getAppCode(), def, body, Pipeline.BEFORE_UPDATE);
         } catch (PipelineException ex) {
             return Result.<Integer>fail(ex.getMessage()).code(400);
         } catch (RuntimeException ex) {

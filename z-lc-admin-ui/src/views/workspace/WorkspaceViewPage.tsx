@@ -14,6 +14,7 @@ import { KanbanView } from './KanbanView';
 import { GalleryView } from './GalleryView';
 import { CalendarView } from './CalendarView';
 import { ChartView } from './ChartView';
+import { PivotView } from './PivotView';
 import type { FilterState } from '@/views/grid/FilterBar';
 
 const { Text } = Typography;
@@ -201,6 +202,23 @@ export function WorkspaceViewPage() {
         conditions={filter.conditions}
         conjunction={filter.conjunction}
         onFilterChange={setFilter}
+      />
+    );
+  }
+
+  // 交叉表与图表同为"按实体存"的本地配置，key 必须带 entityCode，
+  // 否则切换实体时会把上一个实体的行/列维度漏过来（与 CHART 同一类缺陷）。
+  if (activeView === 'PIVOT') {
+    return (
+      <PivotView
+        key={`pivot-${entityCode}`}
+        entity={entity}
+        resolvedFields={resolvedFields}
+        views={meta?.views ?? []}
+        appCode={appCode}
+        tenantCode={ctx.tenantCode}
+        conditions={filter.conditions}
+        conjunction={filter.conjunction}
       />
     );
   }

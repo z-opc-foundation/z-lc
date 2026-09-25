@@ -5,6 +5,7 @@ import {
   AppstoreOutlined,
   ArrowLeftOutlined,
   BarChartOutlined,
+  BorderInnerOutlined,
   CalendarOutlined,
   DashboardOutlined,
   FormOutlined,
@@ -34,6 +35,7 @@ const VIEW_TABS: { key: ViewType; label: string; icon: React.ReactNode }[] = [
   { key: 'GALLERY', label: '画廊', icon: <LayoutOutlined /> },
   { key: 'CALENDAR', label: '日历', icon: <CalendarOutlined /> },
   { key: 'CHART', label: '图表', icon: <BarChartOutlined /> },
+  { key: 'PIVOT', label: '交叉表', icon: <BorderInnerOutlined /> },
 ];
 
 /**

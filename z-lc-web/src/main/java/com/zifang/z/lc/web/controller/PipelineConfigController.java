@@ -50,7 +50,17 @@ public class PipelineConfigController {
     @Operation(summary = "启用/禁用Pipeline")
     @PostMapping("/toggle")
     public Result<Boolean> toggle(@RequestBody PipelineConfigEntity entity) {
-        pipelineConfigService.toggleEnabled(entity.getId(), entity.getEnabled() == 1);
+        Integer enabled = entity == null ? null : entity.getEnabled();
+        if (enabled == null) {
+            // 少了 enabled 就按"关掉"处理的话, 一次漏写字段的请求会把别人的流水线悄悄停用
+            throw new IllegalArgumentException("enabled 不能为空 (1=启用, 0=停用)");
+        }
+        if (enabled != 0 && enabled != 1) {
+            // enabled == 1 才开, 其余一律关: 传 2/-1 的请求会"成功"停用一条流水线,
+            // 而调用方以为自己在启用。开关语义只认 0/1, 别的值直接拒。
+            throw new IllegalArgumentException("enabled 只能是 1(启用) 或 0(停用), 实际: " + enabled);
+        }
+        pipelineConfigService.toggleEnabled(entity.getId(), enabled == 1);
         return Result.success(true);
     }
 }

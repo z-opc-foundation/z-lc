@@ -176,11 +176,32 @@ async function runOnce(runNum, appCode) {
   const importReqs = [];
   // 批量删除同理：一个请求还是 N 个请求，界面上一模一样，只有网络层分得出来
   const deleteReqs = [];
+  // 交叉表的行转列在服务端做，界面上一张"看着对"的表也可能是前端自己拼的假透视 ——
+  // 只有 /runtime/shape 的请求体（两个维度 + 程序）能证明透视真发生在数据库那边。
+  const shapeReqs = [];
   // 界面断言对"页面自己在那儿转圈重查"完全免疫：每次都返回同样的数据，格子照样在。
   // 日历就曾经挂载后 300ms 内发了 43 次当月查询，只有数请求条数才看得见。
   const listReqs = [];
   // 设计器侧栏的实体清单同理：一次挂载查一次还是在那儿自循环，界面上一模一样。
   const entityListReqs = [];
+  // 字段编码那道闸必须能证明"拦住 = 一次写请求都没发出去"，只看界面文案是不够的。
+  const entityWriteReqs = [];
+  // 流水线那一节**故意**要撞一次后端拒绝（那正是它要验的那道闸），所以它得能证明自己只撞了一次。
+  const pipelineCreateReqs = [];
+  // 但全局哨兵（"任何 >=400 都是意外"）不能因此按 URL 整条放行 —— 改成由那一节按**实际发生的
+  // 那一次**登记 `status + ' ' + url`，哨兵按多重集扣减：同一格多发出来的第二次仍然会红。
+  const sanctionedRejections = [];
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().includes('/pipeline-config/create')) {
+      pipelineCreateReqs.push(req.url());
+    }
+  });
+  page.on('request', (req) => {
+    if (req.method() === 'POST' && req.url().includes('/admin/app/entity/create')) {
+      entityWriteReqs.push(req.url());
+    }
+    if (req.method() === 'PUT' && /\/admin\/entity\b/.test(req.url())) entityWriteReqs.push(req.url());
+  });
   page.on('request', (req) => {
     if (req.url().includes('/admin/app/entity/list')) entityListReqs.push(req.url());
   });
@@ -192,6 +213,13 @@ async function runOnce(runNum, appCode) {
         chartReqs.push(req.postDataJSON());
       } catch {
         chartReqs.push(null);
+      }
+    }
+    if (req.url().includes('/runtime/shape')) {
+      try {
+        shapeReqs.push(req.postDataJSON());
+      } catch {
+        shapeReqs.push(null);
       }
     }
     if (/\/runtime\/import\/(preview|commit)/.test(req.url())) {
@@ -1230,6 +1258,13 @@ async function runOnce(runNum, appCode) {
         check('引用断掉的那块组件点名说是谁丢了，另一块照常出图',
           brokenText.includes(`图表视图 #${trendId} 已被删除`),
           brokenText.slice(0, 160).replace(/\n/g, ' | '));
+        // 等到剩下的那块"画出了东西"再数：只等两块组件挂上，是在等一个还没回来的聚合响应 ——
+        // 实测 4 轮里输过一次（slices=0，而 reqs 里那条 prio 请求明明在飞）。
+        // 这里只等 ">0" 不等 "==真值"：等成断言本身会让下面那条变成永远绿。
+        await page.waitForFunction(
+          () => document.querySelectorAll('.zlc-chart-slice').length > 0,
+          null, { timeout: 15000 },
+        );
         check('丢了一块不会连带让剩下的图取不到数',
           (await page.locator('.zlc-chart-slice').count()) === countMap.size
           && chartReqs.some((r) => r?.groupField === 'prio')
@@ -1243,6 +1278,260 @@ async function runOnce(runNum, appCode) {
     } catch (e) {
       check('图表视图', false, e?.message);
       await shot(page, `r${runNum}-10-chart-FAIL`);
+    }
+
+    /* ---- 10e. 交叉表：两维分组 + 服务端 pivot，格子按渲染几何对行级真值 ---- */
+    try {
+      const pivotWaitCount = async (selector, expected) => {
+        await page.waitForFunction(
+          ([sel, n]) => document.querySelectorAll(sel).length === n,
+          [selector, expected],
+          { timeout: 15000 },
+        );
+      };
+      const pivotPick = async (trigger, title) => {
+        await page.locator(trigger).first().click({ timeout: 5000 });
+        await page.locator(
+          `.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option[title="${title}"]`,
+        ).first().click({ timeout: 5000 });
+        await page.keyboard.press('Escape');
+        await page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)')
+          .waitFor({ state: 'hidden', timeout: 3000 }).catch(() => {});
+      };
+      // 格式化必须与被测组件同一把尺：这里自己数一遍数字再"看起来一样"是最省事的假绿来源
+      const nf = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 });
+      // 与 chartModel.UNFILLED_GROUP_LABEL 同一句话。写成两份就会漂：漂了不会假绿，
+      // 会在真有未填写记录时以"列头对不上"的红出现，但那时先怀疑的是产品。
+      const UNFILLED = '（未填写）';
+
+      // 交叉表的几何读取 + 逐格核对，两个维度组合共用一份（下面 10e 与 10e-2 各跑一次）。
+      // 每一格用它自己的矩形去对：列头的 x 区间 + 本行行头的 y 区间。
+      // 数"有几个数字"对这类缺陷完全免疫 —— colspan 少写一格、列序错位，格子照样都在。
+      const readPivotGeometry = () => page.evaluate(() => {
+        const table = document.querySelector('.zlc-pivot-table');
+        if (!table) return { error: '页面上没有 .zlc-pivot-table' };
+        const box = (n) => {
+          const r = n.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        };
+        const headOf = (n) => ({
+          label: (n.textContent ?? '').trim(),
+          key: n.getAttribute('data-col-key'),
+          ...box(n),
+        });
+        return {
+          heads: [...table.querySelectorAll('thead th.zlc-pivot-colhead')].map(headOf),
+          rowHeads: [...table.querySelectorAll('tbody tr th.zlc-pivot-rowhead')].map(headOf),
+          cells: [...table.querySelectorAll('tbody tr')].map((tr) => ({
+            row: (tr.querySelector('th.zlc-pivot-rowhead')?.textContent ?? '').trim(),
+            tds: [...tr.querySelectorAll('td.zlc-pivot-cell')].map((td) => ({
+              text: (td.textContent ?? '').trim(), ...box(td),
+            })),
+          })),
+          foot: [...table.querySelectorAll('tfoot td.zlc-pivot-cell')].map((td) => (td.textContent ?? '').trim()),
+          grand: (table.querySelector('.zlc-pivot-grandtotal')?.textContent ?? '').trim(),
+        };
+      });
+      // 真值是"行标签 → 列标签 → 记录数"，列标签用的是界面那句话（未填写那一档已经折成 UNFILLED）
+      const verifyPivotCells = (geo, truth) => {
+        const misplaced = [];
+        const wrongValue = [];
+        geo.cells.forEach((row, rowIndex) => {
+          const rowHead = geo.rowHeads[rowIndex];
+          const rowTruth = truth.get(row.row) ?? new Map();
+          row.tds.forEach((td, i) => {
+            const head = geo.heads[i];
+            if (!head) {
+              misplaced.push(`${row.row} 第 ${i + 1} 格没有对应的列头`);
+              return;
+            }
+            const cx = (td.left + td.right) / 2;
+            if (cx < head.left || cx > head.right) {
+              misplaced.push(`${row.row}×${head.label} 的 x=${cx.toFixed(0)} 不在列头 [${head.left.toFixed(0)},${head.right.toFixed(0)}]`);
+            }
+            if (rowHead && (td.bottom <= rowHead.top || td.top >= rowHead.bottom)) {
+              misplaced.push(`${row.row}×${head.label} 的 y 不在本行行头里`);
+            }
+            const want = rowTruth.get(head.label);
+            const got = want === undefined ? '·' : nf.format(want);
+            if (td.text !== got) wrongValue.push(`${row.row}×${head.label} 界面=${td.text} 真值=${got}`);
+          });
+        });
+        return { misplaced, wrongValue };
+      };
+
+      // 行级真值现读：前面的内联编辑、看板拖拽、表单新建早把数据改过了
+      const listRows = async () => (await fetch(
+        `${API}/api/lc/runtime/list?entityCode=task&appCode=${appCode}&tenantCode=default`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' },
+          body: JSON.stringify({ page: 1, size: 200 }),
+        },
+      ).then((r) => r.json()))?.data?.records ?? [];
+      const pvRecs = await listRows();
+      check('交叉表用例读到了行级数据', pvRecs.length >= 3, `records=${pvRecs.length}`);
+      // 后端的空值档 label 就是 NULL，pivot 拿值当键 → 界面上那一档叫「（未填写）」。
+      // 两维各自一个函数：10e 用 优先级×标题，10e-2 反过来用 标题×优先级（让空档落到列维度上）。
+      const prioBucket = (r) => r.prio_label || r.prio || UNFILLED;
+      const titleBucket = (r) => (r.title === null || r.title === undefined || r.title === '' ? UNFILLED : r.title);
+      const truthByRow = (recs, rowOf, colOf) => {
+        const map = new Map();
+        for (const r of recs) {
+          const rk = rowOf(r);
+          const ck = colOf(r);
+          if (!map.has(rk)) map.set(rk, new Map());
+          map.get(rk).set(ck, (map.get(rk).get(ck) ?? 0) + 1);
+        }
+        return map;
+      };
+      const byRow = truthByRow(pvRecs, prioBucket, titleBucket);
+      const wantCols = [...new Set(pvRecs.map(titleBucket))].sort();
+
+      await page.goto(`${BASE}/${appCode}/task/PIVOT`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.waitForSelector('.zlc-pivot-toolbar', { timeout: 15000 });
+      const incompleteText = await page.locator('body').innerText();
+      check('只选了一个维度时不发整形请求，并说清还缺什么',
+        shapeReqs.length === 0 && incompleteText.includes('还没选列维度'),
+        `reqs=${shapeReqs.length} text=${incompleteText.slice(0, 120).replace(/\n/g, ' | ')}`);
+
+      await pivotPick('.zlc-pivot-row', '优先级');
+      await pivotPick('.zlc-pivot-col', '标题');
+      await pivotWaitCount('.zlc-pivot-table tbody tr', byRow.size);
+
+      const geo = await readPivotGeometry();
+      if (geo.error) throw new Error(geo.error);
+
+      check('列头就是第二维在数据里真实出现过的取值（透视出来的列，不是配置里写死的）',
+        JSON.stringify(geo.heads.map((h) => h.label).sort()) === JSON.stringify(wantCols),
+        `want=${JSON.stringify(wantCols)} got=${JSON.stringify(geo.heads.map((h) => h.label))}`);
+      check('行数等于第一维的取值数（既没折行也没多出一行）',
+        geo.rowHeads.length === byRow.size && geo.cells.length === byRow.size,
+        `rows=${geo.cells.length} want=${byRow.size}`);
+
+      // 后端直接拿维度的值当行键/列键，该维度为 NULL 时那个键就是空串（18090 实测）。
+      // 原样画出去是一根没有标题的列 / 一行没有名字的行 —— 所以两头都断：
+      // 不许出现空白表头，且"未填写"那一档带的是后端那个空键（证明改的是显示、不是键）。
+      // ⚠ 这一条是数据条件式的：hasUnfilled 为 false 时（标题是必填列，正常跑不出空档）它只断到
+      // "不许空白表头"。把「未填写」那一列真的画出来的正例在下面 10e-2 —— 那里往库里清一条记录。
+      const blankHeads = [...geo.heads, ...geo.rowHeads].filter((h) => h.label === '');
+      const hasUnfilled = pvRecs.some((r) => titleBucket(r) === UNFILLED);
+      const unfilledHeads = geo.heads.filter((h) => h.label === UNFILLED);
+      check('空值那一档在界面上报得出名字，且它认领的仍是后端给的那个空键',
+        blankHeads.length === 0
+        && unfilledHeads.length === (hasUnfilled ? 1 : 0)
+        && (!hasUnfilled || unfilledHeads[0]?.key === ''),
+        `blank=${blankHeads.length} 界面里的未填写列=${unfilledHeads.length}`
+        + ` key=${JSON.stringify(unfilledHeads[0]?.key)} 数据里有未填写列=${hasUnfilled}`);
+
+      const { misplaced, wrongValue } = verifyPivotCells(geo, byRow);
+      check('每一格都落在自己那一列的列头下面、自己那一行的行头右边',
+        misplaced.length === 0, misplaced.slice(0, 3).join(' ; '));
+      check('交叉表每一格都等于行级真值（没有记录的组合是 ·，不是 0）',
+        wrongValue.length === 0, wrongValue.slice(0, 3).join(' ; '));
+
+      const dots = geo.cells.reduce((n, r) => n + r.tds.filter((td) => td.text === '·').length, 0);
+      const wantDots = geo.cells.reduce(
+        (n, r) => n + (geo.heads.length - (byRow.get(r.row)?.size ?? 0)), 0,
+      );
+      // 分母守卫：这份数据里要是根本没有空组合，上一条"缺格是 ·"就是条空断言
+      check('用例真的含空组合（否则上一条缺格显示 · 是条空断言）',
+        wantDots > 0 && dots === wantDots, `dots=${dots} want=${wantDots}`);
+
+      const wantFoot = geo.heads.map((h) => nf.format(pvRecs.filter((r) => titleBucket(r) === h.label).length));
+      check('页脚列合计等于行级真值按列数出来的记录数',
+        JSON.stringify(geo.foot) === JSON.stringify(wantFoot),
+        `want=${JSON.stringify(wantFoot)} got=${JSON.stringify(geo.foot)}`);
+      check('总计是全部分组的记录数，不是"屏上可见格子之和"',
+        geo.grand === nf.format(pvRecs.length), `grand=${geo.grand} recs=${pvRecs.length}`);
+
+      const body = shapeReqs[0] ?? {};
+      const [step] = body.shape ?? [];
+      check('整形请求带的是两个维度（行在前）+ SUM(group_count) 的透视程序',
+        JSON.stringify(body.groupFields) === JSON.stringify(['prio', 'title'])
+        && step?.op === 'pivot' && step?.agg === 'SUM'
+        && step?.value === 'group_count' && step?.on === 'group_label_2',
+        JSON.stringify(body).slice(0, 220));
+      check('选齐两个维度后只发一次 /runtime/shape',
+        shapeReqs.length === 1, `reqs=${shapeReqs.length}`);
+      await shot(page, `r${runNum}-10e-pivot`);
+
+      const shapeBefore = shapeReqs.length;
+      await page.waitForTimeout(2000);
+      check('交叉表安静下来后不再自己重查（2s 内不该再有 /runtime/shape）',
+        shapeReqs.length === shapeBefore, `churn=${shapeReqs.length - shapeBefore}`);
+
+      /* ---- 10e-2. 「未填写」那一列的正例：把空档造在列维度上 ---- */
+      // 18090 实测两件事才敢这么写：fieldValues 里给 null 是"这一列不动"（记录原样留着 P2），
+      // 要给空串才真的清空；清空后多维聚合回来的 group_key_2 / group_label_2 都是空串，
+      // /runtime/shape 于是产出一个键为 "" 的列 —— 界面上那一根就是 pivotColumnLabel 唯一走到的分支。
+      const clearTarget = pvRecs.find((r) => prioBucket(r) !== UNFILLED);
+      const cleared = await fetch(
+        `${API}/api/lc/runtime/update?entityCode=task&appCode=${appCode}&tenantCode=default`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' },
+          body: JSON.stringify({
+            appCode, tenantCode: 'default', fieldValues: { id: clearTarget?.id, prio: '' },
+          }),
+        },
+      ).then((r) => r.json());
+      check('用例真的把一条记录的优先级清掉了（空档不是假设出来的）',
+        cleared?.success === true, `id=${clearTarget?.id} resp=${JSON.stringify(cleared).slice(0, 160)}`);
+
+      const pvRecs2 = await listRows();
+      const unfilledRecs = pvRecs2.filter((r) => prioBucket(r) === UNFILLED);
+      // 分母守卫：清空没生效 / 把全部记录都清了，下面三条就都退化成空断言
+      check('库里现在既有"没有优先级"的记录也有有优先级的（否则下面是空断言）',
+        unfilledRecs.length >= 1 && unfilledRecs.length < pvRecs2.length,
+        `unfilled=${unfilledRecs.length} recs=${pvRecs2.length}`);
+
+      await pivotPick('.zlc-pivot-row', '标题');
+      await pivotPick('.zlc-pivot-col', '优先级');
+      const byRow2 = truthByRow(pvRecs2, titleBucket, prioBucket);
+      // 只数行头会等出一张过期的表：这份数据里"优先级的档数"和"标题的个数"都是 2。
+      // 所以要等的是列键 —— 后端给的那个空串键不会因为界面换了叫法而变，
+      // 于是"等到真到位"和"下面那条断言标签"是两件事，后者仍然可以单独红。
+      const wantKeys2 = [...new Set(pvRecs2.map((r) => r.prio_label || r.prio || ''))].sort();
+      await page.waitForFunction(
+        ([sel, want]) => {
+          const got = [...document.querySelectorAll(`${sel} thead th.zlc-pivot-colhead`)]
+            .map((n) => n.getAttribute('data-col-key') ?? '').sort();
+          return JSON.stringify(got) === want;
+        },
+        ['.zlc-pivot-table', JSON.stringify(wantKeys2)],
+        { timeout: 15000 },
+      );
+
+      const geo2 = await readPivotGeometry();
+      if (geo2.error) throw new Error(geo2.error);
+      check('换维度组合（标题×优先级）之后行数仍等于行维度的档数',
+        geo2.rowHeads.length === byRow2.size && geo2.cells.length === byRow2.size,
+        `rows=${geo2.cells.length} want=${byRow2.size}`);
+
+      const heads2 = geo2.heads.map((h) => h.label);
+      const unfilledCol = geo2.heads.find((h) => h.label === UNFILLED);
+      check('未填写那一列画得出来：没有任何一根列是空白标题，且它认领的还是后端那个空键',
+        geo2.heads.every((h) => h.label !== '') && !!unfilledCol && unfilledCol.key === '',
+        `heads=${JSON.stringify(heads2)} key=${JSON.stringify(unfilledCol?.key)}`);
+      // 只画出一根表头不算数：那一列里的格子要按行级真值落位（键没被标签替换掉才可能对得上）
+      const { misplaced: misplaced2, wrongValue: wrongValue2 } = verifyPivotCells(geo2, byRow2);
+      check('未填写那一列的格子按行级真值落位，不是摆在最右边的装饰列',
+        misplaced2.length === 0 && wrongValue2.length === 0,
+        [...misplaced2, ...wrongValue2].slice(0, 3).join(' ; '));
+      const blankIndex = heads2.indexOf(UNFILLED);
+      check('未填写那一列的列合计等于没有优先级的记录数，总计仍是全部记录数',
+        geo2.foot[blankIndex] === nf.format(unfilledRecs.length)
+        && geo2.grand === nf.format(pvRecs2.length),
+        `foot=${JSON.stringify(geo2.foot)} idx=${blankIndex} unfilled=${unfilledRecs.length} grand=${geo2.grand}`);
+      check('这一回的行/列维度没有写反：groupFields 是 标题在前、优先级在后',
+        JSON.stringify((shapeReqs[shapeReqs.length - 1] ?? {}).groupFields)
+        === JSON.stringify(['title', 'prio']),
+        JSON.stringify((shapeReqs[shapeReqs.length - 1] ?? {}).groupFields));
+      await shot(page, `r${runNum}-10e2-pivot-unfilled`);
+    } catch (e) {
+      check('交叉表视图', false, e?.message);
+      await shot(page, `r${runNum}-10e-pivot-FAIL`);
     }
 
     /* ---- 11. 管理/设计页 ---- */
@@ -1262,6 +1551,193 @@ async function runOnce(runNum, appCode) {
     } catch (e) {
       check('管理/设计页', false, e?.message);
       await shot(page, `r${runNum}-08-admin-FAIL`);
+    }
+
+    /* ---- 11a. 处理流水线页：画出来的顺序就是引擎要跑的顺序（#41）---- */
+    // 这一节问的是"界面说的话后端兑不兑现"。种一份**合法但数组位置与 order 不一致**的配置:
+    // 幽灵阶段 / AFTER_* / 空链现在都在写入口就被拒了, 浏览器里再也造不出那种脏行 ——
+    // 还能造出来的错位只剩这一种, 而它正好问得出"表格按哪个排"。
+    try {
+      const pipeSeed = await fetch(`${API}/api/lc/pipeline-config/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' },
+        body: JSON.stringify({
+          tenantCode: 'default', appCode, entityCode: 'task', triggerEvent: 'BEFORE_CREATE', enabled: 1,
+          // 数组第一项是 DICT_RESOLVE 而它的 order 是 3: 界面上它必须排在最后
+          stages: JSON.stringify([
+            { type: 'DICT_RESOLVE', config: {}, order: 3 },
+            { type: 'VALUE_VALIDATE', config: {}, order: 2 },
+            { type: 'REQUIRED_CHECK', config: {}, order: 0 },
+            { type: 'TYPE_CONVERT', config: {}, order: 1 },
+          ]),
+        }),
+      }).then((r) => r.json());
+      check('种下一份 order 与数组位置不一致的配置（这一节的前提）',
+        pipeSeed?.success === true, JSON.stringify(pipeSeed).slice(0, 180));
+
+      if (pipeSeed?.success) {
+        await page.goto(`${BASE}/admin/pipelines?appCode=${appCode}`, { waitUntil: 'networkidle', timeout: 20000 });
+        await page.locator('[data-testid^="pipeline-stage-"]').first().waitFor({ state: 'visible', timeout: 15000 });
+        const stageTags = (await page.locator('[data-testid^="pipeline-stage-"]').allInnerTexts())
+          .map((t) => t.replace(/\s+/g, ' ').trim());
+        check('阶段链按 order 画，不是照抄 JSON 数组的位置（数组第一项是字典解析，画出来它排最后）',
+          stageTags.length === 4 && stageTags[0].includes('必填校验') && stageTags[1].includes('类型转换')
+          && stageTags[2].includes('值域校验') && stageTags[3].includes('字典解析'),
+          JSON.stringify(stageTags));
+        check('编号就是 1..N 的执行位数',
+          stageTags.every((t, i) => t.startsWith(`${i + 1}.`)), JSON.stringify(stageTags));
+        check('后端认得的阶段编码原样写在每一格里（只有中文名的话，词表漂了没人看得出来）',
+          ['REQUIRED_CHECK', 'TYPE_CONVERT', 'VALUE_VALIDATE', 'DICT_RESOLVE']
+            .every((c, i) => (stageTags[i] ?? '').includes(c)), JSON.stringify(stageTags));
+        // 这一条**不按行号读**：它断言的是"哪一档带这个牌子"，与行序无关（行序归上面那条管）。
+        // 原来写成 `stageTags[3]`，S1（不按 order 排）一注入就把 DICT_RESOLVE 挪出第 4 格，
+        // 于是这一条跟着红 —— 一条检查红在别人的缺陷上，它就再也不是自己那句保证的证据了。
+        const noopRows = stageTags.filter((t) => t.includes('写路径暂不做事'));
+        const gateRows = stageTags.filter((t) => /REQUIRED_CHECK|TYPE_CONVERT|VALUE_VALIDATE/.test(t));
+        check('只有今天什么都不做的那一档带「写路径暂不做事」，三道闸门都不带',
+          noopRows.length === 1 && noopRows[0].includes('DICT_RESOLVE')
+          && gateRows.length === 3 && !gateRows.some((t) => t.includes('写路径暂不做事')),
+          JSON.stringify(stageTags));
+        const trigTag = (await page.locator('[data-testid^="pipeline-trigger-"]').first().innerText())
+          .replace(/\s+/g, ' ').trim();
+        check('真有挂接点的那一行给中文挂接点名', trigTag === '创建前', trigTag);
+
+        // 草稿里的选择项：这是"能选出什么"的唯一出口，也是幽灵阶段唯一还可能回来的地方
+        await page.getByRole('button', { name: /新\s*建\s*流\s*水\s*线/ }).click();
+        await page.locator('.ant-modal .ant-select-selector').nth(2).waitFor({ state: 'visible', timeout: 15000 });
+
+        // 读数前必须确认**只有一个**下拉框开着：上一支的隐藏动画没跑完时这里会数到 2，
+        // 于是一次读数会把两个选择项混成一份（第二轮实测：阶段清单凭空多出两条 <没有阶段编码>，
+        // 而那两条其实是实体下拉框的选项）。去竞态而不是拉长 timeout —— 两半要落在同一次读取上。
+        const openBoxes = () => page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+        const settleTo = async (want) => {
+          for (let i = 0; i < 80; i += 1) {
+            if (await openBoxes().count() === want) break;
+            await page.waitForTimeout(100);
+          }
+          return openBoxes().count();
+        };
+        const readDropdown = async (label) => {
+          const got = await settleTo(1);
+          check(`${label}：读的时候只有一个下拉框开着（两个同时开着的读数会把两份选择项混成一份）`,
+            got === 1, `开着的下拉框数=${got}`);
+          return (await openBoxes().first().locator('.ant-select-item-option').allInnerTexts())
+            .map((t) => t.trim());
+        };
+        const closeDropdown = async () => {
+          // 不能用 Escape 收下拉框: 焦点不在 Select 里时那一下会落到 antd Modal 自己身上，
+          // 把**整个弹窗**关掉（实测: `.anticon-delete` 等 30s 等不到，因为弹窗已经没了）。
+          // 点弹窗标题是一次场内点击 —— antd 的 Select 认 mousedown 的"点外面"，关掉下拉框而不碰弹窗。
+          if (await openBoxes().count() > 0) await page.locator('.ant-modal-title').click();
+          await settleTo(0);
+        };
+
+        await page.locator('.ant-modal .ant-select-selector').nth(1).click();
+        await openBoxes().first().locator('.ant-select-item-option').first()
+          .waitFor({ state: 'visible', timeout: 10000 });
+        const triggerOptions = await readDropdown('触发事件选择项');
+        check('触发事件只能选到引擎真有挂接点的那两个（写后事件一个都不许出现在选择项里）',
+          triggerOptions.join('|') === '创建前|更新前', JSON.stringify(triggerOptions));
+
+        await closeDropdown();
+        await page.locator('.ant-modal .ant-select-selector').nth(2).click();
+        await openBoxes().first().locator('.ant-select-item-option').first()
+          .waitFor({ state: 'visible', timeout: 10000 });
+        const stageOptions = await readDropdown('阶段选择项');
+        const codes = stageOptions.map((t) => (t.match(/[A-Z_]+/) ?? ['<没有阶段编码>'])[0]);
+        check('阶段选择项与后端那份词表同源：正好这 5 个，多一个少一个都算漂',
+          codes.join('|') === 'DICT_RESOLVE|REF_CHECK|REQUIRED_CHECK|TYPE_CONVERT|VALUE_VALIDATE',
+          JSON.stringify(codes));
+        // 反向断言要有猎物：上面那一次读取真的数出了 5 个选项，这里说"没有幽灵"才不是空跑
+        check('没有执行器的幽灵阶段不能再被选中（同一格读数里刚数满 5 项）',
+          codes.length === 5 && !stageOptions.join('|').includes('WEBHOOK')
+          && !stageOptions.join('|').includes('SCRIPT'), JSON.stringify(codes));
+        check('摘不得的三道闸门与"什么都不做"在选择项里就说出来（用户是在这里决定摘不摘的）',
+          stageOptions.join('|').includes('（必填）') && stageOptions.join('|').includes('（写路径暂不做事）'),
+          JSON.stringify(stageOptions).slice(0, 260));
+
+        await closeDropdown();
+        // 草稿默认不带实体，而 save() 第一步就在前端 `message.warning('请选择实体')` 后 return ——
+        // 不选实体就永远发不出那个请求，下面那两条"后端真的拒了空链"的检查会退化成"界面自己拦了一下"，
+        // 而这正是这一节要否证的那类谎。所以先选实体，并把它当成一条前提检查。
+        await page.locator('.ant-modal .ant-select-selector').nth(0).click();
+        await openBoxes().first().locator('.ant-select-item-option').first()
+          .waitFor({ state: 'visible', timeout: 10000 });
+        const entityOpts = await readDropdown('实体选择项');
+        const wanted = entityOpts.findIndex((t) => t.includes('任务'));
+        check('草稿里选得到被测实体（选不到则下面那两条"后端拒了"根本打不到服务端）',
+          wanted >= 0, JSON.stringify(entityOpts).slice(0, 160));
+        if (wanted >= 0) {
+          await openBoxes().first().locator('.ant-select-item-option').nth(wanted).click();
+        }
+        await closeDropdown();
+
+        // 收下拉框那几下点击有可能把弹窗一起带走（焦点位置一变就换形状），而弹窗一没，
+        // 下面三条关于"保存被后端拒"的检查会全部空跑成"读不到东西"。先把前提钉住。
+        const modalOpen = await page.locator('.ant-modal-title').isVisible();
+        check('草稿弹窗还开着（一关掉，下面那三条关于"保存被拒"的检查就全是空跑）', modalOpen,
+          `标题可见=${modalOpen}`);
+        const deleteBtns = await page.locator('.ant-modal .anticon-delete').count();
+        check('草稿默认就带着三道闸门可删（删不到按钮 = 默认链本身空了，"删空"那一路走不到）',
+          deleteBtns === 3, `删除按钮数=${deleteBtns}`);
+
+        for (let i = 0; i < 3; i += 1) {
+          await page.locator('.ant-modal .anticon-delete').first().click();
+        }
+        const modalText = (await page.locator('.ant-modal').innerText()).replace(/\s/g, '');
+        check('阶段删空时界面当场说清这一份保存会被后端拒绝',
+          modalText.includes('还没有阶段——空链保存会被后端拒绝'), modalText.slice(0, 200));
+
+        const respPromise = page.waitForResponse(
+          (res) => res.url().includes('/pipeline-config/create') && res.request().method() === 'POST',
+          { timeout: 15000 },
+        );
+        // toast 三秒就自己收掉，而"没等到响应"那一条路要把 15s 等完 —— 那时再去找
+        // `.ant-message-notice` 必然找不到，一次 waitFor 超时会把整节带走（S5 实测：
+        // N_TOAST 连跑都没跑到，红的是那句兜底的 catch）。改成**边出现边抄**：
+        // 这一条想说的是"界面说过什么"，不是"此刻还挂着什么"。
+        await page.evaluate(() => {
+          const w = window;
+          w.__toasts = [];
+          const scan = () => {
+            document.querySelectorAll('.ant-message-notice').forEach((node) => {
+              const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+              if (t && w.__toasts.indexOf(t) < 0) w.__toasts.push(t);
+            });
+          };
+          new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+          setInterval(scan, 120);
+          scan();
+        });
+        await page.locator('.ant-modal-footer').getByRole('button', { name: /保\s*存/ }).click();
+        let pipeResp = null;
+        try {
+          pipeResp = await respPromise;
+        } catch { /* 没等到响应: 下面那条检查会红, 不让它把整节带走 */ }
+        const pipeStatus = pipeResp ? pipeResp.status() : null;
+        if (pipeResp) sanctionedRejections.push(`${pipeStatus} ${pipeResp.url()}`);
+        check('点保存真的发出了请求（这一节测的是服务端那道闸，不是界面在前端偷偷拦）',
+          pipeStatus === 400, `http=${pipeStatus}`);
+        // 上一条的账只认"我等到的那一次"，这一条补齐"整轮就这一次"：被登记放行的拒绝
+        // 若能被无限次套用，哨兵就成了摆设。
+        check('整轮 pipeline-config/create 恰好一个 POST（放行的登记不许多于实际发生的那一次）',
+          pipelineCreateReqs.length === 1, `reqs=${pipelineCreateReqs.length}`);
+        let toastAll = '';
+        for (let i = 0; i < 100; i += 1) {
+          toastAll = (await page.evaluate(() => (window.__toasts || []).join('|'))).replace(/\s/g, '');
+          if (toastAll) break;
+          await page.waitForTimeout(120);
+        }
+        check('空链真的被后端拒了，而界面没有把它报成「已保存」（UI 不许替后端说好话）',
+          !toastAll.includes('已保存') && /非空JSON数组|阶段链/.test(toastAll), toastAll.slice(0, 240));
+        const rowCount = await page.locator('.ant-table-row[data-row-key]').count();
+        check('那次被拒的保存一行都没进表（表里还是原来那一条）', rowCount === 1, `rows=${rowCount}`);
+        await shot(page, `r${runNum}-08c-pipelines`);
+        await page.locator('.ant-modal-footer').getByRole('button', { name: /取\s*消/ }).click().catch(() => {});
+      }
+    } catch (e) {
+      check('处理流水线页的顺序与拒绝', false, e?.message);
+      await shot(page, `r${runNum}-08c-pipelines-FAIL`);
     }
 
     /* ---- 11b. 设计器侧栏：断言的是"读到的是哪些实体"，不是页面里出现过某个词 ---- */
@@ -1291,6 +1767,47 @@ async function runOnce(runNum, appCode) {
     } catch (e) {
       check('设计器侧栏', false, e?.message);
       await shot(page, `r${runNum}-08b-designer-FAIL`);
+    }
+
+    /* ---- 11c. 字段编码那道闸：界面真的按得住保存，而不只是显示了红字 ---- */
+    // #34 的界面半边此前在浏览器里零覆盖：`id` 是**合法标识符**，旧的那道正则放它过，
+    // 所以要钉住的不是"有没有报错"，而是"报的是哪一条 + 保存按钮有没有真的 disable + 一次写请求都没发"。
+    try {
+      const sidebar = page.locator('.ant-card[style*="248px"]').first();
+      await sidebar.locator('.ant-list-item').first().click();
+      const codeInput = page.locator('.ant-table-tbody .ant-table-row').first().locator('input').first();
+      await codeInput.waitFor({ state: 'visible', timeout: 15000 });
+      const original = await codeInput.inputValue();
+      const saveBtn = page.getByRole('button', { name: /保\s*存/ }).first();
+      const writesBefore = entityWriteReqs.length;
+
+      await codeInput.fill('id');
+      await page.waitForTimeout(400);
+      const issueText = await page.locator('.ant-alert').filter({ hasText: '无法保存' }).innerText()
+        .catch(() => '');
+      check('撞自建列时说的是「撞了引擎自建列」而不是「不合法」（id 本身是合法标识符）',
+        issueText.includes('撞了引擎自建列') && !issueText.includes('不合法'), issueText.slice(0, 180));
+      check('文案里点名是哪一列，且带出那五个自建列',
+        issueText.includes('id') && issueText.includes('tenant_code'), issueText.slice(0, 180));
+      check('那一栏自己标红（不是只有页面底部一句泛泛的警告）',
+        (await codeInput.getAttribute('class') || '').includes('ant-input-status-error'),
+        await codeInput.getAttribute('class'));
+      check('保存按钮被按住了', await saveBtn.isDisabled(), 'enabled');
+      check('拦住 = 一次写请求都没发出去',
+        entityWriteReqs.length - writesBefore === 0, `reqs=${entityWriteReqs.length - writesBefore}`);
+
+      await codeInput.fill(original);
+      await page.waitForTimeout(400);
+      check('改回干净编码后闸立刻松开：警告消失、保存可点（闸不是粘住的）',
+        !(await saveBtn.isDisabled())
+        && !(await page.locator('.ant-alert').filter({ hasText: '无法保存' }).count()),
+        `disabled=${await saveBtn.isDisabled()}`);
+      check('松开之后仍然没有偷发写请求（闸的松开不等于替用户保存）',
+        entityWriteReqs.length - writesBefore === 0, `reqs=${entityWriteReqs.length - writesBefore}`);
+      await shot(page, `r${runNum}-08c-field-code`);
+    } catch (e) {
+      check('字段编码闸', false, e?.message);
+      await shot(page, `r${runNum}-08c-field-code-FAIL`);
     }
 
     /* ---- 12. 批量导入：界面说的行数必须等于库里多出来的行数 ---- */
@@ -1522,7 +2039,16 @@ async function runOnce(runNum, appCode) {
     /* ---- 9. 全局异常 ---- */
     try {
       check('全程没有未捕获的 JS 异常', pageErrors.length === 0, pageErrors.slice(0, 3).join(' ;; '));
-      const api404 = badResponses.filter((u) => !/favicon|\.ico|apple-touch/.test(u));
+      const api404 = (() => {
+        // 按多重集扣减，不是按 URL 放行: 某一节**登记**了一次被拒的请求（它要验的就是那道闸），
+        // 那一节的第二次撞上来仍然要红。
+        const rest = badResponses.filter((u) => !/favicon|\.ico|apple-touch/.test(u));
+        for (const sanctioned of sanctionedRejections) {
+          const at = rest.indexOf(sanctioned);
+          if (at >= 0) rest.splice(at, 1);
+        }
+        return rest;
+      })();
       runNotes.push(`  INFO  非 2xx 响应 ${badResponses.length} 个：${badResponses.slice(0, 6).join(' | ') || '无'}`);
       check('没有意外的 404/5xx 接口', api404.length === 0, api404.slice(0, 4).join(' | '));
     } catch (e) {
@@ -1551,6 +2077,51 @@ class skipRemaining extends Error {
 /* ------------------------------------------------------------------ */
 /*  主入口：REPEATS 轮                                                  */
 /* ------------------------------------------------------------------ */
+function newestMtimeMs(dir) {
+  let newest = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    newest = Math.max(newest, entry.isDirectory() ? newestMtimeMs(full) : fs.statSync(full).mtimeMs);
+  }
+  return newest;
+}
+
+/**
+ * 门禁打的是哪一份产物 —— 不查这一条，"全绿"完全可能测的是上一轮的 bundle：
+ * 改了 src 忘了 build，preview 照样伺服旧件、页面照样全绿，而且没有任何一条检查会告诉你。
+ * 两道都要：名字对得上（浏览器加载的就是磁盘这份）+ 产物不比源码旧（磁盘这份是当前源码构建的）。
+ */
+async function assertServingFreshBuild() {
+  const root = path.join(HERE, '..');
+  const distDir = path.join(root, 'dist');
+  const problems = [];
+  const servedHtml = await fetch(`${BASE}/`).then((r) => r.text()).catch(() => '');
+  const servedBundle = (servedHtml.match(/assets\/(index-[^"']+\.js)/) ?? [])[1] ?? '';
+  const indexPath = path.join(distDir, 'index.html');
+  const diskBundle = fs.existsSync(indexPath)
+    ? ((fs.readFileSync(indexPath, 'utf8').match(/assets\/(index-[^"']+\.js)/) ?? [])[1] ?? '')
+    : '';
+  if (!diskBundle) problems.push(`${indexPath} 里没有 index-*.js（先 npm run build）`);
+  if (!servedBundle) problems.push(`没从 ${BASE}/ 的 HTML 里读到 assets/index-*.js（preview 没起？）`);
+  if (servedBundle && diskBundle && servedBundle !== diskBundle) {
+    problems.push(`浏览器要加载的是 ${servedBundle}，磁盘上构建出来的是 ${diskBundle}（preview 指向的不是这份 dist）`);
+  }
+  let ageSeconds = 0;
+  if (servedBundle === diskBundle && diskBundle) {
+    const bundlePath = path.join(distDir, 'assets', diskBundle);
+    const newestSource = newestMtimeMs(path.join(root, 'src'));
+    ageSeconds = (fs.statSync(bundlePath).mtimeMs - newestSource) / 1000;
+    if (ageSeconds < 0) {
+      problems.push(`src 里最新的文件比 ${diskBundle} 新 ${(-ageSeconds).toFixed(0)}s —— 这份 bundle 不是当前源码构建出来的，重新 build`);
+    }
+  }
+  if (problems.length) {
+    console.error(`门禁拒绝开跑（测的必须是本轮构建的产物）：\n  - ${problems.join('\n  - ')}`);
+    process.exit(2);
+  }
+  console.log(`  产物指纹：${diskBundle}，比 src 里最新的文件新 ${ageSeconds.toFixed(0)}s`);
+}
+
 async function main() {
   fs.mkdirSync(SHOTS, { recursive: true });
   if (!fs.existsSync(CHROME)) {
@@ -1559,6 +2130,7 @@ async function main() {
   }
 
   console.log(`\n=== 真浏览器 E2E · ${BASE} · REPEATS=${REPEATS} ===\n`);
+  await assertServingFreshBuild();
 
   const allTimelines = [];
   const results = [];

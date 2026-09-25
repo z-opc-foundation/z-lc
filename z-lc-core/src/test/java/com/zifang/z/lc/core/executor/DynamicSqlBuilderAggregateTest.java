@@ -148,6 +148,120 @@ public class DynamicSqlBuilderAggregateTest {
         assertTrue(sp.sql, sp.sql.contains("SUM(t.`amount`) AS sum_amount"));
     }
 
+    /**
+     * 交叉表的原料: 行维度 + 列维度同时出现在 SELECT 和 GROUP BY 里。
+     * <p>
+     * 只 SELECT 不 GROUP BY 在 ONLY_FULL_GROUP_BY 下直接报错, 而漏掉第二维的 GROUP BY 会让
+     * 每个格子拿到"整行第一维的合计"—— 表看着满, 数全是错的。
+     */
+    @Test
+    public void twoDimensionsAreBothSelectedAndBothGrouped() {
+        AggregateQueryDTO q = query("stage", null);
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("stage", "name")));
+        q.getAggregations().put("amount", Arrays.asList("SUM"));
+        DynamicSqlBuilder.SqlAndParams sp = builder.buildAggregateSql(taskEntity(), q);
+
+        assertTrue(sp.sql, sp.sql.contains("t.`stage` AS group_key, "));
+        assertTrue(sp.sql, sp.sql.contains("t.`name` AS group_key_2"));
+        assertTrue(sp.sql, sp.sql.contains("GROUP BY t.`stage`, t.`name`"));
+        assertTrue(sp.sql, sp.sql.endsWith("ORDER BY group_count DESC, group_key ASC, group_key_2 ASC LIMIT 100"));
+        assertTrue(sp.sql, sp.sql.contains("SUM(t.`amount`) AS sum_amount"));
+        // 多维时每一维都保证有非空标签列: 字典维兜住"字典项被删"(否则那些记录会折成一个叫 null 的假列),
+        // 非字典维补一列等于原值的标签 (否则透视程序引用 group_label_2 会整条请求 400)。
+        assertTrue(sp.sql, sp.sql.contains("COALESCE(MAX(d_stage.item_label), t.`stage`) AS group_label, "));
+        assertTrue(sp.sql, sp.sql.contains("COALESCE(t.`name`, t.`name`) AS group_label_2"));
+    }
+
+    /** 单维不能因为多维上线多出 COALESCE —— 那是既有调用方 (看板/页脚/图表) 的口径变更。 */
+    @Test
+    public void singleDimensionKeepsTheUntouchedLabelShape() {
+        DynamicSqlBuilder.SqlAndParams sp = builder.buildAggregateSql(taskEntity(), query("stage", null));
+        assertTrue(sp.sql, sp.sql.contains("MAX(d_stage.item_label) AS group_label"));
+        assertFalse(sp.sql, sp.sql.contains("COALESCE"));
+    }
+
+    /**
+     * 只有一项的 groupFields 必须与沿用 groupField 逐字节同一条 SQL —— 老的单维调用方
+     * (看板分列、表格页脚、图表) 不能因为多维支持上线而换一份口径。
+     */
+    @Test
+    public void oneDimensionInGroupFieldsIsByteIdenticalToGroupField() {
+        DynamicSqlBuilder.SqlAndParams legacy = builder.buildAggregateSql(taskEntity(), query("stage", null));
+        AggregateQueryDTO q = query(null, null);
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("stage")));
+        DynamicSqlBuilder.SqlAndParams modern = builder.buildAggregateSql(taskEntity(), q);
+
+        assertEquals(legacy.sql, modern.sql);
+        assertEquals(legacy.params.size(), modern.params.size());
+        for (int i = 0; i < legacy.params.size(); i++) {
+            assertEquals("第 " + i + " 个占位符入参错位", legacy.params.get(i), modern.params.get(i));
+        }
+    }
+
+    /** 重复维度不是"无害地去重": GROUP BY city, city 会多出一列永远等于行键的假维度。 */
+    @Test
+    public void duplicateDimensionFailsInsteadOfSilentlyDeduping() {
+        AggregateQueryDTO q = query("stage", null);
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("stage", "stage")));
+        try {
+            builder.buildAggregateSql(taskEntity(), q);
+            fail("重复维度必须报错, 不能悄悄去重成单维");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Duplicate groupField: stage"));
+        }
+    }
+
+    /** 第二维查不到字段时报错, 不能"这一维不要了"—— 那会把一张交叉表降级成一张单维统计表。 */
+    @Test
+    public void unknownSecondDimensionFailsInsteadOfBeingDropped() {
+        AggregateQueryDTO q = query("stage", null);
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("stage", "nope")));
+        try {
+            builder.buildAggregateSql(taskEntity(), q);
+            fail("未知维度必须报错");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Unknown groupField: nope"));
+        }
+    }
+
+    /**
+     * GROUP BY 的列名不能走占位符, 所以每一维都必须过标识符白名单 —— 漏校验第二维
+     * 等于给多维分组开一个注入面, 而这正是多维功能新引入的面。
+     */
+    @Test
+    public void secondDimensionCarriesTheSameInjectionGuard() {
+        AggregateQueryDTO q = query("stage", null);
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("stage", "name) FROM t_task t2 WHERE 1=1 --")));
+        try {
+            builder.buildAggregateSql(taskEntity(), q);
+            fail("非法标识符必须挡在拼 SQL 之前");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("Illegal groupField"));
+        }
+    }
+
+    /** 空位 = 这一维还没选 (透视表先只选行维度是常态), 此时等价于单维而不是报错也不是多出空列。 */
+    @Test
+    public void blankSecondDimensionMeansOneDimension() {
+        DynamicSqlBuilder.SqlAndParams single = builder.buildAggregateSql(taskEntity(), query("stage", null));
+        AggregateQueryDTO q = query("stage", null);
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("stage", "  ")));
+        assertEquals(single.sql, builder.buildAggregateSql(taskEntity(), q).sql);
+    }
+
+    /** 两维 + 时间分桶: 引擎猜不出该分桶哪一维, 只能拒绝, 不能默默只对第一维分桶。 */
+    @Test
+    public void timeGroupRefusesToGuessWhichDimensionToBucket() {
+        AggregateQueryDTO q = query("due", "DAY");
+        q.setGroupFields(new ArrayList<String>(Arrays.asList("due", "stage")));
+        try {
+            builder.buildAggregateSql(taskEntity(), q);
+            fail("timeGroup 与多维分组同时出现必须报错");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("timeGroup"));
+        }
+    }
+
     private static int countChar(String text, char target) {
         int n = 0;
         for (int i = 0; i < text.length(); i++) {

@@ -46,7 +46,9 @@ public class RefCheckProcessor implements FieldProcessor {
             if (v == null) {
                 continue;
             }
-            // 仅做非空检查, 详细跨 entity 校验由 Phase 2 引入
+            // 只打一行调试日志: 既不拒空也不查目标记录在不在。原注释写"仅做非空检查",
+            // 而空值在上一行就 continue 了 —— 跨实体校验没接之前, 这个处理器在写路径上什么都不做,
+            // 配置页据此把它标成"未接线"，别把它当成一道闸。
             log.debug("RefCheck: entity={} field={} refEntity={} value={}",
                     entity.getEntityCode(), f.getFieldCode(), f.getRefEntity(), v);
         }

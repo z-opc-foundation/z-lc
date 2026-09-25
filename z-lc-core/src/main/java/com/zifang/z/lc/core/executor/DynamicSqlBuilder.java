@@ -163,8 +163,9 @@ public class DynamicSqlBuilder {
         List<Object> params = new ArrayList<Object>();
         StringBuilder sql = new StringBuilder();
 
-        FieldDefDTO group = resolveGroupField(entity, fieldIndex, query.getGroupField());
-        boolean grouped = group != null;
+        List<FieldDefDTO> groups = resolveGroupFields(entity, fieldIndex, query);
+        boolean grouped = !groups.isEmpty();
+        FieldDefDTO group = grouped ? groups.get(0) : null;
         TimeBucket bucket = resolveTimeBucket(query.getTimeGroup(), group);
         // 分桶表达式在 SELECT / GROUP BY / ORDER BY 各写一遍而不是引用列别名:
         // ORDER BY 引用 select 别名在部分数据库 (含 H2 的一些版本) 不可靠, 而时间图必须按时间正序。
@@ -181,11 +182,28 @@ public class DynamicSqlBuilder {
             }
             sql.append(", ");
         } else if (grouped) {
-            sql.append("t.").append(quote(group.getFieldCode())).append(" AS group_key");
-            if (group.getDictCode() != null && !group.getDictCode().isEmpty()) {
-                sql.append(", MAX(d_").append(group.getFieldCode()).append(".item_label) AS group_label");
+            // 第一维沿用 group_key / group_label 的既有列名, 多出来的维度顺位补 _2 / _3。
+            boolean multi = groups.size() > 1;
+            for (int i = 0; i < groups.size(); i++) {
+                FieldDefDTO g = groups.get(i);
+                String suffix = i == 0 ? "" : "_" + (i + 1);
+                String column = "t." + quote(g.getFieldCode());
+                boolean dict = g.getDictCode() != null && !g.getDictCode().isEmpty();
+                sql.append(column).append(" AS group_key").append(suffix);
+                if (!multi) {
+                    // 单维按原样: 只有字典列才有标签, 老调用方 (看板/页脚/图表) 本来就是"没标签就显示 code"
+                    if (dict) {
+                        sql.append(", MAX(d_").append(g.getFieldCode()).append(".item_label) AS group_label");
+                    }
+                } else {
+                    // 多维时每一维都保证有一列非空标签: 透视程序要拿它当列名。引用一个不存在的列会让整条
+                    // 请求 400; 引用一个可能为 NULL 的列 (字典项被删) 则会把那些记录折进一个叫 null 的假列。
+                    sql.append(", COALESCE(")
+                            .append(dict ? "MAX(d_" + g.getFieldCode() + ".item_label)" : column)
+                            .append(", ").append(column).append(") AS group_label").append(suffix);
+                }
+                sql.append(", ");
             }
-            sql.append(", ");
         }
         sql.append("COUNT(*) AS group_count");
         List<String[]> numeric = numericAggregations(entity, fieldIndex, query.getAggregations());
@@ -242,14 +260,55 @@ public class DynamicSqlBuilder {
             }
         } else if (grouped) {
             // group_label 走 MAX() 聚合, 所以 GROUP BY 只需要分组列本身, ONLY_FULL_GROUP_BY 下合法
-            sql.append(" GROUP BY t.").append(quote(group.getFieldCode()));
+            sql.append(" GROUP BY");
+            for (int i = 0; i < groups.size(); i++) {
+                sql.append(i == 0 ? " " : ", ").append("t.").append(quote(groups.get(i).getFieldCode()));
+            }
+            // 行维度先按频次排、再按行键、再按列键: 交叉表的行序必须有意义, 不能跟着数据库的哈希序走
             sql.append(" ORDER BY group_count DESC, group_key ASC");
+            if (groups.size() > 1) {
+                sql.append(", group_key_2 ASC");
+            }
         }
         int limit = query.getLimit() == null ? 100 : Math.max(1, Math.min(query.getLimit(), 500));
         if (grouped) {
             sql.append(" LIMIT ").append(limit);
         }
         return new SqlAndParams(sql.toString(), params);
+    }
+
+    /**
+     * 生效的分组维度: {@code groupFields} 非空时整体接管 {@code groupField}, 只有一项时与单维完全等价.
+     * <p>
+     * 每一维都要过 {@link #resolveGroupField} 那道白名单 —— GROUP BY 的列名不能走占位符,
+     * 漏校验一个维度就是开一个注入面。重复维度直接报错: {@code GROUP BY city, city} 会让交叉表
+     * 多出一列永远等于行键的假维度, 看着像正常表但整张表是错的。
+     */
+    private List<FieldDefDTO> resolveGroupFields(EntityDefDTO entity, Map<String, FieldDefDTO> fieldIndex,
+                                                 AggregateQueryDTO query) {
+        List<String> codes = query.getGroupFields() == null || query.getGroupFields().isEmpty()
+                ? java.util.Collections.singletonList(query.getGroupField())
+                : query.getGroupFields();
+        List<FieldDefDTO> resolved = new ArrayList<FieldDefDTO>();
+        for (String code : codes) {
+            if (code == null || code.trim().isEmpty()) {
+                // 空位 = 这一维还没选 (透视表的列维度常常先空着), 与 groupField 留空同口径
+                continue;
+            }
+            FieldDefDTO field = resolveGroupField(entity, fieldIndex, code);
+            for (FieldDefDTO picked : resolved) {
+                if (picked.getFieldCode().equals(field.getFieldCode())) {
+                    throw new IllegalArgumentException("Duplicate groupField: " + field.getFieldCode()
+                            + " (entity=" + entity.getEntityCode() + ")");
+                }
+            }
+            resolved.add(field);
+        }
+        if (resolved.size() > 1 && query.getTimeGroup() != null && !query.getTimeGroup().trim().isEmpty()) {
+            throw new IllegalArgumentException("timeGroup 只能作用于单个分组字段, 不能与 groupFields ("
+                    + resolved.size() + " 维) 同时使用");
+        }
+        return resolved;
     }
 
     /**

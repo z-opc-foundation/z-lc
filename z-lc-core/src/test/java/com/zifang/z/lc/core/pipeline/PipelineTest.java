@@ -45,7 +45,7 @@ public class PipelineTest {
     public void shouldBeSafeWithNullProcessors() {
         Pipeline pipeline = new Pipeline(null);
         // Should not throw on preWrite with empty processors
-        pipeline.preWrite(null, null);
+        pipeline.preWrite(null, null, null, Pipeline.BEFORE_CREATE);
     }
 
     @Test
@@ -56,7 +56,7 @@ public class PipelineTest {
                 new NamedProcessor("a", log),
                 new NamedProcessor("b", log)
         ));
-        pipeline.preWrite(null, null);
+        pipeline.preWrite(null, null, null, Pipeline.BEFORE_CREATE);
         assertEquals(Arrays.asList("a", "b", "c"), log);
     }
 
@@ -64,7 +64,7 @@ public class PipelineTest {
     public void shouldWrapPreWriteExceptionAsPipelineException() {
         Pipeline pipeline = new Pipeline(Arrays.asList(new ThrowingProcessor("bad-proc")));
         try {
-            pipeline.preWrite(null, null);
+            pipeline.preWrite(null, null, null, Pipeline.BEFORE_CREATE);
             fail("Expected PipelineException");
         } catch (Pipeline.PipelineException ex) {
             assertEquals("bad-proc", ex.getProcessorName());

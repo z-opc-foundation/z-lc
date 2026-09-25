@@ -122,4 +122,5 @@ def main():
     return 0 if bad == 0 else 1
 
 
-sys.exit(main())
+if __name__ == "__main__":  # 裸 sys.exit(main()) 会让"只是 import 看一下"的调用方直接开跑战役
+    sys.exit(main())
