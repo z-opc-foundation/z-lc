@@ -184,6 +184,33 @@ public class EventReplayServiceTest {
         assertEquals("title", fields.get(0).getFieldCode());
     }
 
+    /**
+     * 缺陷 #46: 整实体的 DELETE（payload 里没有 fieldCode）过去是一个字都不做的 —— 折叠只认 fieldCode,
+     * 于是管理端查不到的实体在运行时照样拼得出 SELECT、照样供旧记录。
+     */
+    @Test
+    public void entityDeleteWithoutFieldCodeShouldDropTheWholeEntityFromTheFold() {
+        scriptedEvents.add(event("CREATE", "order",
+                "{\"entityCode\":\"order\",\"entityName\":\"订单\",\"tableName\":\"lc_crm_order\","
+                        + "\"fields\":[{\"fieldCode\":\"title\"}]}"));
+        scriptedEvents.add(event("UPDATE", "order", "{\"entityCode\":\"order\",\"entityName\":\"订单(改)\"}"));
+        scriptedEvents.add(event("DELETE", "order", "{\"entityCode\":\"order\"}"));
+
+        List<EntityDefDTO> result = service.replay("t1", "crm");
+
+        assertTrue("整实体 DELETE 之后折叠里不该再有这支实体: " + result, result.isEmpty());
+    }
+
+    /** 删一支折叠里从没出现过的实体, 不能反而把它"造"出来（旧写法先 computeIfAbsent 再分发）。 */
+    @Test
+    public void deletingAnUnknownEntityShouldNotConjureAStub() {
+        scriptedEvents.add(event("DELETE", "ghost", "{\"entityCode\":\"ghost\"}"));
+
+        List<EntityDefDTO> result = service.replay("t1", "crm");
+
+        assertTrue("一次删除动作凭空立了一支实体桩: " + result, result.isEmpty());
+    }
+
     @Test
     public void replayShouldSkipInvalidJson() {
         scriptedEvents.add(event("CREATE", "order", "{invalid json"));

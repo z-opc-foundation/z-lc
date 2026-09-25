@@ -162,7 +162,12 @@ if check("schema contains the customer entity", cust is not None, [e.get("entity
 print("\n[4] DDL provisioning (metadata -> physical table)")
 j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": ent_id})
 if ok("POST /admin/entity/provision", j):
-    check("provision returns executable DDL", "CREATE TABLE" in str((j or {}).get("data")), str((j or {}).get("data"))[:200])
+    # 返回体是逐项状态 (ProvisionReport.Item)，不再是"那条 DDL 字符串"：
+    # 一句 DDL 没报错完全可以意味着一列都没建 (缺陷 #43)，所以成败只认 status。
+    prov = D(j) or {}
+    check("provision 回三态之一 (status=CREATED)", prov.get("status") == "CREATED", str(prov)[:200])
+    check("executable DDL 仍在 ddl 字段里", "CREATE TABLE" in str(prov.get("ddl")), str(prov)[:200])
+    check("成功的那一项不带缺列清单", not prov.get("missingColumns"), str(prov.get("missingColumns"))[:200])
 
 # ---------------------------------------------------------------- dict
 print("\n[5] dictionary + items")
@@ -1150,6 +1155,14 @@ def create_entity(req):
                 params={"appCode": FC_APP, "tenantCode": TENANT})
 
 
+def physical_cols(table):
+    """独立量具：/admin/db/table 读的是 JDBC 元数据里真有的列，不是我们自己拼的 DDL 字符串。"""
+    jj, ss, _ = call("GET", "/api/lc/admin/db/table", params={"tableName": table})
+    if not isinstance(jj, dict) or not jj.get("success"):
+        return None
+    return [f.get("fieldCode") for f in (D(jj).get("fields") or [])]
+
+
 ok("POST /admin/app/create (字段编码探针应用)",
    call("POST", "/api/lc/admin/app/create",
         {"tenantCode": TENANT, "appCode": FC_APP, "appName": "编码探针"})[0])
@@ -1203,10 +1216,42 @@ j, s, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 5, "condition
 ok("新表随即可查（元数据与物理表一致，不是静默少列）", j)
 check("空表读到 total=0", D(j).get("total") == 0, str(j)[:200])
 
+# 逆向映射也是"新建一个实体"，所以它同样要过表名那道闸（缺陷 #43）：物理表还被一个活实体描述着
+# 的时候再映射一份，就是两份定义抢一张表 —— 后一份声明的列在库里根本不存在，而 IF NOT EXISTS 会
+# 让它永远显示"建好了"。这一支必须在入口拒，并且点名是哪一方占着。
 j, s, _ = call("POST", "/api/lc/admin/db/table/import",
                params={"tableName": FC_TABLE, "tenantCode": TENANT, "appCode": FC_APP,
                        "entityCode": f"fc_mapped_{SUF}", "autoProvision": "false"})
-ok("POST /admin/db/table/import (逆向映射刚建好的物理表)", j)
+check("正被活实体占用的表，逆向映射在入口就拒（不许映射出第二份定义）",
+      isinstance(j, dict) and j.get("success") is False, f"http={s} body={str(j)[:200]}")
+check("逆向映射被拒时点名是哪一方占着这张表（不命名只能一个个试）",
+      "物理表名已被其他实体占用" in str(j.get("message") or "")
+      and f"{FC_APP}/fc_clean" in str(j.get("message") or ""), str(j.get("message"))[:200])
+j, _, _ = call("GET", "/api/lc/admin/app/entity/list", params={"appCode": FC_APP, "tenantCode": TENANT})
+listed_after_map_refused = sorted(e.get("entityCode") for e in (D(j) if isinstance(D(j), list) else []))
+check("被拒的逆向映射一行元数据都不留（清单里还是只有 fc_clean）",
+      listed_after_map_refused == ["fc_clean"], listed_after_map_refused)
+
+# 逆向映射真正要服务的形状是"物理表在库里、但没有活实体描述它"（删实体不会删物理表）。
+# 拿 fc_clean 那张表测这条路是测不通的 —— 它正被一支活实体占着。
+FC_MAP_TABLE = f"e2e_fcmap_{SUF}"
+j, _, _ = create_entity({"tenantCode": TENANT, "appCode": FC_APP, "entityCode": "fc_host",
+                         "entityName": "将被删掉的宿主", "tableName": FC_MAP_TABLE, "description": "e2e",
+                         "fields": [fc_field(c, i + 1) for i, c in enumerate(LEGAL_COLS)]})
+ok("POST /admin/entity (逆向映射实验的宿主实体)", j)
+fc_host_id = D(j).get("id")
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": fc_host_id})
+check("宿主的表这次是真建出来的（CREATED，不是 IF NOT EXISTS 的空操作）",
+      D(j).get("status") == "CREATED", str(j)[:200])
+call("DELETE", "/api/lc/admin/entity", params={"id": fc_host_id})
+host_cols = set(physical_cols(FC_MAP_TABLE) or [])
+check("删掉宿主以后物理表还在库里（删实体不删表，这正是逆向映射的入口条件）",
+      host_cols >= set(LEGAL_COLS), sorted(host_cols))
+
+j, s, _ = call("POST", "/api/lc/admin/db/table/import",
+               params={"tableName": FC_MAP_TABLE, "tenantCode": TENANT, "appCode": FC_APP,
+                       "entityCode": f"fc_mapped_{SUF}", "autoProvision": "false"})
+ok("POST /admin/db/table/import (逆向映射一张没有活主人的物理表)", j)
 # mapped 可能是 fail 信封（注入实验里就会这样），D() 会塌成 {}；这里不兜住的话
 # 后面 (None).get 会让整个 [15j] 抛异常退出，那一轮就变成"跑不完"而不是"哪条红"。
 mapped = D(j) or {}
@@ -1335,6 +1380,16 @@ REJECTS = [
      "未知阶段类型大小写不放过 -> 拒"),
     ("enabled_bogus", dict(enabled=2), "enabled",
      "enabled=2 -> 拒（这一行在 listByEvent 里永远查不到，等于存了条死数据）"),
+    # #42: 阶段参数 config 存在 stages JSON 里, 五个处理器一个都不读 (PipelineStages.resolve 只回阶段类型)。
+    # 收下的话, 用户填的是一份"看着能改变行为、实际永远不生效"的东西 —— 与 #41 同一个形状, 只是换了字段。
+    ("unread_param", dict(st='[{"type":"REQUIRED_CHECK","order":0},'
+                             '{"type":"TYPE_CONVERT","order":1,"config":{"trimStrings":true}},'
+                             '{"type":"VALUE_VALIDATE","order":2}]'), "trimStrings",
+     "阶段参数没人读 -> 拒（填了不生效的配置比没有配置更坏）"),
+    ("config_not_object", dict(st='[{"type":"REQUIRED_CHECK","order":0},'
+                                  '{"type":"TYPE_CONVERT","order":1,"config":[1,2]},'
+                                  '{"type":"VALUE_VALIDATE","order":2}]'), "不是对象",
+     "阶段参数不是对象 -> 拒"),
 ]
 for _slug, _kw, _want, _name in REJECTS:
     cfg_rejected(_name, pp_config(entity=f"pipe_r_{_slug}", **_kw), _want)
@@ -1350,11 +1405,43 @@ if ok("引擎兑现得了的配置照收（只测拒绝会把校验写成永远�
 else:
     pp_cfg_id = None
 listed = pp_list_app()
-check("上面 15 次被拒的提交一行都没落库（闸在写入之前）", len(listed) == 1,
-      [(c.get("entityCode"), c.get("triggerEvent")) for c in listed])
+# 名字里不带条数: 这条的**名字**被 _e2e/mutate_pipeline_wiring_guard.py 里 6 支注入当预期红点名,
+# 每加一条被拒提交就悄悄换一次名字, 那 6 支会在基线那一轮集体 FATAL("这条检查不存在")。
+# 条数是要看的数, 但它属于读数 —— 挪进失败详情, 名字保持稳定。
+check("上面被拒的提交一行都没落库（闸在写入之前）", len(listed) == 1,
+      f"被拒 {len(REJECTS) + 2} 次却落了 {len(listed)} 行: "
+      + str([(c.get("entityCode"), c.get("triggerEvent")) for c in listed]))
 cfg_rejected("同一挂接点上第二份启用配置 -> 拒（一个挂接点只跑一条链）", pp_config(), "已经有一份启用")
 check("被拒的第二份没有把第一份顶掉", len(pp_list_app()) == 1,
       [(c.get("entityCode"), c.get("enabled")) for c in pp_list_app()])
+
+# ---- 第二个写入口: update。上面那一整段全打 create, 而界面这一侧改一份配置走的是 update
+# (src/api/pipeline.ts 的 updatePipelineConfig) —— 只堵 create 等于给坏配置留了正门没有侧门。
+row_before = (pp_list() or [{}])[0]
+UPDATE_REJECTS = [
+    # 这一条的链序**照抄上面那份被接受配置**的顺序 (TYPE_CONVERT 在前): 一旦 P13 摘掉这道闸让它落库,
+    # 库里那份链还是同一条链, 红的就只有"这道闸没了"本身。若这里用默认链序, 落库会顺手改掉执行顺序,
+    # 于是"配置链里 TYPE_CONVERT 在前"那三条顺序探针跟着红 —— 一支注入的判定面里混进别人的缺陷,
+    # 它就不再是自己那句保证的证据了 (与 P4 那种"被别的闸遮住"是同一类失真, 方向相反)。
+    ("阶段参数没人读 -> update 也拒",
+     '[{"type":"TYPE_CONVERT","order":0,"config":{"strict":true}},'
+     '{"type":"REQUIRED_CHECK","order":1},'
+     '{"type":"VALUE_VALIDATE","order":2}]', "strict"),
+    ("没有执行器的阶段 -> update 也拒", pp_stages(*GATES, "WEBHOOK"), "没有执行器"),
+    ("摘掉三道闸门 -> update 也拒", pp_stages("DICT_RESOLVE"), "REQUIRED_CHECK"),
+]
+for _name, _st, _want in UPDATE_REJECTS:
+    _body = pp_config(entity="pipe_probe", st=_st)
+    _body["id"] = row_before.get("id")
+    j, s, _ = call("POST", "/api/lc/pipeline-config/update", _body)
+    msg = str((j or {}).get("message") or "")
+    check(_name, isinstance(j, dict) and j.get("success") is False and s == 400,
+          f"http={s} body={str(j)[:180]}")
+    check(f"{_name}：文案点名要什么", _want in msg and leak_free(j), msg[:200])
+after_update = pp_list()
+check("上面 3 次被拒的 update 一次都没改到那一行（后面还要拿这一行验执行顺序）",
+      len(after_update) == 1 and after_update[0].get("stages") == row_before.get("stages"),
+      [c.get("stages") for c in after_update])
 
 # ---- toggle 的含糊请求
 j, s, _ = call("POST", "/api/lc/pipeline-config/toggle", {"appCode": PP_APP, "enabled": 0})
@@ -1417,6 +1504,393 @@ for cfg_id in (pp_cfg_id, pp_upd_id):
         call("POST", "/api/lc/pipeline-config/delete", {"id": cfg_id})
 check("配置删掉后列表清空（delete 是真删这一行）", pp_list() == [], pp_list())
 call("POST", "/api/lc/app/delete", {"appCode": PP_APP})
+
+# ---------------------------------------------------------------- 缺陷 #43
+print("\n[15q] 一张物理表只属于一个活实体；provision 说「建成」之前得先问过库里")
+PQ_APP = "e2e_pq_" + SUF
+ok("给撞表实验单独建一个 app",
+   call("POST", "/api/lc/app/create",
+        {"tenantCode": TENANT, "appCode": PQ_APP, "appName": "撞表探针"})[0])
+
+
+def pq_field(code, order):
+    return {"fieldCode": code, "fieldName": "列" + code, "fieldType": "STRING",
+            "fieldLength": 32, "sortOrder": order}
+
+
+def pq_entity(code, table, cols):
+    return call("POST", "/api/lc/admin/app/entity/create",
+                {"tenantCode": TENANT, "appCode": PQ_APP, "entityCode": code,
+                 "entityName": "实体" + code, "tableName": table,
+                 "fields": [pq_field(c, i + 1) for i, c in enumerate(cols)]},
+                params={"appCode": PQ_APP, "tenantCode": TENANT})[0]
+
+
+# physical_cols 在 [15j] 之前就定义了，这里不再复制一份 —— 两把尺会各自漂，而这一节的全部判据
+# 都挂在这把尺上（判"列在不在"只认 JDBC 元数据，不认我们自己拼的 DDL 字符串）。
+
+
+PQ_TABLE = "e2e_pq_share_" + SUF
+j = pq_entity("pq_holder", PQ_TABLE, ["amount"])
+ok("第一个实体建成", j)
+holder_id = D(j).get("id")
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": holder_id})
+ok("POST /admin/entity/provision（第一支）", j)
+pr = D(j) or {}
+check("建成之后库里真的有声明的那一列",
+      (physical_cols(PQ_TABLE) or []) == ["amount"], physical_cols(PQ_TABLE))
+
+j = pq_entity("pq_squatter", PQ_TABLE, ["other"])
+msg = str((j or {}).get("message") or "")
+check("第二个活实体不许抢同一张物理表（旧口径照收，等建表才发现是空操作）",
+      not (j or {}).get("success"), str(j)[:200])
+check("撞表被拒时要点名是哪一方占着（app/entity，不点名只能一个个试）",
+      "pq_holder" in msg, msg[:220])
+check("被拒的文案不带 DDL 文本与索引名（不给浏览器看物理结构）",
+      # 负向断言要有猎物：只写"不含 X"，注入把拒绝整个摘掉时这条会对着空消息打绿灯
+      # (deployed D1 实测就是这样溜过去的)。同一句里先钉住"确实是那句撞表拒绝"。
+      "物理表名已被其他实体占用" in msg
+      and "CREATE TABLE" not in msg.upper() and "UK_" not in msg.upper(), msg[:220])
+j = pq_entity("pq_case", PQ_TABLE.upper(), ["x"])
+check("表名大小写变体同样抢不到（MySQL/H2 的表名不分大小写）",
+      not (j or {}).get("success"), str(j)[:200])
+check("被拒的两支都不许留下元数据（留下就是「存下了但永远建不出来」的坏定义）",
+      [e.get("entityCode") for e in (call("GET", "/api/lc/admin/app/entity/list",
+                                          params={"appCode": PQ_APP, "tenantCode": TENANT})[0]
+                                     or {}).get("data") or []] == ["pq_holder"],
+      [e.get("entityCode") for e in (call("GET", "/api/lc/admin/app/entity/list",
+                                          params={"appCode": PQ_APP, "tenantCode": TENANT})[0]
+                                     or {}).get("data") or []])
+
+def pq_required(code, order, default=None):
+    f = dict(pq_field(code, order), required=True)
+    if default is not None:
+        f["defaultValue"] = default
+    return f
+
+
+def pq_put(code, table, eid, fields):
+    return call("PUT", "/api/lc/admin/entity",
+                {"id": eid, "tenantCode": TENANT, "appCode": PQ_APP, "entityCode": code,
+                 "entityName": "实体" + code, "tableName": table, "fields": fields},
+                params={"id": eid})[0]
+
+
+# 删实体不删表（引擎不做破坏性 DDL），所以这张形状不对的旧表可以被后来者占用。
+# #43 当年在这里钉的是"说建成之前得先问过库里"（那一支报 FAILED）；#47 之后它真的修得好了，
+# 于是判据从"报没报失败"挪到"报的 ALTERED 库认不认"—— 只有回读拦得住"我把 DDL 发了"≠"列在表里"。
+call("DELETE", "/api/lc/admin/entity", params={"id": holder_id})
+j = pq_entity("pq_reuse", PQ_TABLE, ["later_col"])
+ok("软删实体之后表名可以复用（不许把表名永久占死）", j)
+reuse_id = D(j).get("id")
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": reuse_id})
+pr = D(j) or {}
+check("旧表缺的那一栏按定义补上：ALTERED 且点名 addedColumns（旧口径是永远修不好的 FAILED）",
+      pr.get("status") == "ALTERED"
+      and "later_col" in [str(c) for c in (pr.get("addedColumns") or [])], str(pr)[:240])
+check("库里真的多了那一列（判据来自库，不来自报告自述）",
+      "later_col" in (physical_cols(PQ_TABLE) or []), physical_cols(PQ_TABLE))
+check("补列只加不删：上一支实体留下的那一栏还在（动到别人的列就是 #43）",
+      "amount" in (physical_cols(PQ_TABLE) or []), physical_cols(PQ_TABLE))
+reuse_msg = str(pr.get("message") or "")
+check("成功文案说的是这次真的补了列，不许退回「列一列不缺」",
+      "补了 1 列" in reuse_msg and "列一列不缺" not in reuse_msg, reuse_msg[:220])
+
+# FAILED 这个形状没被 #47 抹掉：库自己不肯执行的 DDL 就是补不上，报告必须说"没补上"并带上原因。
+BAD_TABLE = "e2e_pq_row_" + SUF
+j = pq_entity("pq_bad", BAD_TABLE, ["seed"])
+bad_id = D(j).get("id")
+call("POST", "/api/lc/admin/entity/provision", params={"id": bad_id})
+j, _, _ = call("POST", "/api/lc/runtime/create",
+               {"entityCode": "pq_bad", "appCode": PQ_APP, "tenantCode": TENANT,
+                "fieldValues": {"seed": "row-1"}}, params={"entityCode": "pq_bad"})
+ok("坏的那一支有表、而且表里有行（空表会让 count=0 跳过取数，漂移读假绿 —— 猎物得先在场）", j)
+ok("给有行的表加一栏必填（改元数据本身合法）",
+   pq_put("pq_bad", BAD_TABLE, bad_id,
+          [pq_field("seed", 1), pq_required("needs_value", 2)]))
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": bad_id})
+pr = D(j) or {}
+msg = str(pr.get("message") or "")
+check("库自己拒的 DDL 不许说成 ALTERED：补不上就是 FAILED",
+      pr.get("status") == "FAILED", str(pr)[:260])
+check("FAILED 点名没补上的那一栏",
+      "needs_value" in [str(c) for c in (pr.get("missingColumns") or [])],
+      str(pr.get("missingColumns"))[:160])
+check("FAILED 带上库给的原因（H2 实测 NULL not allowed），但不带 DDL 文本",
+      "NULL" in msg and "needs_value" in msg
+      and "ALTER TABLE" not in msg.upper() and "CREATE TABLE" not in msg.upper(), msg[:260])
+check("库里确实没有那一列（FAILED 不是报告撒的谎）",
+      "needs_value" not in (physical_cols(BAD_TABLE) or []), physical_cols(BAD_TABLE))
+# 漂移期间的读侧（"定义跑在表前面时列表不再是一个裸 500"）在下面的 [15s] 缺陷 #47 专节里钉 ——
+# 那一节有自己的夹具，判据也落在同一次读取上。这里不再复述，免得两条 claim 各自漂。
+
+
+j = pq_entity("pq_neighbour", "e2e_pq_free_" + SUF, ["dd"])
+ok("同应用里另一支干净实体建成", j)
+neighbour_id = D(j).get("id")
+DRIFT_TABLE = "e2e_pq_drift_" + SUF
+j = pq_entity("pq_drift", DRIFT_TABLE, ["d1"])
+drift_id = D(j).get("id")
+call("POST", "/api/lc/admin/entity/provision", params={"id": drift_id})
+ok("再一支：定义刚建过表，随后又多了一栏（批里该判 ALTERED 的就是它）",
+   pq_put("pq_drift", DRIFT_TABLE, drift_id, [pq_field("d1", 1), pq_field("d2", 2)]))
+j, s, _ = call("POST", "/api/lc/admin/app/provision-all", {},
+               params={"appCode": PQ_APP, "tenantCode": TENANT})
+check("一支坏实体不再把整批 provision 变成 500（旧口径抛异常，调用方只知道「失败了」）",
+      s == 200 and isinstance(j, dict) and j.get("success") is True, f"http={s} {str(j)[:200]}")
+rep = D(j) or {}
+check("汇总带 total/created/unchanged/altered/failedCount/allOk 六个数（#47 多了 altered 这一格）",
+      all(k in rep for k in ("total", "created", "unchanged", "altered", "failedCount", "allOk")),
+      list(rep.keys()))
+check("坏的那一支必须体现在汇总里（allOk=false、failedCount=1）",
+      rep.get("allOk") is False and rep.get("failedCount") == 1, str(rep)[:240])
+check("四种状态在汇总里各占各的格（neighbour 是这次新建的 created，drift 是补列的 altered）",
+      rep.get("altered") == 1 and rep.get("created") == 1 and rep.get("unchanged") == 1,
+      str([rep.get(k) for k in ("altered", "created", "unchanged", "total")]))
+check("total 数的是实体数（reuse + bad + neighbour + drift = 4，被拒的那两支不算）",
+      rep.get("total") == 4, str(rep.get("total")))
+check("批里坏的那一支点的就是那支坏的",
+      [(i.get("entityCode"), i.get("status")) for i in (rep.get("items") or [])
+       if i.get("status") == "FAILED"] == [("pq_bad", "FAILED")],
+      str([(i.get("entityCode"), i.get("status")) for i in (rep.get("items") or [])])[:240])
+check("邻居没被连坐：它的表真在库里",
+      (physical_cols("e2e_pq_free_" + SUF) or []) == ["dd"], physical_cols("e2e_pq_free_" + SUF))
+check("批里的 ALTERED 不是自述：drift 的那一栏真进了库",
+      "d2" in (physical_cols(DRIFT_TABLE) or []), physical_cols(DRIFT_TABLE))
+j, _, _ = call("POST", "/api/lc/runtime/create",
+               {"entityCode": "pq_neighbour", "appCode": PQ_APP, "tenantCode": TENANT,
+                "fieldValues": {"dd": "v1"}}, params={"entityCode": "pq_neighbour"})
+ok("坏实体在批里时，邻居照样能写数据", j)
+
+j, _, _ = call("POST", "/api/lc/admin/app/entity/create",
+               {"tenantCode": TENANT, "appCode": PQ_APP, "entityCode": "pq_dup",
+                "entityName": "重复列", "tableName": "e2e_pq_dup_" + SUF,
+                "fields": [pq_field("x", 1), pq_field("x", 2)]},
+               params={"appCode": PQ_APP, "tenantCode": TENANT})
+msg = str((j or {}).get("message") or "")
+check("同一实体两列同名在写入口就拒（旧行为是走到库才被唯一键打回）",
+      not (j or {}).get("success"), str(j)[:200])
+check("文案说的是真撞的那条约束，不是「同一租户下的编码必须唯一」（换了也救不回来）",
+      "同一实体里有重复的字段编码" in msg and "同一租户下的编码" not in msg, msg[:240])
+check("这条文案同样不带索引名", "UK_FIELD" not in msg.upper(), msg[:240])
+
+# 补不上的那一支不是死路: 给必填栏一个默认值，库就肯补 —— 整批这才真的 allOk。
+ok("那一栏改个定义（给默认值）就能补",
+   pq_put("pq_bad", BAD_TABLE, bad_id,
+          [pq_field("seed", 1), pq_required("needs_value", 2, default="n/a")]))
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": bad_id})
+pr = D(j) or {}
+check("补上了：ALTERED，且那一列真进了库",
+      pr.get("status") == "ALTERED" and "needs_value" in (physical_cols(BAD_TABLE) or []),
+      str(pr)[:220])
+j, _, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 10},
+               params={"entityCode": "pq_bad", "appCode": PQ_APP, "tenantCode": TENANT})
+rows = (D(j) or {}).get("records") or []
+check("补列之后读得通，旧行还在（补列不许把已有数据弄丢，也不许让运行时继续 400）",
+      bool(rows) and rows[0].get("seed") == "row-1" and rows[0].get("needs_value") == "n/a",
+      str(rows)[:220])
+j, _, _ = call("POST", "/api/lc/admin/app/provision-all", {},
+               params={"appCode": PQ_APP, "tenantCode": TENANT})
+rep = D(j) or {}
+check("全都补上之后整批才报 allOk（四态这时候只剩 unchanged 一格是 4）",
+      rep.get("allOk") is True and rep.get("failedCount") == 0 and rep.get("unchanged") == 4
+      and rep.get("altered") == 0 and rep.get("created") == 0, str(rep)[:240])
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": neighbour_id})
+check("同一支再 provision 一次 → EXISTS_INTACT（幂等，且不谎称新建）",
+      D(j).get("status") == "EXISTS_INTACT", str(D(j))[:220])
+call("POST", "/api/lc/app/delete", {"appCode": PQ_APP})
+
+# ---------------------------------------------------------------- 缺陷 #45
+print("\n[15r] 改定义这条路 (PUT entity)：软删的旧行还占着字段编码，全删再全插每次都撞自己")
+ED_APP = "e2e_edit_" + SUF
+ED_TABLE = "e2e_edit_tbl_" + SUF
+ok("给「改定义」实验单独建一个 app",
+   call("POST", "/api/lc/app/create",
+        {"tenantCode": TENANT, "appCode": ED_APP, "appName": "改定义探针"})[0])
+
+
+def ed_field(code, name, order):
+    return {"fieldCode": code, "fieldName": name, "fieldType": "STRING",
+            "fieldLength": 32, "sortOrder": order}
+
+
+def ed_definition(fields):
+    return {"id": ed_id, "tenantCode": TENANT, "appCode": ED_APP, "entityCode": "case",
+            "entityName": "工单", "tableName": ED_TABLE, "fields": fields}
+
+
+def ed_read_fields():
+    jj, _, _ = call("GET", "/api/lc/admin/app/entity/list",
+                    params={"appCode": ED_APP, "tenantCode": TENANT})
+    ents = (jj or {}).get("data") or []
+    return (ents[0].get("fields") or []) if ents else []
+
+
+j, _, _ = call("POST", "/api/lc/admin/app/entity/create",
+    {"tenantCode": TENANT, "appCode": ED_APP, "entityCode": "case", "entityName": "工单",
+     "tableName": ED_TABLE,
+     "fields": [ed_field("ref", "单号", 1), ed_field("drop_me", "要删掉的", 2)]},
+    params={"appCode": ED_APP, "tenantCode": TENANT})
+ok("实体带两支字段建成", j)
+ed_id = D(j).get("id")
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": ed_id})
+ok("先把表建出来（后面验的是「改定义不许把已有数据弄丢」）", j)
+j, _, _ = call("POST", "/api/lc/runtime/create",
+               {"entityCode": "case", "appCode": ED_APP, "tenantCode": TENANT,
+                "fieldValues": {"ref": "AAA-001", "drop_me": "旧值"}},
+               params={"entityCode": "case"})
+ok("写一行数据进去（后面的保存都在动这张有数据的表）", j)
+
+# 这一支就是缺陷的形状: uk_field_entity_code (entity_id, field_code) 不看 deleted，
+# 旧写法先把 `ref` 那行软删、再插一行同名 —— 撞自己刚留下的墓碑，PUT 一律 400。
+j, s, _ = call("PUT", "/api/lc/admin/entity", ed_definition(
+    [ed_field("ref", "单号(改过)", 1), ed_field("extra_col", "后加的", 2)]),
+    params={"id": ed_id})
+msg = str((j or {}).get("message") or "")
+ok("带已存在字段的保存不再是 400（旧写法每次保存都撞自己的墓碑）", j)
+check("这条路上不再出现指错约束的文案（不是「同一租户下的编码必须唯一」）",
+      "同一租户下的编码" not in msg, msg[:200])
+codes = [f.get("fieldCode") for f in ed_read_fields()]
+check("保留下来的那一列按新定义改名（只认新增、旧列属性不动等于没改）",
+      codes == ["ref", "extra_col"], codes)
+check("留着的那一列 fieldName 真的落库",
+      [f.get("fieldName") for f in ed_read_fields()] == ["单号(改过)", "后加的"],
+      ed_read_fields())
+check("被移除的那一列从清单里消失（留着就是元数据凭空多一列）", "drop_me" not in codes, codes)
+
+# 加回来必须**复活**那一行。这条在部署层看得见: 同码只允许一行，插新行会被 uk 打回 400。
+j, _, _ = call("PUT", "/api/lc/admin/entity", ed_definition(
+    [ed_field("ref", "单号(改过)", 1), ed_field("extra_col", "后加的", 2),
+     ed_field("drop_me", "又加回来了", 3)]), params={"id": ed_id})
+ok("删掉又加回来的那一列能用（这一步只能复活原行，插新行会撞同码约束）", j)
+check("加回来的那一列带着新属性回到清单里",
+      [f.get("fieldName") for f in ed_read_fields()][-1] == "又加回来了", ed_read_fields())
+
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": ed_id})
+pr = D(j) or {}
+check("改完定义再 provision：多出来的那一栏按定义补进表里，并点名补了哪一列（#47；旧口径在这里永远 FAILED）",
+      pr.get("status") == "ALTERED"
+      and "extra_col" in [str(c) for c in (pr.get("addedColumns") or [])], str(pr)[:220])
+check("「补上了」的判据来自库，不来自报告自述",
+      "extra_col" in (physical_cols(ED_TABLE) or []), physical_cols(ED_TABLE))
+check("补列只加不动：已有的那两栏还在（旧数据挂在它们身上）",
+      set(physical_cols(ED_TABLE) or []) >= {"ref", "drop_me"}, physical_cols(ED_TABLE))
+
+# 大小写变体是同一列: MySQL/H2 的列名不分大小写，把它当新列插一行就会「元数据两列、库里一列」，
+# 而旧数据留在没人再引用的那一列上 —— 界面看不见，等于静默丢数据。
+# 上一支探针按 lower() 过一遍再数名字，于是"把 ref 换成 REF"在它眼里形状不变 —— 空跑。
+# 这一支换成行 id: 原地改 ⇒ id 不动；删一行插一行 ⇒ id 跳号，而视图/引用认的是 id。
+ids_by_code = lambda: {str(f.get("fieldCode")).lower(): f.get("id") for f in ed_read_fields()}
+ids_before_case_edit = ids_by_code()
+j, _, _ = call("PUT", "/api/lc/admin/entity", ed_definition(
+    [ed_field("REF", "同一列换了大小写", 1)]), params={"id": ed_id})
+ok("只改大小写的保存不再插出第二行", j)
+check("改大小写落在同一行上（行 id 原地不动，不是删一行插一行）",
+      ids_by_code().get("ref") == ids_before_case_edit.get("ref"),
+      str([ids_before_case_edit, ids_by_code()]))
+check("编码身份保持用户先写进去的那个大小写",
+      [f.get("fieldCode") for f in ed_read_fields()] == ["ref"], ed_read_fields())
+
+# ---- 缺陷 #46: 运行时的权威源是事件链，而折叠过去只「替换或追加」、一个字都不删 ----
+j, _, _ = call("GET", "/api/lc/app/schema", params={"appCode": ED_APP, "tenantCode": TENANT})
+fold = [f.get("fieldCode")
+        for e in (D(j) or []) if e.get("entityCode") == "case"
+        for f in (e.get("fields") or [])]
+check("折叠出的运行时定义和库里的清单一致（少了这一句, 上面删掉的栏在运行时还活着）",
+      fold == ["ref"], fold)
+j, _, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 10},
+               params={"entityCode": "case", "appCode": ED_APP, "tenantCode": TENANT})
+rows = (D(j) or {}).get("records") or []
+check("改过一次大小写，那一列上的旧数据还在读得回来",
+      bool(rows) and rows[0].get("ref") == "AAA-001", str(rows)[:200])
+check("运行时的每一次列表都不再端出被删掉的两栏（drop_me、extra_col 在上一节都真的补进了物理表，只有「不再引用」才算修好）",
+      bool(rows) and "drop_me" not in rows[0] and "extra_col" not in rows[0], str(rows)[:220])
+
+# 整实体 DELETE 也在同一支折叠上: 过去它不带 fieldCode，applyDelete 什么也不做，
+# 于是管理端查不到的实体在运行时照样供旧记录。
+j, _, _ = call("DELETE", "/api/lc/admin/entity", params={"id": ed_id})
+ok("整支实体删掉", j)
+j, _, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 10},
+               params={"entityCode": "case", "appCode": ED_APP, "tenantCode": TENANT})
+served = bool((D(j) or {}).get("records"))
+check("实体删掉之后运行时不再认得它（旧折叠把整实体 DELETE 当空操作, 已删数据照样对外供）",
+      not served, str(j)[:200])
+
+# ---------------------------------------------------------------- 缺陷 #47
+print("\n[15s] 缺陷 #47: 定义跑在物理表前面 —— 读侧不再裸 500，写侧一次 provision 补得上")
+# 定义跑在物理表前面: 旧行为是运行时每一次列表都撞驱动原文（裸 500），而 provision 永远修不好 ——
+# 建表对一张已在的表是空操作、回读永远缺那一栏。这一节量的是修好之后的两头:
+# 读侧不再裸 500 且点名那一栏、指向 provision；写侧一次 provision 真的把那一栏补进库里
+# （补没补，判据仍然是回读库）。
+DR_APP = "e2e_drift_" + SUF
+DR_TABLE = "e2e_drift_tbl_" + SUF
+ok("给「定义跑在表前面」实验单独建一个 app",
+   call("POST", "/api/lc/app/create",
+        {"tenantCode": TENANT, "appCode": DR_APP, "appName": "漂移探针"})[0])
+
+
+def dr_definition(fields):
+    return {"id": dr_id, "tenantCode": TENANT, "appCode": DR_APP, "entityCode": "case",
+            "entityName": "工单", "tableName": DR_TABLE, "fields": fields}
+
+
+j, _, _ = call("POST", "/api/lc/admin/app/entity/create",
+    {"tenantCode": TENANT, "appCode": DR_APP, "entityCode": "case", "entityName": "工单",
+     "tableName": DR_TABLE, "fields": [ed_field("only_col", "唯一一栏", 1)]},
+    params={"appCode": DR_APP, "tenantCode": TENANT})
+dr_id = D(j).get("id")
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": dr_id})
+check("表按第一版定义建出来: CREATED，库里就是那一栏",
+      D(j).get("status") == "CREATED" and (physical_cols(DR_TABLE) or []) == ["only_col"],
+      str([str(D(j))[:120], physical_cols(DR_TABLE)]))
+j, _, _ = call("POST", "/api/lc/runtime/create",
+               {"entityCode": "case", "appCode": DR_APP, "tenantCode": TENANT,
+                "fieldValues": {"only_col": "V-1"}}, params={"entityCode": "case"})
+ok("写一行数据进去（空表会让分页只数行数、根本不取列，漂移读会假绿）", j)
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": dr_id})
+check("同一份定义再 provision 一次: EXISTS_INTACT，一列都不缺就不该说补过",
+      D(j).get("status") == "EXISTS_INTACT" and not (D(j).get("addedColumns") or []),
+      str(D(j))[:180])
+ok("加一栏到定义里（改元数据本身合法, #43 已定口径）",
+   call("PUT", "/api/lc/admin/entity", dr_definition([
+       ed_field("only_col", "唯一一栏", 1),
+       ed_field("never_provisioned", "加了但还没建的栏", 2)]), params={"id": dr_id})[0])
+j, st, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 10},
+                params={"entityCode": "case", "appCode": DR_APP, "tenantCode": TENANT})
+msg = env_msg(j)
+check("漂移期间的列表不再是一个裸 500（旧行为: 驱动原文 + 500，调用方只能猜）",
+      st == 400 and isinstance(j, dict) and j.get("code") == 400,
+      f"http={st} {str(j)[:180]}")
+check("400 要点名是哪一栏、并指向 provision（不点名=用户不知道该动哪一栏）",
+      # 三个硬处，都是注入 D10 实测出来的：
+      #   1) 状态得和上一条读同一个响应 —— 退回 500 时驱动原文里也带着栏名，只查文案会溜过去；
+      #   2) 那一栏的名字本身含 "provision" 子串 (never_provisioned)，所以查"指路"之前必须先把
+      #      栏名从文案里摘掉，否则"指向 provision"是对着栏名打绿灯；
+      #   3) 摘掉之后剩下的必须是处理人自己写的那句话。
+      st == 400 and "never_provisioned" in msg and "provision" in msg.replace("never_provisioned", "<col>"),
+      msg[:240])
+check("这条 400 只点用户自己定义里的栏名，不带 SQL 文本与物理表名",
+      "SELECT" not in msg.upper() and DR_TABLE.upper() not in msg.upper(), msg[:240])
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": dr_id})
+pr = D(j) or {}
+check("一次 provision 就把漂移清掉了: ALTERED 且点名补了哪一栏",
+      pr.get("status") == "ALTERED"
+      and "never_provisioned" in [str(c) for c in (pr.get("addedColumns") or [])], str(pr)[:220])
+check("库里真的多了那一栏（「补好了」只有库能作证）",
+      "never_provisioned" in (physical_cols(DR_TABLE) or []), physical_cols(DR_TABLE))
+j, st, _ = call("POST", "/api/lc/runtime/list", {"page": 1, "size": 10},
+                params={"entityCode": "case", "appCode": DR_APP, "tenantCode": TENANT})
+rows = (D(j) or {}).get("records") or []
+check("补列之后列表回到 200，旧数据一个字都不少（新栏对旧行是空，不是把行抹了）",
+      st == 200 and bool(rows) and rows[0].get("only_col") == "V-1"
+      and "never_provisioned" in rows[0], f"http={st} {str(rows)[:200]}")
+j, _, _ = call("POST", "/api/lc/admin/entity/provision", params={"id": dr_id})
+check("修好之后再 provision 一次不再谎报补过列（幂等，状态回到 EXISTS_INTACT）",
+      D(j).get("status") == "EXISTS_INTACT" and not (D(j).get("addedColumns") or []),
+      str(D(j))[:180])
+call("POST", "/api/lc/app/delete", {"appCode": DR_APP})
+
+call("POST", "/api/lc/app/delete", {"appCode": ED_APP})
 
 # ---------------------------------------------------------------- cleanup
 

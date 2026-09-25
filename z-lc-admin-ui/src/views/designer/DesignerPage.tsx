@@ -30,6 +30,7 @@ import {
 } from '@ant-design/icons';
 import type { DictDTO, EntityDefDTO, FieldDefDTO } from '@/api/types';
 import { listApps } from '@/api/app';
+import type { ProvisionItem } from '@/api/admin';
 import {
   createEntity,
   deleteEntity,
@@ -158,7 +159,10 @@ export function DesignerPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [provisioning, setProvisioning] = useState(false);
-  const [ddl, setDdl] = useState<string | null>(null);
+  /** 服务端这次 provision 的结论 (含没建成时的缺列清单)；null = 本次会话还没 provision 过。 */
+  const [provisionVerdict, setProvisionVerdict] = useState<ProvisionItem | null>(null);
+  /** 没建成的那些实体：常驻横幅列着，不能只靠一闪而过的 toast。 */
+  const [provisionProblems, setProvisionProblems] = useState<ProvisionItem[]>([]);
   const [addFieldOpen, setAddFieldOpen] = useState(false);
 
   const reload = useCallback(async () => {
@@ -189,7 +193,9 @@ export function DesignerPage() {
     const found = entities.find((item) => item.id === selectedId);
     setDraft(found ? { ...found, fields: (found.fields ?? []).map((field) => ({ ...field })) } : null);
     setDirty(false);
-    setDdl(null);
+    // provision 的结论**不在这里**清：reload() 会换掉 entities 的引用，一并冲掉的话，
+    // 刚点完 provision 的实体会在面板上退回"本地预览的 DDL"，把没建成那件事又盖回去。
+    // 面板按 entityCode 取用（见 shownVerdict），切实体自然就不显示了。
   }, [selectedId, entities, creating]);
 
   const dbTypeOf = useCallback(
@@ -311,9 +317,24 @@ export function DesignerPage() {
     }
     setProvisioning(true);
     try {
-      const executed = await provisionEntity(draft.id);
-      setDdl(executed);
-      message.success('物理表已 provision');
+      const item = await provisionEntity(draft.id);
+      setProvisionVerdict(item);
+      const bad = item.status === 'FAILED';
+      setProvisionProblems(bad ? [item] : []);
+      // 三态各有各的话：把 EXISTS_INTACT 说成"已建表"是第二句假话。
+      // ALTERED 也不能并入 EXISTS_INTACT —— 它真的执行了 DDL，"这次没有执行 DDL"在这张表上是假的。
+      if (bad) {
+        message.error(`表 ${item.tableName ?? ''} 没有建成`);
+      } else if (item.status === 'CREATED') {
+        message.success(`已按这份定义建出物理表 ${item.tableName ?? ''}`);
+      } else if (item.status === 'ALTERED') {
+        const added = item.addedColumns ?? [];
+        message.success(
+          `表本来就在，按这份定义补了 ${added.length} 列${added.length ? `：${added.join('、')}` : ''}`,
+        );
+      } else {
+        message.success('表本来就在，列一列不缺，这次没有执行 DDL');
+      }
       await reload();
     } catch (err) {
       message.error(err instanceof Error ? err.message : 'provision 失败');
@@ -325,8 +346,26 @@ export function DesignerPage() {
   const provisionAll = useCallback(async () => {
     setProvisioning(true);
     try {
-      const result = await provisionAllEntities(appCode, DEFAULT_TENANT_CODE);
-      message.success(`已 provision ${Object.keys(result).length} 张表`);
+      const report = await provisionAllEntities(appCode, DEFAULT_TENANT_CODE);
+      const items = report.items ?? [];
+      const bad = items.filter((item) => item.status === 'FAILED');
+      setProvisionProblems(bad);
+      if (report.total === 0) {
+        message.info('这个应用还没有实体，没有要建的表');
+      } else if (bad.length) {
+        // 旧口径是 Object.keys(返回 Map).length —— 那个 Map 每个实体一个键，
+        // 坏的那支也在里面，于是"有实体没建成"永远被算进"已 provision"。
+        message.error(`有 ${bad.length} 个实体没建成，详见下方「未建成」`);
+      } else {
+        // 少了 altered 这一格，"3 张新表 + 2 张补了列"会被说成"3 张新表 + 0 张无事发生"，
+        // 而那 2 张表刚刚真的被执行过 ALTER —— 这是这句文案唯一能被证伪的地方。
+        const parts = [
+          `已 provision ${report.created} 张新表`,
+          `${report.unchanged} 张表本来就在且列一列不缺`,
+        ];
+        if (report.altered > 0) parts.push(`${report.altered} 张表按定义补了列`);
+        message.success(parts.join('，'));
+      }
       await reload();
     } catch (err) {
       message.error(err instanceof Error ? err.message : '批量 provision 失败');
@@ -431,6 +470,15 @@ export function DesignerPage() {
     [],
   );
 
+  /**
+   * 面板只认"这一支实体自己的 provision 结论"。
+   *
+   * 按 entityCode 对齐而不是在切实体时清空：reload() 会换掉 entities 的引用，
+   * 一并就清的话刚点完 provision 会退回本地预览那份 DDL，正好把刚发生的失败盖掉。
+   */
+  const shownVerdict =
+    provisionVerdict && provisionVerdict.entityCode === draft?.entityCode ? provisionVerdict : null;
+
   return (
     <div style={{ display: 'flex', gap: 12, padding: 12, alignItems: 'flex-start' }}>
       <Card
@@ -530,6 +578,25 @@ export function DesignerPage() {
       </Card>
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {provisionProblems.length ? (
+          <Alert
+            type="error"
+            showIcon
+            message={`未建成（${provisionProblems.length}）`}
+            description={
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {provisionProblems.map((item) => (
+                  <li key={`${item.entityCode}-${item.tableName ?? ''}`}>
+                    <Text code>{item.entityCode}</Text>
+                    {' · '}
+                    {item.message ?? '建表失败'}
+                    {item.missingColumns?.length ? `（缺列 ${item.missingColumns.join(', ')}）` : ''}
+                  </li>
+                ))}
+              </ul>
+            }
+          />
+        ) : null}
         {!draft ? (
           <Empty description="选择左侧实体开始编辑，或新建一个实体" />
         ) : (
@@ -597,8 +664,26 @@ export function DesignerPage() {
             </Card>
 
             <Card size="small" title="DDL 预览" extra={<Text type="secondary">provision 时以服务端实际生成为准</Text>}>
-              <pre className="zlc-ddl">{ddl ?? previewDdl(draft, dbTypeOf)}</pre>
-              {ddl ? <Tag color="green">这是服务端实际执行的 DDL</Tag> : null}
+              <pre className="zlc-ddl">{shownVerdict?.ddl ?? previewDdl(draft, dbTypeOf)}</pre>
+              {shownVerdict ? (
+                <Tag
+                  color={
+                    shownVerdict.status === 'FAILED'
+                      ? 'red'
+                      : shownVerdict.status === 'ALTERED'
+                        ? 'blue'
+                        : 'green'
+                  }
+                >
+                  {shownVerdict.status === 'FAILED'
+                    ? '这张表没有建成，上面是服务端尝试执行的 DDL'
+                    : shownVerdict.status === 'EXISTS_INTACT'
+                      ? '表本来就在，这条 DDL 是空操作（列已核对齐全）'
+                      : shownVerdict.status === 'ALTERED'
+                        ? '表本来就在，上面末尾的 ALTER 是这次真的执行过的（只加列）'
+                        : '这是服务端实际执行的 DDL'}
+                </Tag>
+              ) : null}
             </Card>
           </>
         )}

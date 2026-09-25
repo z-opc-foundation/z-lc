@@ -43,6 +43,15 @@ public class EventReplayService {
                 JsonNode data = mapper.readTree(ev.getEventData());
                 String entityCode = data.path("entityCode").asText(ev.getEntityCode());
 
+                String type = ev.getEventType() == null ? "" : ev.getEventType();
+                // 整实体的 DELETE（payload 里没有 fieldCode）在任何写入之前处理: 它要把这个实体从折叠里
+                // 整个摘掉，于是也就**不该**先 computeIfAbsent 立一个空桩 —— 否则"删除"反而把实体造了出来，
+                // 而运行时按码找得到它（实测：删掉的实体照样能 runtime/list 出旧记录）。
+                if ("DELETE".equals(type) && !data.hasNonNull("fieldCode")) {
+                    byEntity.remove(entityCode);
+                    continue;
+                }
+
                 EntityDefDTO def = byEntity.computeIfAbsent(entityCode, k -> {
                     EntityDefDTO e = new EntityDefDTO();
                     e.setTenantCode(tenantCode);
@@ -52,7 +61,7 @@ public class EventReplayService {
                 });
 
                 // 按 event_type 分发
-                switch (ev.getEventType() == null ? "" : ev.getEventType()) {
+                switch (type) {
                     case "CREATE":
                         applyCreate(def, data);
                         break;

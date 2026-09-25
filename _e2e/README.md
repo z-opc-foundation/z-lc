@@ -14,17 +14,21 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar --spring.profiles.acti
 三层测试，当前全是绿的：
 
 ```bash
-mvn -B test                      # 4617 个 Java 测试（5 个模块汇总现加；z-lc-web 48 个里 46 个真 HTTP 集成测试）
-python3 _e2e/e2e_api_test.py     # 342/342 项断言，打真在跑的 server
+mvn -o -B clean install          # 4646 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1251+112+57；z-lc-web 那 57 个里 55 个是 LcHttpContractTest 的真 HTTP 集成测试）
+python3 _e2e/e2e_api_test.py     # 434/434 项断言，打真在跑的 server
 python3 _e2e/probe_stats.py      # 非数值统计与字典值域 warning 的即席探针（要 server 在跑）
-cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 24 文件/221 用例 + vite build
-E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 158 项/轮（先 build，preview 见下文）
+cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 25 文件/238 用例 + vite build（产物 index-CAT5sfEl.js）
+E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 184 项/轮（先 build，preview 见下文）
 ```
 
-（以上是 2026-09-25 23:1x – 09-26 00:2x 这一窗同轮实跑的数，不是抄上一轮 —— 上一轮记的是 4573 / 283 / 211 / 137。）
+（以上是 2026-09-26 06:4x – 06:5x 这一窗**同轮**实跑的数，不是抄上一轮 —— 上一轮（02:0x – 02:1x）记的是 4627 / 353 / 223 / 160。
+这一窗的四道闸在同一次运行里串着跑（`mvn clean install` → 用刚构建的件重启 18090 → API → `npm run check` → build + 3 轮浏览器），
+退出码一起收在 `~/.cache/zlc47/gates.status`：`JAVA_EXIT=0 BOOT_EXIT=0 API_EXIT=0 CHECK_EXIT=0 BROWSER_EXIT=0`。
+⚠ 同一条链**第一次跑的时候 `JAVA_EXIT=1`** —— 红的是 #43 那两条契约断言（它们的前提被 #47 推翻了），
+不是产品坏了；判"过期"和判"坏了"的分界只有注入能给，见 `_e2e/mutate_provision_contract_guard.py` 那一格。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**22 支，前端 14 + 后端 8**
-（这个数不是敲出来的：`ls _e2e/mutate_*.py | wc -l` = 8、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 14）：
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**30 支，前端 16 + 后端 14**
+（这个数不是敲出来的：`ls _e2e/mutate_*.py | wc -l` = 14、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 16）：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -34,7 +38,13 @@ python3 _e2e/mutate_connection_leak.py            # 逆向映射的连接归还
 python3 _e2e/mutate_field_code_guard.py           # 后端字段编码闸：I1..I4（单测层，surefire 判定）
 python3 _e2e/mutate_field_code_deployed_guard.py  # 同一道闸打到 fat jar：J1..J7 走真 HTTP + 同步核单测层
 python3 _e2e/mutate_group_fields_guard.py         # 后端多维分组：7 个注入，分母钉在 AggregateTest 16 条
-python3 _e2e/mutate_pipeline_wiring_guard.py      # 流水线接线：P1..P12 打 fat jar + 同步核 PipelineWriteChainTest
+python3 _e2e/mutate_pipeline_wiring_guard.py      # 流水线接线：P1..P14 打 fat jar + 同步核 PipelineWriteChainTest
+python3 _e2e/mutate_pipeline_config_guard.py      # 流水线阶段参数 #42 单测层：U1..U6（跑 PipelineStagesTest + PipelineConfigServiceTest + PipelineWriteChainTest = 63 条）
+python3 _e2e/mutate_replay_guard.py               # 事件折叠删栏/删实体 #46 单测层：M1..M3（M3 在 HTTP 流程里是等价变异，只有这一层捉得住）
+python3 _e2e/mutate_edit_path_deployed_guard.py   # #45/#46 打 fat jar：E1..E6，带字节级 marker 预检（预检不过 FATAL，不拿 stale jar 读数）
+python3 _e2e/mutate_provision_reconcile_guard.py  # 定义与库对账 #47 java 层：C1..C7（补列/回读/幂等/只加不删）
+python3 _e2e/mutate_provision_deployed_guard.py   # 同一件事打到发出去的 jar：D1..D13，含"读库的判据不会因为报告撒谎而红"这条归口
+python3 _e2e/mutate_provision_contract_guard.py   # #47 的 java 契约层：K1..K8 打在 LcHttpContractTest 那两支上（8 支注入跑一整轮 8×mvn 只要 ~2 分钟，所以每轮跑**整个类**钉分母）
 cd z-lc-admin-ui && python3 e2e/mutate_degradation_guards.py     # 元数据降级口径 M1..M5
 cd z-lc-admin-ui && python3 e2e/mutate_admin_list_guards.py      # 管理页列表五态 A..H
 cd z-lc-admin-ui && python3 e2e/mutate_workspace_entity_guards.py# workspace 侧出口 A1..D1
@@ -47,8 +57,8 @@ cd z-lc-admin-ui && python3 e2e/mutate_designer_field_code.py    # 设计器字�
 cd z-lc-admin-ui && python3 e2e/mutate_pivot_guards.py           # 交叉表单测层 P1..P10（按两个文件跑）
 cd z-lc-admin-ui && python3 e2e/mutate_pivot_browser_guard.py    # 交叉表**浏览器层** P8（自带 build + preview）
 cd z-lc-admin-ui && python3 e2e/mutate_field_code_browser_guard.py  # 字段编码闸**浏览器层** B1..B5（自带 build + preview）
-cd z-lc-admin-ui && python3 e2e/mutate_pipeline_wiring_guard.py  # 流水线词表/顺序 F1..F10（按两个文件跑）
-cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a 那 16 条**浏览器层** S1..S8（自带 build + preview）
+cd z-lc-admin-ui && python3 e2e/mutate_pipeline_wiring_guard.py  # 流水线词表/顺序/参数 F1..F13（按三个文件跑，含 java 参照集）
+cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a 那 23 条**浏览器层** S1..S9（自带 build + preview）
 ```
 
 ⚠ 每一支都自己报 `ALL MUTANTS BEHAVED AS CLAIMED` 才算数；退出码 0 而没跑完一整轮不等于通过。
@@ -56,14 +66,30 @@ cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a
 ⚠ **两支不能同时在飞**：它们都就地改写源文件，A 的"按字节还原"会把 B 正在判定的那份源码换掉。
 本轮实测踩到 —— 后台那支还没收线就前台再开一支，基线报出 1 条红
 （`字段表里不该预置引擎自建列: expected 3 to be 0`），那是**另一支的注入形状**，不是产品坏了。
-假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **17 支共用** `e2e/_mutlock.py`
-（**14 支前端全接**，后端接了 3 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`
-与本轮新增的 `mutate_pipeline_wiring_guard.py` —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 14/3 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 14 与
-`grep -l _mutlock _e2e/mutate_*.py` 数出来的，不是点的）；
+假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **25 支共用** `e2e/_mutlock.py`
+（**16 支前端全接**，后端接了 9 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
+`mutate_pipeline_wiring_guard.py`、`mutate_pipeline_config_guard.py`、`mutate_replay_guard.py`（本窗补上：它改的
+`SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件）、`mutate_provision_reconcile_guard.py`、
+`mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py` 与 `mutate_edit_path_deployed_guard.py`
+—— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
+这个 16/9 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 16 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 9 数出来的，不是点的）；
 更早那 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
+
+⚠ **锁挡不住的那一类：备份目录被上一支脚本复用。** 本轮最贵的一课，写在这里而不是藏在某一节里：
+`_e2e/` 下五支"改的是 src/main"的注入脚本，原本把还原参照写成固定名 ` bak/<name>.orig`，
+且只在**不存在**时才快照当前源码。后果是实打实的 —— 09-26 01:47 那一次 `mutate_pipeline_wiring_guard.py`
+收线时，从 `/tmp/pipe41_deployed_bak/` 里读出的是**前一晚 23:00:34** 那份快照，
+它把工作区里未提交的 #42 java 改动**整份覆盖回 HEAD**（`PipelineStages.java` 从 +140 行变回 0 行）。
+症状还不是"测试红了"，而是 `mvn testCompile` **cannot find symbol**（测试引用了刚被抹掉的 `Resolution`/`resolve`），
+所以四层门禁里没有任何一层会把它报成"缺陷"。已修的形态：
+① 五支一起换成 `snapshot_sources()`，每次运行**无条件**重新快照，落到带 pid 与时间戳的独立目录
+（`BAK = ~/.cache/zlc42/deployed_bak/<脚本名>/run-<pid>-<时间>`，`mkdir(exist_ok=False)`，撞不上第二次）；
+② 备份不再放 `/tmp`（本机有多个会话会扫 `/tmp`，本轮已经丢过一次日志）；
+③ 还原后除了逐字节比对，再核一次 sha256 —— 前端那支 F 战役对 java 参照集就是这么钉的。
+教训口径：**"按字节还原"的参照集必须是这一次运行自己读的，不能是盘上恰好还在的那份。**
 
 ⚠ **第三种"两支队伍同时在飞"的形状本轮刚踩到，而且比并发开两支隐蔽得多**：注入脚本结尾若写成
 裸的 `sys.exit(main())`（而不是 `if __name__ == "__main__":`），那么**任何一次 import 都会把
@@ -158,6 +184,11 @@ cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a
 | 36 | 「新建实体」按钮是**空操作**：`onClick` 里 `setDraft(新草稿)`，而"从选中实体派生草稿"的 `useEffect([selectedId, entities])` 随即用 `found === undefined` 把它冲回 null。同一条路上还埋着第二处：新草稿 `fields: systemFieldDefs()` 预置 3 行引擎自建列，于是 #34 那道**新闸把新建这条路按住了** | 设计器只能改已有实体、一个都新建不了；而症状长得像"闸写错了"，最容易的"修法"是去放宽闸 —— 那是把两个缺陷合成一个更坏的 | 加 `creating` 让 effect 认新建、字段表清空（引擎列由视图侧自己合成，见 `registry.systemFieldDefs`）。`DesignerFieldCode.test.tsx` 的 `闸不许把新建实体这条路堵死` + 注入 F8/F9：**同一测试标题、不同断言**（F8 红在「没有「实体编码」这一栏」＝编辑器根本没出现，F9 红在「expected 3 to be 0」＝闸被预置列触发），本轮在归档的 `failureMessages` 里逐条核过 |
 | 37 | 交叉表里**空值那一档的表头是一个空格**：某维值为空时后端给的列键是 `""`（不是 NULL、不是缺列），`PivotView` 原样把这个键当标题画出去 | 一根带真数字的**无标题列**摆在最右边，看着像装饰列；合计行、总计、格子数字全都对，所以 Java 单测、vitest、接口 E2E 三层**一条都不红**，只有真浏览器量表头才看得见。用户读不出那是"没填写"，也没有任何提示告诉它缺了什么 | `pivotModel.pivotColumnLabel` 把空白键映射成 `chartModel.UNFILLED_GROUP_LABEL`（`（未填写）`，与图表同源），表头另存原始键进 `data-col-key` 让"认领的是后端那个空键"可证。`pivotModel`/`PivotView` 26 条单测（注入 P1–P10）+ 浏览器 13 条（`10e`）+ 7 条空档正例（`10e-2`，先真清一条记录的 `prio` 再画）+ 接口层 `[15d1]` 15 项，见下文「交叉表（PIVOT）」一节 |
 | 41 | **处理流水线页与引擎是两套事实**：`Pipeline` 永远跑全部处理器并按类名排序，`PipelineConfigService.listByEvent` 在生产代码里**零调用者**；页面上还摆着 `WEBHOOK`/`SCRIPT` 两个没有执行器的阶段和 `AFTER_*` 三个没有写后挂接点的事件 | 删阶段、调顺序、换事件全都"保存成功而运行时什么都不变"，这比报错坏得多 —— 它看着像配好了。用记录调用顺序的桩一量就露：配置里点名的那几个阶段一个都没跑 | `Pipeline.resolve` 按 (appCode, entityCode, triggerEvent) 查启用配置并**按 `order` 执行**，配置兑现不了就抛错而不是悄悄退回默认链；`PipelineStages` 成唯一词表，写入口拒掉幽灵阶段/写后事件/缺闸门/值校验倒序/非整数 order；前端清单从 Java 源码机械抽取。四层反证见「处理流水线」一节 |
+| 42 | 流水线**阶段参数 `config` 是下一个"存了但一个字都不执行"**：`#41` 让顺序真的生效之后，`PipelineStages` 仍然只把 config 当 JSON 存进行，没有任何处理器回头读它 | 给 `TRIM_STRINGS` 配 `{mode:'both'}`、给根本不存在的参数配值，全都"保存成功而运行时什么都不变"—— 症状和 #41 一模一样，而它藏在已经修好的那一层底下，更难看见。现在写入口把 config 里每个键拿去对**该阶段登记在 `PipelineStages.CONFIG_KEYS_BY_TYPE` 里、处理器真读的键集合**：没人读的直接 400 并点名是哪几个键，config 不是对象也 400；运行期同一份内容只 `log.warn` 不按住业务写入 —— 这个不对称是故意的（写入口拒是为了不让一份假参数出生，运行期拒会让一份历史配置把用户的写入一起带走），U5 专门钉这一条 | `_e2e/mutate_pipeline_config_guard.py` U1–U6 单测层（含反向注入 U6「凡是带 config 就拒」—— 只测拒绝的网写成"永远抛异常"也能全绿，那一支就是拦这个的）+ 部署件层 P13/P14 |
+| 43 | **两个实体可以抢同一张物理表，而 `provision-all` 说"建好了"而列根本没建**：表名在租户内是一份命名空间，但三个写入口都不查；`CREATE TABLE IF NOT EXISTS` 对第二个实体是空操作，而接口从不回头看库里到底有什么 | 撞上的那支元数据照收、provision 报成功，实际一列都没建 —— 之后 runtime 每次读都是 `Column ... not found`，而"有实体没建成"在旧汇总里被算进"已 provision"（那个 Map 每个实体一个键，坏的那支也在里面）。现在 `validateTableNameAvailable` 在 `createEntity` 这一处入口就把抢名拒掉、点名是哪一方占着（软删的不占，表名可复用；比较不分大小写）—— 逆向映射的出口（`DbTableController` 那两处 `createEntity` 调用）走的是同一个入口，所以一并挡住；`updateEntity` 路径上表名根本不可改，没有第二个口子。另一侧还有 `otherLiveEntityOnSameTable`：**抢不出来不等于不存在**（历史上已经落在同一张表上的两份定义、软删实体留下的旧表），补列是有副作用的 ALTER，不做这一问就是拿 B 的定义去改 A 的表。provision 之后**回读 JDBC 元数据**，报告长出 `missingColumns/addedColumns` | `_e2e/mutate_provision_deployed_guard.py` D1–D13（十三支注入逐支按预期点名、零连带红）+ `SchemaAdminBizServiceTest`。⚠ **#47 之后这两条自己的契约断言过期了**：`LcHttpContractTest` 那两支把"旧表比定义少一栏"钉成"必须永远 FAILED"，而 #47 恰恰把这一族修成了 ALTERED —— java 门禁红两条，**红的是断言不是产品**。已按实测改成仍可否证的形式（ALTERED + 库里真有那一栏；另配一张真正修不好的"缺引擎自建列"的 foreign table），并由 K1–K8 八支注入逐条重新证牙（见 #47 那一格）|
+| 45 | `updateEntity` 是**全删再全插**：删是软删（留下墓碑行），插走唯一索引 `uk_field_def_tenant_code`（不含 `deleted`） | 同一份定义第二次保存必然撞自己刚留下的那行墓碑 → **带字段的实体建好之后就再也改不动**（PUT 一律 400，错误消息还是 #21 那一族索引名）。现在按 `fieldCode` 对齐：同名的原地更新并 copy 属性，多出来的墓碑化，只有新编码才 insert；大小写变体算同一个编码 | `_e2e/mutate_edit_path_deployed_guard.py` E1–E6 六支（打 18090 上真跑着的那支 jar，字节级 marker 预检不过就 FATAL —— 上一轮 `mvn install` 0.9 秒"成功"而 fat jar 里还是旧件）+ `[15r]`/`[15s]` 探针 |
+| 46 | **运行时权威源是事件链，但折叠从不删字段**：一栏被移除时只墓碑化元数据、不发 field 级 DELETE 事件；`EventReplayService.replay` 收到整实体 DELETE 也只是 `computeIfAbsent` 立个空桩 | 墓碑是表的口径，不是运行时的：删掉的栏在折叠出来的定义里永远活着（多出来的 `extra_col` 直接把整个列表打成 400，而不是少一列），删掉的实体照样供记录、还凭空多一个空桩 | 一栏移除时 `emitFieldRemoved` 补一条 field 级 DELETE；replay 里整实体 DELETE（payload 无 `fieldCode`）把实体从折叠里摘掉、不再预立空桩。`_e2e/mutate_replay_guard.py` M1–M3 —— M3（任何 DELETE 都抹整实体）在 HTTP 流程里是**等价变异**，只有折叠层单测捉得住，这正是"DELETE 带不带 fieldCode"这套词汇表要单独钉一层的原因 |
+| 47 | **定义跑在物理表前面之后，没有任何一条路能把它修回来**：`provisionOne` 见表已存在就一律 `FAILED`，运行时每次读都是裸 500（`Column "t.xxx" not found`），而设计器那句「未建成」横幅谁都清不掉 | 这是 #43 修好之后剩下的那半边：闸挡住了抢表，却没回答"漂移了怎么办"。用户的自助路径本来是现成的 —— 设计器里点一次 provision —— 但那次点击永远得到同一句谎。现在 provision 比对定义与 JDBC 元数据，缺的列 `ALTER TABLE` 补上并**回读库**作证（第四态 `ALTERED`，只加不改不删，幂等）；库自己拒的（如有行的表加 NOT NULL 无默认值）才 `FAILED` 并点名缺哪几列；读侧认得出列名的 `BadSqlGrammarException` 转 400、点名那一栏并指向 provision，认不出照旧 500（把真·库故障包装成"去点一下 provision"比 500 更坏）；界面上四态各说各的话、批量汇总多出 `altered` 一格、补成功即清横幅 | 五层各有牙，各自逐支实测吻合：`mutate_provision_reconcile_guard.py` C1–C7（java 单测：占表判定那五个谓词）→ `mutate_provision_contract_guard.py` K1–K8（java 契约层：`LcHttpContractTest` 那两支，8 支注入认领 **11** 条具名红、分母每轮钉 55 条）→ `mutate_provision_report_guard.py` M1–M18（vitest，`DesignerProvision.test.tsx` **15** 例 —— 本轮 `npm run check` 现读到的数，不是记的）→ `mutate_provision_deployed_guard.py` D1–D13（发出去的 jar）→ `mutate_provision_browser_guard.py` P1–P6（真浏览器 `11d` 那 25 条：8 条各有牙、6 条按未覆盖记账），`11d` 这一节自己从 `FAIL 3` 收到 `FAIL 0`、全绿 3/3 轮 |
 
 ## 三、前端现状（`z-lc-admin-ui/`）
 
@@ -291,12 +322,25 @@ dev(H2) 侧已经是对的，生产还没有。
   见下文「看板「移到」的焦点桥」一节。
 - 手动排序列（用户自定义行序）
 
-### 已知语义空洞：字典列不校验值域
-实测 `stage="NOPE"`（不在字典里）能通过校验并写进去，单条 create 与批量导入口径一致。
+### 已知语义空洞：字典列不校验值域（**批量导入那半边已经做完了，单条写入口仍未做**）
+实测 `stage="NOPE"`（不在字典里）能通过校验并写进去。
 后果：网格只能回落显示原始码、看板/统计会冒出幽灵分组。
 **故意没有直接改成拒绝** —— 字典项后来被删会让存量数据瞬间"非法"，存量库导入也常带未登记的码。
-该做的是：preview 里把"值不在字典中"作为 **warning** 单独回传（不阻断），
-再决定要不要在写路径上加严格开关。别顺手改成硬校验。
+
+⚠ 这一节原来写的是"单条 create 与批量导入口径一致（都不说）"，**那句已经过期**：
+`RuntimeImportService.collectDictWarnings` 早就把"值不在字典中"作为 **warning** 回传了
+（`ImportDto.RowWarning`，preview 与 commit 都带，`MAX_ERRORS_RETURNED` 同级截断，
+查不到码表时只 `log.warn` 不拿假 warning 骚扰），界面也接了（`ImportDialog.applyWarnings`）。
+量具三处实测在案：API `[15g]`（"但会回一条值域 warning"、"warning 指到行与列"、
+"文案里带出真实值"、"warning 不阻止写入"、"commit 也带回 warnings"、"值在字典里时不该有 warning"）、
+浏览器 11 段（`/不在字典/` 出现在坏批摘要里、且好批摘要里**没有**）、
+vitest `ImportDialog.test.tsx`。
+
+**现在真正的空洞是"两套口径"**：`/runtime/create` 与 `/runtime/update`（含表格内联编辑）**什么都不回**，
+所以同一件"值不在字典里"的事，走 CSV 会被警告、走接口不会。界面这一侧够不到那条路
+（字典列渲染成受限的 `Select`，全仓 `mode="tags"` 实测 0 命中，人打不出字典外的值），
+所以这是**API 契约不对称**，不是"用户能看到的错"。要不要把它拉平，取决于有没有人拿裸接口写数据；
+别顺手改成硬校验（理由同上）。
 
 ### 这轮被测试/实测抓到的两个"实现了但没做完"的坑（教训型，值得记住）
 1. **后端支持 ≠ 前端可用**：DISTINCT/FILLED 后端上线后，页脚选择器仍只对数值列开放，
@@ -1224,7 +1268,8 @@ M3 连带红"关掉还焦点"是机制上的必然，写脚本时先按推理写
   "哪几个跑了、按什么顺序跑"，不量错误消息：配置里的子集就是跑的那几个、`order` 就是执行顺序、
   整批 2000 行只查**一次**配置表、停用/别的应用/别的实体都不许顶掉默认链，以及三条"兑现不了就抛错"
   —— 缺必填阶段的存量配置、词表里有而容器里没有的 bean、处理器抛错要包成 `PipelineException` 并带上阶段名。
-- **写入口（API E2E `[15p]` 58 项）** 一份配置必须同时过"必填/类型/值域"三道闸门、阶段编码必须撞得上
+- **写入口（API E2E `[15p]` 58 项，#42 之后是 **69** 项** —— 这一节的账记的是 #41 那一窗，段号没变、条目涨了）
+  一份配置必须同时过"必填/类型/值域"三道闸门、阶段编码必须撞得上
   执行器、触发事件必须真有挂接点、`order` 必须是整数、值校验必须排在类型转换之后（引擎的不变式：
   `maxLength` 只对 String 生效，反过来配会把合法数字按字符长度拒掉）。
   **13 次该拒的提交逐个一探**，每次只让它违反**一条**规则，并各配一条孪生断言「文案点名要什么」。
@@ -1278,7 +1323,79 @@ M3 连带红"关掉还焦点"是机制上的必然，写脚本时先按推理写
   （10 条收集、红恰好是预期那 2 条），再进整轮；F3/F4 各多红一条列表列的检查，因为**同一份词表还被读了一次**
   （列表列的"无执行器/无挂接点"警告与选择项同源），按名字钉进预期而不是放宽判据，同时把
   `pipelineVocabulary.test.ts` 里触发事件那一条的断言顺序调了个位，让**带理由的那句先红**。
-- 浏览器层 `mutate_pipeline_browser_guard.py`：见下一段（S1–S8）。
+- 浏览器层 `mutate_pipeline_browser_guard.py`：见下一段（S1–S9，#42 又加了 S9 一支）。
+  ⚠ 上面这两行的分母是**当时**的：#42 之后 jsdom 那支的基线从 10 条用例涨到 **12** 条、注入从 F1–F10 涨到
+  **F1–F13**（并且它现在改的是**三个**文件，含 java 参照集，见下一节）；浏览器那支从 S1–S8 涨到 **S1–S9**，
+  11a 那一节 21 → **23** 条、全门禁 158 → **160**。同一支脚本的分母变了，不等于它原来的判定作废 ——
+  但**记账要写清是哪一窗的数**，下一节里那两张表就是 09-26 02:2x 重跑的。
+
+### ✅ 流水线阶段参数 `config`：填了能存、运行期一个字都不执行（2026-09-26，缺陷 #42）
+
+`PipelineStages` 一直把 `[{type, config, order}]` 里的 `config` 原样落库，配置页还给了一个能打的输入框
+（框下面诚实写着"当前引擎不读取，保留给后续实现"）。诚实的那半句是**界面向用户认错**，
+但用户那边没有任何变化：填进去的东西存成功了，跑起来什么也不发生。这正是 #41 第二半那一类。
+
+选的是"两条出路"里那条更窄、也更容易守的：**先让口径只有一份，再让写入口替用户挡住空话**。
+
+- 新增 `CONFIG_KEYS_BY_TYPE`（由 `buildConfigKeysByType()` 建，`configKeysOf(type)` 读）：
+  "这一档今天有哪几个参数真被读"的**唯一**登记表。今天五档全是空清单。
+- 解析分成两种用途，一个函数两种严格度：
+  `validateAndResolve()` 走**写入口**，`resolve()` 走**运行期**。
+  同一条 `stages` JSON，前者对"没人读的参数"抛 `IllegalArgumentException`
+  （消息点名引擎支持什么：`—— 该阶段今天不读取任何参数 (引擎里参数只有一份口径: PipelineStages.CONFIG_KEYS_BY_TYPE)`），
+  后者只 **warn** 并照旧执行 —— 库里已经躺着的老配置不能因为一次代码收紧就跑不起来（`Pipeline` 里逐条
+  `log.warn("流水线配置 [id={}, entity={}] {}")`）。**不对称是设计**，所以它有专门的注入（U5）。
+- 两种坏形状记进**同一个** `unread` 清单：`config` 不是对象（`阶段参数不是对象`）、
+  对象里有没登记的键（`… 的 … 没有任何处理器读取`）。这不是省事，它直接决定了部署层那支注入的形态（见下）。
+- 配置页把输入框**撤掉**了，换成一句读数：老配置行里真带着参数时写
+  `参数 xxx 引擎不读取，保存会被拒`，否则写 `这一档没有可配参数（引擎不读取阶段参数）`。
+  删掉格子不算修谎 —— 所以浏览器层那条检查钉的是"每一档都还在说这一档有没有参数"。
+- 前端词表 `pipeline.ts` 每一档多了 `configKeys: string[]`，并由
+  `pipelineVocabulary.test.ts` 用**两句方向相反**的断言和 java 那份登记表对齐：
+  先问"后端有没有多出前端没跟上的键"，再问"前端有没有声明后端没登记的参数"。
+
+六层各自钉一层，全部同轮注入自证（09-26 01:0x–02:1x 这一窗，跑在**恢复后**的那份源码上）：
+
+| 层 | 载体 | 注入 | 读数 |
+| --- | --- | --- | --- |
+| Java 单测 | `PipelineStagesTest` 23 + `PipelineConfigServiceTest` 26 + `PipelineWriteChainTest` 14 = **63** | `_e2e/mutate_pipeline_config_guard.py` **U1–U6** | 六支各自打掉一句保证，恢复态 63 条全绿（`RESULT: #42 那六支各自打掉一句保证；恢复态 63 条全绿`，`U_EXIT=0`） |
+| 真 HTTP（源码层） | `_e2e/e2e_api_test.py` `[15p]` 新增 3 条：`阶段参数没人读 -> 拒`、`阶段参数不是对象 -> 拒`、`… -> update 也拒` | 同上（P 战役每支都重跑整份 `[15p]`） | 全门禁 **353/353**，`[15p] checks=69` |
+| 部署件（18090 那台 jar） | 同一份 353 | `_e2e/mutate_pipeline_wiring_guard.py` **P13/P14**，并把**整族 P1–P14** 在本窗重跑 | P13 打掉 `if (!unread.isEmpty())` 这唯一的消费点 → **9 条具名红**；P14 打掉"不是对象也记账" → 4 条；整族第二轮 `exit=0`、14 个注入块每个都 `changed=True`（产物真换过）、**0 处 MISMATCH**、收线"重建成原始字节再跑"回到 353/353 且 `[15p]` 69、`restored sources: clean` |
+| 前端 jsdom | `pipelineVocabulary.test.ts` + `PipelinesPage.test.tsx` 共 **12** 条 | 同一支 F 战役里的 **F11/F12/F13** | F11 前端多报一个键 / F12 把输入框装回来 / F13 后端登记的键变了 —— 三支各红一条且互不相同；整支 **F1–F13 十三支全 OK**，`RESULT: 前端口径注入自证完成` |
+| 真浏览器 | `browser-e2e.mjs` 11a 段（这一节 **23** 条，全门禁 **160**/轮） | `mutate_pipeline_browser_guard.py` **S9** | 基线 160/0 → 注入后 `PASS 158 / FAIL 2`，两条红恰好是新增的那两句 → 恢复后 160/0；三次构建的产物 `index-DiIAeQ4C.js` → `index-DED1Bq_b.js` → `index-DiIAeQ4C.js`（回到原 hash 才叫"被测件换回来过"） |
+| 交叉引用 | 上面五层 | — | 四道门禁在**同一次运行**里串跑全绿（`JAVA_EXIT / API_EXIT / CHECK_EXIT / BROWSER_EXIT` 四个 0） |
+
+⚠ S9 那一份归档日志（`~/.cache/zlc42/browser_mut/s9_r2.log`）末行打的是 `RESULT: 11a 那八支…（PARTIAL: 只跑了 1/9 支 = ['S9']…）` ——
+"八支"是**当时脚本里还没改的措辞**，判定本身按 `bad == 0` 走退出码，跑的确实是 S9 那一支；
+脚本里的措辞在那之后已改成"九支"，但**没有为改一句 print 再重跑一次**（重跑只会产出一份字节不同的日志，
+不会给那一轮多任何证据）。这条属于"数字对、措辞旧"，别拿它当"S9 没测"。
+同理那份日志是 `--only S9` 的部分跑，**不能当整族绿** —— 九支一起跑的那一轮记在 #41 一节里。
+
+**这一族最容易被自己骗过去的地方：词表为空，"两边都是空的"这个断言天然为真。**
+所以 F11/F13 是一对**方向互补**的猎物 —— 只在 `pipeline.ts` 里凭空加一个键（F11）和只在 java 里加一个键（F13）
+必须红在**不同**的那一句上；只注入其中一支，就等于没测"反向"。
+同理，第一个真参数落地那天，`CONFIG_KEYS_BY_TYPE` 加一行之外还必须补一条
+"处理器确实读了它"的用例 —— 否则这道闸会退化成"登记了就等于生效"，那正是 #42 原来的样子。
+
+⚠ **P13 的预期红集我第一次写错了**（少写了"不是对象"那一对），跑出来 MISMATCH。
+这条不是量具噪音，是我的预测不全：两种坏形状进同一个 `unread` 清单，所以摘掉那一个消费点会**同时**放跑两类。
+补上以后按名字钉死，并在脚本注释里写明了归因 —— 预期红集要按"谁读了这个值"估，不按主题估。
+
+⚠ **同一族里新增探针会改写旧注入的预期红集，所以"只跑新增那两支"是不够的**（本窗实测）：
+#42 在 `[15p]` 段尾加了 3 条 update 探针、又给 `PipelineWriteChainTest` 加了 1 条 warn 用例之后，
+**P1–P14 整族**第一次重跑报了 3 处 MISMATCH —— P1 少 1 条（`resolve()` 在那支注入下压根不被调用，
+那句 warn 也随之消失，所以它属于 P1 的红集），P4/P6 各多红 9 与 8 条（预期从 7→**16**、4→**12**，
+原因是 update 探针让创建闸失效的**波及面变宽**：
+坏配置真写进行里，后面所有"按配置链执行"的检查读到的就是它）。
+三处全是"我的账目过期"，不是产品坏了（同一轮基线 353/353、恢复后 353/353）。
+**How to apply:** 改了一段共享探针之后，把打那一段的**整族**重跑一遍并逐条给新红写出机理；
+把预期红集改宽是最容易做错的动作（改完就绿 = 自证失效），所以每一处补账都得配上"为什么这一句被这处注入打掉了"。
+
+⚠ 这一族的 java 改动**被自家量具抹过一次**：09-26 01:47 那支 P 战役收线时拿前一晚 23:00 的旧备份
+覆盖回 HEAD（详见上文"备份目录被上一支脚本复用"那条）。症状是 `mvn testCompile` 报
+`cannot find symbol: Resolution / resolve / configKeysOf` —— 四层门禁里**没有任何一层**会把这个报成缺陷。
+从会话记录里逐段重放恢复后，用三件独立的事确认恢复对了：63 条单测全绿、U/P 两支注入的锚点仍然各自唯一
+（两支都能整族跑完并按预期红收线）、`git diff --stat` 回到 +140/+9 的形状。
 
 ### 真浏览器 E2E 怎么跑
 
@@ -1424,54 +1541,104 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
   压根不碰 `mapTable`。也就是说 J5（不再跳过自建列）与 J6（跳过但不留痕）
   只在真 HTTP 那层有覆盖，单测层是空的。注入实验把这件事测出来了，就顺手补两条单测（映射一张含 `id/deleted` 的表，
   断言字段清单里没有它们、description 里有那句）。
-- **待办 #42：阶段参数 `config` 是下一个"存了但一个字都不执行"。** `PipelineStages` 收 `[{type,config,order}]`
-  并原样落库，配置页有输入框（界面上已经诚实写着"当前引擎不读取，保留给后续实现"），但
-  `grep -rn "getConfig()" --include="*.java" z-lc-core/src/main z-lc-web/src/main` 现数只命中
-  `viewconfig` 那两处，**流水线这一族 0 命中** —— 没有任何处理器读它。这和 #41 的第二半是同一类：
-  用户填了参数、存成功、运行期什么也不变。两条出路都比现在好：① 让至少一档真读参数
-  （`REQUIRED_CHECK.config.fields` 只对列出的列要求必填 / `VALUE_VALIDATE.config` 收 min/max/regex），
-  读多少就在校验器里承认多少；② 写入口对非空 `config` 直接 400 并说"这一档今天没有参数"。
-  补的时候照 #41 那六层各钉一层，尤其浏览器层**不许按行号读**（见 #41 一节里 S1 那一课）。
+- ~~**待办 #42：阶段参数 `config` 是下一个"存了但一个字都不执行"。~~ **已闭（09-26）** ——
+  走的是"② 写入口对没人读的参数直接 400"，并且把"这一档有哪几个参数真被读"收成一份登记表
+  （`PipelineStages.CONFIG_KEYS_BY_TYPE`）；六层注入自证与两条口径（运行期只 warn 的不对称、
+  空词表必须双向钉）见「流水线阶段参数 `config`」一节。
+  **留一条给下一个动这里的人**：第一个真参数落地时，除了往登记表里加一行，必须同时补
+  "处理器确实读了它"的用例 —— 登记表不是生效的证据。
 - 目录命名：`z-opc/AGENTS.md` 约定子模块前端叫 `_frontend/`（如 `z-task/_frontend/`），
   当前是 `z-lc-admin-ui/`。要么改名，要么在 AGENTS.md 记一笔。
 - 前端 `antd` chunk 1.26MB 已配 `chunkSizeWarningLimit: 1400` 并接受（应用本体只有 ~130kB，
   vendor 单独缓存），真要再小就得按组件引 antd。
-- 本轮（09-25 字段编码闸 + 09-26 处理流水线 #41）所有改动**都没有 commit**，全在工作区：
-  `git status --porcelain` = **44 行**（**25** 个 ` M` + **19** 个 `??`，三个数都是 09-26 00:3x 现数，
-  `^ M`/`^??` 各自 `grep -c`），HEAD 仍是 `5dad2a0`（09-23 18:42 那一笔 z-util-jdbc + `/runtime/shape`）。
-  比上一记的 26 行（15 ` M` + 11 `??`）多出的 18 行 = **+8 个未跟踪**（#41 那一族：
-  `z-lc-core/.../pipeline/config/PipelineStages.java`、`PipelineWriteChainTest.java`、`PipelineStagesTest.java`、
-  `src/api/pipelineVocabulary.test.ts`、`src/views/admin/PipelinesPage.test.tsx`、
-  `_e2e/mutate_pipeline_wiring_guard.py`、`z-lc-admin-ui/e2e/mutate_pipeline_wiring_guard.py`、
-  `z-lc-admin-ui/e2e/mutate_pipeline_browser_guard.py`）+ **+10 个 ` M`**（上一记的那 15 个 ` M` 逐个是谁，
-  这一窗没有留清单，所以这里只数增量不点名）。当前这 **25** 个 ` M` 按 `git status` 现列分五堆：
-  执行链本体 6（`pipeline/Pipeline.java`、`pipeline/config/PipelineConfigService.java`、
-  `pipeline/processor/RefCheckProcessor.java`、`web/controller/PipelineConfigController.java`、
-  `web/controller/RuntimeCrudController.java`、`core/importer/RuntimeImportService.java`）+
-  对应单测 3（`PipelineTest.java`、`PipelineConfigServiceTest.java`、`LcHttpContractTest.java`）+
-  交叉表/聚合那一族 4（`DynamicSqlBuilder.java`、`AggregateQueryDTO.java`、
-  `DynamicSqlBuilderAggregateTest.java` 与前端 `chartModel.ts`）+ 前端其余 7（`api/pipeline.ts`、
-  `views/admin/PipelinesPage.tsx`、`e2e/browser-e2e.mjs`、`api/runtime.ts`、`api/types.ts`、
-  `layouts/WorkspaceLayout.tsx`、`views/workspace/WorkspaceViewPage.tsx`）+ 量具与文档 5
-  （`_e2e/e2e_api_test.py`、三支 `mutate_duplicate_guard*.py`、本 README）。6+3+4+7+5 = 25 对得上。
-  ⚠ 这一段本身是"别人随时会来 commit"的现场：**`M ` 计数为 0，说明暂存区里没有我的东西**，
-  但 25 个 ` M` 里也不全是我的改动 —— 真要提交只能按路径点名 `git commit -- <路径>`，不能 `git add -A`。
-  ⚠ 顺带核到一件事，免得有人来问"字段编码那道闸的源码改动呢"：
-  `src/fields/columnRules.ts` 与 `src/views/designer/DesignerPage.tsx` **都在这 44 行里不存在**
-  （`git ls-files --error-unmatch` 两个都命中 = 已被跟踪，`git status` 不列 = 与 HEAD 逐字节相同，
-  `git log -1 -- DesignerPage.tsx` = `c15788a` 09-23 08:11）——
-  那道闸的**产品实现是 09-23 就提交过的既有代码**，那两轮动的是它周围的三层量具
-  （API `[15j]` 33 条、浏览器 11c 7 条、两支注入自证），不是闸本身。别把"没改闸"读成"闸没在做"。
-  ⚠ 19 个未跟踪里有 2 个**不是本轮的**：`z-lc-admin-ui/pnpm-lock.yaml` 与 `pnpm-workspace.yaml`
-  （共享工作树里别人可能在飞的活，别顺手 `git add -A`）。
+- **提交状态（09-26 02:1x 现数，`git status --porcelain` 与 `git log` 当场量的，不是回忆）**：
+  上一记那"44 行全在工作区"的现场已经收敛成一笔 —— HEAD = **`e5504ce`**
+  （`feat: 让处理流水线配置真的执行，并把交叉表/字段编码/流水线三层量具补齐`，
+  装的就是 #41 那一整族 + 交叉表/字段编码那两层量具 + 上一记那 25 个 ` M` 的绝大多数），
+  **且已推送**：`git rev-parse HEAD origin/main` 两个 sha 相同（`e5504ce218ad…`），不是"提交了但还在本地"。
+  这一窗（#42）的改动**全部未提交**，全在工作区：`git status --porcelain` = **21 行**
+  = **18** 个 ` M` + **3** 个 `??` + **0** 个 `M `（暂存区是空的，三个数各自 `grep -c` 现数，09-26 02:3x 量的）。
+  18 个 ` M` 逐个点名（照 `git status` 现列分四堆）：
+  java 本体 2（`core/pipeline/Pipeline.java`、`core/pipeline/config/PipelineStages.java`）+
+  对应单测 3（`PipelineWriteChainTest.java`、`config/PipelineConfigServiceTest.java`、`config/PipelineStagesTest.java`）+
+  前端 4（`src/api/pipeline.ts`、`src/api/pipelineVocabulary.test.ts`、`src/views/admin/PipelinesPage.tsx`、
+  `z-lc-admin-ui/e2e/browser-e2e.mjs`）+ 量具与文档 9（`_e2e/e2e_api_test.py`、`_e2e/README.md`、
+  `_e2e/mutate_pipeline_wiring_guard.py`、`z-lc-admin-ui/e2e/mutate_pipeline_browser_guard.py`、
+  `z-lc-admin-ui/e2e/mutate_pipeline_wiring_guard.py`，以及四支补"备份目录被复用"那个修法的
+  `mutate_duplicate_guard{,_deployed,_http}.py` + `mutate_field_code_deployed_guard.py`）。
+  2+3+4+9 = 18 对得上；`git diff --stat` = **18 files changed, 912 insertions(+), 165 deletions(-)**。
+  ⚠ 上一记这一格写的是"20 行 = **17** 个 ` M`"、加法写 `2+3+4+8 = 17`，
+  而**同一句话的第四堆把名字逐个列了 9 个** —— 清单与加数在当时就差 1，不是这一窗多写了一个文件才漂的；
+  两行数（+725 −105 → +912 −165）的差才是这一窗的真实增量（收文档 + 改 P1/P4/P6 三处预期集合）。
+  ⚠ **别拿 mtime 判"哪些文件是本窗改的"**：变异量具按字节还原过一批源文件，被它还过的 mtime 全部作废。
+  ⚠ 3 个 `??` 里 **2 个不是我的**：`z-lc-admin-ui/pnpm-lock.yaml` 与 `pnpm-workspace.yaml`
+  是共享工作树里别人在飞的活，**永远别顺手带上**；剩下那个是本轮新量具
+  `_e2e/mutate_pipeline_config_guard.py`。
+  ⚠ 这一段还是"别人随时会来 commit"的现场：真要提交只能**按路径点名** `git commit -- <路径>`，不能 `git add -A`。
+  ⚠ 上一记里那条"字段编码那道闸的产品源码改动呢"依然成立，值得再抄一遍免得有人又去找：
+  `src/fields/columnRules.ts` 与 `src/views/designer/DesignerPage.tsx` 与 HEAD 逐字节相同
+  （`git ls-files --error-unmatch` 都命中 = 已被跟踪，`git status` 不列 = 没有改动，
+  `git log -1 -- DesignerPage.tsx` = `c15788a` 09-23 08:11）—— 那道闸的**产品实现是 09-23 就提交过的既有代码**，
+  后两轮动的是它周围的三层量具（API `[15j]`、浏览器 11c、两支注入自证），不是闸本身。
+  别把"没改闸"读成"闸没在做"。
 
 ---
 
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（2026-09-25 23:1x – 09-26 00:3x 一轮实测，非回忆；四层**同轮全部实跑**，没有沿用任何一行。
+四层门禁当前状态（最前面那张 06:4x–06:5x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+**不是当前数**。
 ⚠ 上一版这行写的是"10:4x 一轮实测"，而 19:5x 之后四层又各自重跑过 —— 表里每一行的时间戳才是证据，
 标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-26 06:4x – 06:5x 这一窗（#47 收线 + 两条过期契约断言修成仍可否证的形式）四道闸串行同轮实跑，
+五个退出码一起落在 `~/.cache/zlc47/gates.status`，日志各自在 `~/.cache/zlc47/gates/{java,boot,api,check,browser}.log`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**、**4646** 个用例 0 红 0 错 0 跳（surefire 模块汇总行现加 = 2701+525+**1251**+112+**57**；`JAVA_EXIT=0`。02:1x 那一记的 4627 → 4646 = z-lc-core +10（#46/#47 的折叠与对账单测）+ z-lc-web +9（#43/#47 的契约探针）。⚠ **同一条链第一次跑时这一格是红的**（`JAVA_EXIT=1`，`LcHttpContractTest` 两条）：`provision` 现在回 `ALTERED` 且 `addedColumns:["cc"]`、那一栏真进了库 —— 是 #43 那两条断言的**前提**被 #47 换掉了。改成"ALTERED + 库里真有那一栏 + 另配一张真修不好的 foreign table"之后，由 K1–K8 八支注入逐条重新证牙（`RESULT: contract-layer falsification done`） |
+| 部署件 | 用刚构建的件重启 18090 | `BOOT_EXIT=0`（pid 74843），健康检查 200 之后才放行接口层 —— 这一格单列出来是因为上一窗踩过"改了 src 忘了 install，接口层在测旧件" |
+| 接口 E2E | `python3 _e2e/e2e_api_test.py` | **434/434**：`api.log` 里逐字有 `=== E2E RESULT: 434/434 passed ===` 这一行，`API_EXIT=0` 在同一轮的 marker 文件里。353 → 434 的 **+81 按段现数**（拿两轮日志各自的
+`[NNx]` 横幅 + 段内 PASS 行现算，加法与总账 81 对得上）：新增三段 `[15q]` **39**（#46 事件链折叠）、
+`[15r]` **22**、`[15s]` **12**（#45/#47 的编辑路径与补列），加上 `[15j]` 33 → **39**（+6）与
+`[4]` 2 → **4**（+2）；日志里共 **29** 段（`[15j]` 之后直接跳到 `[15p]`，没有 15k–15o），其余 **24** 段一条没动。
+⚠ 上一版这一格写的是"`[15q]/[15r]/[15s]/**[15t]**` 那几段"
+—— **`[15t]` 这一段不存在**，是我照着前三个的编号形状**编**的第四个（"+81 涨在几段里"这种句子
+不含量具，写的人只会数到手边那几段）。段名与段内计数一律以 `grep '\[[0-9]+[a-z]?\]' api.log` 为准 |
+| 前端 | `cd z-lc-admin-ui && npm run check` | tsc 0 / lint 0 warnings / **vitest 238/238（25 个文件）** / build 绿，产物 `index-CAT5sfEl.js`，`CHECK_EXIT=0`（223 → 238 的 +15 **整份住在新增的那一个文件里**：`check.log` 逐文件行数出来 `DesignerProvision.test.tsx (15 tests)`，其余 24 个文件一条没动 —— 这个归属是现读的，⚠ 我手上另一处记录把它写成"30 例"，那是没量过的数） |
+| 真浏览器 | `E2E_REPEATS=3 node e2e/browser-e2e.mjs` | **三轮各自 `PASS 184 / FAIL 0`**、`全绿轮次: 3/3`、`BROWSER_EXIT=0`。160 → 184 的 **+24 整段来自新增的 11d**（"provision 的四种结论在浏览器里各说各的话，且每一句都有库作证"）：归因是拿段内 25 个静态 `check(` 的标题逐个去一轮日志里前缀反查的 —— **24 个各命中恰好 1 行**，第 25 个（`provision 结论走真后端（#43/#47 浏览器层）`）挂在 catch 分支里，只在整段抛异常时才打，绿轮次里它不存在。**这是"静态数不等于分母"的第二个反向样本**（11a 那一次是 +2 与 −1 混着来，这一次是干净的 −1），所以这一格的分母仍然只从 `=> PASS 184 / FAIL 0` 现读。唯一的非 2xx 是那条**被登记放行的 400**（`/api/lc/pipeline-config/create`，它正是被某一条检查点名过的被拒请求） |
+| 注入自证 | 30 支（`ls` 现数：`_e2e/` 14 + `z-lc-admin-ui/e2e/` 16），带锁 25 支 | 本窗新跑并收线的两支：`mutate_provision_contract_guard.py` **K1–K8**（java 契约层，8 支注入认领 11 条具名红、每轮分母钉 55 条、恢复后 55 全绿、源码 md5 与开跑前逐字节一致）；`mutate_provision_browser_guard.py` **P1–P6**（真浏览器层，基线 184/0 → 六支各自只红预期那几条、零连带红 → 恢复后 184/0，`RESULT: 11d 的 8 条各自钉住一件事；6 条按未覆盖记账`）。另外 `mutate_replay_guard.py` 本窗**补上了锁**（它改的 `SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件），并实测过"锁被占时 `exit 2` 且一个源文件都不碰" |
+
+⚠ K4 那一支（摘掉「这张表不是引擎建的」那道闸）的读数是本轮最值钱的意外：我**预期**它会"把坏的那支变成好的、
+让 `allOk` 翻 true"，实测它仍然判 `FAILED`、汇总看上去一模一样 —— 真正的差别只在**库里多了一列**（别人的表被动了）。
+也就是说这一条保证不是被"报告一致性"守住的，是被那一条读物理列的断言守住的。
+预期红集写错时**改的是账，不是断言**：这里改的是 K4 的预期（连带把 T1 的第一条红从"不归这份定义管的表"改到
+"没说是哪一类缺列"），而 K1/K6 那两处偏差是量具的 bug —— JUnit 报的是 assert **调用**那一行，
+长消息参数常在续行上，差一行就会把一条正当的红读成"红在另一条"（脚本里 `statement_start()` 归这一口）。
+
+**09-26 02:0x – 02:1x 这一窗（#42 收线）四道闸串行同轮实跑，四个退出码一起落在
+`~/.cache/zlc42/gates.status`，日志各自在 `~/.cache/zlc42/gates/{java,api,check,browser}.log`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B test` | **BUILD SUCCESS**、**4627** 个用例 0 红 0 错 0 跳（分母按 surefire 模块汇总行现加 = 2701+525+**1241**+112+48；`JAVA_EXIT=0`。上一记 4617 → 4627 的 **+10 全部来自 #42 那三个类**（`git show HEAD:<文件> | grep -c "@Test"` 与盘上现数各量一次：
+`PipelineStagesTest` **17 → 23**、`PipelineConfigServiceTest` **23 → 26**、`PipelineWriteChainTest` **13 → 14**，
+6+3+1 = 10 对得上；模块级分母 z-lc-core 1231 → **1241**） |
+| 接口 E2E | `python3 _e2e/e2e_api_test.py` | **353/353**，`E2E RESULT: 353/353 passed` 与 `API_EXIT=0` 两行**都在同一份日志里逐字存在**（342 → 353 = +11：`[15p]` 这一节从 58 涨到 **69**，加的是 #42 那三条被拒路径 + 它们的"文案点名要什么"孪生断言 + update 侧的探针）。打在 P 战役收线后重新构建并重启的 18090 fat jar 上 |
+| 前端 | `cd z-lc-admin-ui && npm run check` | tsc 0 / lint 0 warnings / **vitest 223/223（24 个文件）** / build 绿，产物 `index-DiIAeQ4C.js`，`CHECK_EXIT=0`（221 → 223 = `pipelineVocabulary.test.ts` 里 #42 那两条：词表同源 + 不许有能填不生效的参数框） |
+| 真浏览器 | `E2E_REPEATS=3 node e2e/browser-e2e.mjs` | **三轮各自 `PASS 160 / FAIL 0`**，`BROWSER_EXIT=0`（158 → 160 新增的 2 条住在 11a：`每一档都还在说这一档有没有参数` 与 `阶段参数不再是一个能填的框`；这一节自己从 21 → **23** 条，同样是**从绿日志的 PASS 行反数**，不是 `grep -c check(`）。⚠ 这一轮 5274 的 preview 是我这条链自己起的，起完留在原地 —— 浏览器层的注入量具 afterward 拒绝在"不是我起的 preview"上跑（实测报 `!! :5274 已经有东西在伺服`），这个拒跑是对的，别当成脚本坏了。**⚠ 02:2x 起这台的 preview 已经不在了**（我为了跑 P 战役把它关掉）：`lsof -nP -iTCP:5274 -sTCP:LISTEN` 现在空，18090 上是 P 战役收线时重建的那份原始字节件（pid 1270、`/api/lc/health` 200）。要再跑浏览器层得先 `npm run build && npm run preview:e2e`，否则产物指纹守卫会以 `BROWSER_EXIT=2` 拒跑（它不会拿"读不到"当绿） |
+| 注入自证 | 23 支里的流水线那四支 | 单测 **U1–U6** 全 OK（`RESULT: #42 那六支各自打掉一句保证；恢复态 63 条全绿`）；前端 **F1–F13** 十三支全 OK（`RESULT: 前端口径注入自证完成`，`F_FULL_EXIT=0`，13 条 `OK` 行数出来的）；部署件 **P13/P14** 各按具名红收线（9 条 / 4 条），**P1–P14 整族**在本窗重跑 —— 第一次跑出 **3 处 MISMATCH**，三条都是量具的预期账目过期（P1 少算 #42 新增的那条单测、P4/P6 少算 update 探针带来的连带红），已按名字与机理补齐再重跑 —— **第二次整族跑完 `exit=0`，14/14 全 OK、日志里 `MISMATCH` 出现 0 次**
+（`~/.cache/zlc42/deploy_mut/full14_r2.log`：baseline 353/353、fp `9f7d56976a25`，preflight 现数
+**80 条预期红 + 4 条预期连带红**，收线时"重建成原始字节再跑一遍"回到 353/353、`[15p]` 69、
+`restored sources: clean`）；浏览器 **S9**（160/0 → 158/2 恰好那两条 → 160/0） |
+
+⚠ 那 3 处 MISMATCH 值得单独记一句：**它们全是"我预测的红集不全"，不是产品坏了** ——
+同一轮里基线 353/353、恢复后 353/353、`restored sources: clean` 三个读数都没变。
+把预期红集改宽是最容易做错的动作（改完就绿 = 自证失效），所以每一处补账都要写出机理：
+P4/P6 是因为 **update 侧探针让创建闸失效的波及面变宽**（坏配置真写进行里，后面所有"按配置链执行"的检查
+读到的就是它），P1 是因为 **`resolve()` 压根没被调用，那句 warn 也就没了**。
+
+下面那四格（上一窗）：
 
 | 层 | 命令 | 实测 |
 |---|---|---|
@@ -1479,7 +1646,7 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 | 后端接口 E2E | `python3 _e2e/e2e_api_test.py` | **342/342**（22:5x 那一窗整条重跑，日志末尾**真有** `E2E RESULT: 342/342 passed` 与 `API_EXIT=0` 两行；20:20 那一窗记的是 283；打在 17:52 重新 install 并重启过的 18090 fat jar 上，跑完 server 仍 200）。⚠ **上一版这格写的是"19:02 与 19:06 各实跑一次，两次都 `API_EXIT=0`" —— 那句话的退出码部分是错的**：那两份日志（`/tmp/zlc_api_15j_b.log`、`/tmp/zlc_api_15j_c.log`）里只有 `E2E RESULT: 283/283 passed`，**没有任何 `API_EXIT=` 行**，marker 是我替它们**补上去的**而不是量出来的（20:20 这次才是真落码的那一轮：`python3 … > 日志 2>&1; echo "API_EXIT=$?" >> 日志`）。这是"把希望的证据当成已有的证据"，比重跑一次贵得多 —— 从现在起这一格只认日志里逐字存在的 marker。分母 283 → **342** = 本轮新增的一段 `[15p] 流水线配置决定执行链`，**58** 项（段内计数按 harness 自己的 `[NNx]` 横幅现数，`[11]` 那一段同时从 12 → 13），其余 28 段一项没动；上一轮那 33 项是 `[15j] 字段编码撞引擎自建列 / 非法列名`，其余段一条没动：5 个保留列 × 2（拒 + 文案要列出那五个保留列且不泄物理细节）、大写 `ID` × 2（盯 `toLowerCase`，MySQL/H2 列名不分大小写）、4 个非法编码变体 × 2（`2bad` / `我的字段` / `has space` / 空串，拒 + **文案必须指名是哪一列**）、"上面那些被拒的提交一行都没落库"、合法三列照常建成 → provision → `/runtime/list` 读到 `total=0`（这条是"闸没把正常路径一起按住"的反向证据）、`updateEntity` 第二个写入口 × 2、逆向映射 × 3（跳过自建列 / 用户列一列不少 / 跳过的清单写进 description）。⚠ 上一版这行记的是"250 项里**没有**一条专门打保留列 → 缺口见 #30"，**这一轮那个缺口由 `[15j]` 关闭**，别再照抄旧警告。写这段时修了三处自己的量具问题，都记在代码注释里：update 探针从"紧跟创建"移到**段尾**（放前面的话它一旦被放过，`fc_clean` 元数据变 `[deleted]`，后面 provision/`/runtime/list`/`/table/import` 一起翻车，一个 bug 有 6 种红法，注入实验就指不回调用点了）；`跳过引擎自建列` 那条原来是 `all(c not in RESERVED for c in map_codes)` —— **空清单会让 `all()` 真空为真**，注入 J5 把 `map_codes` 打成空时它照样绿，加上 `bool(map_codes) and` 才是真检查；`mapped = D(j)` 在 fail 信封下塌成 `None`，后面 `.get` 会让整段抛异常退出（"跑不完"会被误读成"没红"），改成 `D(j) or {}` |
 | 前端静态 + 单测 + 构建 | `cd z-lc-admin-ui && npm run check` | tsc 0 error、lint 0/0（`--max-warnings 0` 下零输出）、**vitest 221/221（24 个文件）**、build 绿（产物 `index-D0LLXh1C.js`）。分母 211 → **221** = +10、文件 22 → **24**，是本轮新加的 `pipelineVocabulary.test.ts`（8 条）与 `PipelinesPage.test.tsx`（2 条）—— 这两个数都是从 23:2x 那一窗的 vitest 汇总行现读的，而 211 → 221 与 22 → 24 的差是从同一份日志的 `Test Files 24 passed (24)` / `Tests 221 passed (221)` 两行读出来的。**20:26 那一窗整条重跑并落退出码：`CHECK_EXIT=0`，末行 `✓ built in 9.68s`**（23:2x 那一窗再整跑一次：`CHECK_EXIT=0`、`✓ built in 6.31s`）（上一版这格报的是 `✓ built in 4.32s`，且老实写明"没有为退出码落 marker" —— 现在 marker 有了，耗时换成实跑的 9.68s，因为那一轮机器上还压着别人的 `vite build`）。⚠ 顺带量到一件有用的事：**同一份 `src/` 重构建出的 bundle hash 一模一样**（`Bhd3Gz8F` 在 20:10 与 20:26 两次构建里复现），所以"hash 变了"确实是"源码变过"的可靠指针，不是构建噪声。⚠ "vitest 不做类型检查"这个坑本轮**第 7 次**咬：`DesignerPage.tsx` 里那个只剩注入在用的 `SYSTEM_COLUMN_CODES` import 是 `npx vitest run` 全绿、`npm run check` 第一步 TS6133 报的。修法不是加 `// eslint-disable`，是把注入改成**自带字面量** —— 注入引用源码里已不存在的符号会红成"崩红"（ReferenceError），而崩红证明不了它想证明的那道闸 |
 | 真浏览器门禁 | `E2E_REPEATS=3 node e2e/browser-e2e.mjs` | **PASS 158 / FAIL 0，三轮各自 158/0，`全绿轮次: 3/3`，`BROWSER_EXIT=0`**（09-26 00:2x 这一窗整轮重跑；分母 137 → **158** = 新增第 11a 段"处理流水线页"21 条，逐条见上文 #41 一节。汇总行是门禁自己打的；退出码是单独落的 marker —— 20:16 那一轮**只打了汇总行、没落 marker**，所以那一窗整轮重跑一次把 `BROWSER_EXIT=0` 真的写进日志，这一格现在两个证据各自存在）。打的就是本轮 `index-D0LLXh1C.js`：产物指纹守卫开跑前打印 `产物指纹：index-D0LLXh1C.js，比 src 里最新的文件新 176s`（`src/` 里最新的是 20:03 的 `columnRules.ts`，`dist/` 那份是 20:10 的构建；19:00 那一轮同一件产物、当时报 1319s。这一层的"打的是刚构建的那份"是它自己验的；`vite preview` 只绑 `[::1]:5274`，用 `127.0.0.1` 连不上）。分母 130 → **137** = 新增第 11c 段"字段编码那道闸：界面真的按得住保存"7 条：撞自建列时说的是「撞了引擎自建列」而不是「不合法」（`id` 本身是合法标识符，只说"不合法"是把两种错混成一种）、文案点名是哪一列且带出那五个自建列、**那一栏自己标红**（不是页面底部一句泛泛的警告）、保存按钮被按住、**拦住 = 一次写请求都没发出去**（新挂的 `entityWriteReqs` 监听器数 POST `/admin/app/entity/create` 与 PUT `/admin/entity`）、改回干净编码后闸**立刻松开**（警告消失且按钮可点，防"粘住"）、松开之后仍然不偷发写请求。**上一版那行"#34 那道闸在浏览器里没有一条'输入 `id` 就拦保存'的检查"的警告，本轮由这 7 条关闭** —— 但它关的是"界面有没有把住"，"服务端的闸在不在"仍然由 `[15j]` 与注入层负责。⚠ 上一版还留着的那条更一般的话仍然成立："照样全绿"不代表新缺陷被看见了。设计器那 4 条（#29）与交叉表那 20 条（上一版的 110 → 130，静态 21 个 `check(` 里只有 20 个是真检查 —— **静态数不等于分母**）形状不变；11a 那 21 条给"**静态数不等于分母**"补了第二个反向样本 —— 段内静态 `check(` 只有 **20** 个，真跑出来是 **21**：`readDropdown()` 里那句带 `${label}` 的模板被三个调用点各展开一次（+2），而 catch 分支里那句 `check('处理流水线页的顺序与拒绝', false, …)` 只在失败时打（−1）。所以这一节的分母是**从绿日志的 PASS 行反数**出来的，不是从源码 `grep -c` 来的 |
-| 注入缺陷自证 | 上面那 **22** 支 `mutate_*.py`（`ls` 现数，09-26 00:2x 重敲的两个计数：`_e2e/` **8** 支后端 + `z-lc-admin-ui/e2e/` **14** 支前端；带锁的 **17** 支 = `grep -l _mutlock` 数出来） | 全部"预期全红、无未预期红"；**本轮（09-25 深夜 — 09-26 凌晨）新跑的三支**：前端 `mutate_pipeline_wiring_guard.py`（F1–F10 十支，见 #41 一节）、浏览器 `mutate_pipeline_browser_guard.py`（S1–S8 八支，11a 那 21 条各判一件事）、以及 F1–F10 那轮的产物 `index-D0LLXh1C.js` 后来就是 158 那三轮的被测件。上一窗新跑的五支**：后端 `mutate_group_fields_guard.py`（G1–G7 七个注入，判据分母钉成 `DynamicSqlBuilderAggregateTest` 这一个类的 16 条，每个注入跑两遍、7/7 与预期吻合、零连带红，恢复后复跑 16 全绿，`MUT_EXIT=0`）；前端 `mutate_pivot_guards.py`（P1–P10 十个注入各跑两遍 = 20 条 OK，判据分母 = `pivotModel.test.ts` 16 + `PivotView.test.tsx` 10 这 26 条，十个红集合互不相同、零连带红，恢复后 26 全绿）；前端 `mutate_pivot_browser_guard.py`（**第一次把注入自证做到浏览器层**：一支脚本自己 build、自己起 `vite preview`、自己跑整轮，基线 130/0 → 注入 P8 后 127/3 且三条全是具名红 → 恢复后 130/0；bundle hash 全程跟着变（`Bhd3Gz8F` → `B6JS1BiJ` → `Bhd3Gz8F`）说明被测件真的换过，`pivotModel.ts` 恢复后 md5 与注入前逐字节一致）。⚠ 这第三支**第一次跑时把自己报成了 FAILED**：它拿 `FAIL <名字>   << <读数>` 的整行去比 `EXPECTED_RED`，读数没剥掉 → 同一批名字**同时**判成"预期却没红"和"预期外的红"。修完解析是**整支重跑**通过的，不是拿归档日志离线重判（离线重判只能证明解析对了，证明不了那一轮真绿）。**第四、第五支把同一件事做到了字段编码闸的两层上**：后端 `mutate_field_code_deployed_guard.py`（**J1–J7 打在 18090 部署件上**：每支都要先 `mvn install` 换件、重启、再跑整份 `[15j]`，七个注入各自的预期红集合**互不相同**、分母恒为 283、`failures outside [15j]: (none)`，收线打印 `RESULT: deployed-layer falsification done`，恢复后 class 级指纹回到 pristine `bb52bb4ce511`。J4 的读数是 **0 条红 —— 这一支在部署件层按设计不可见**，它的红落在 Java 单测层，这条不是失败而是"哪一层看不见什么"的实测书证）；前端 `mutate_field_code_browser_guard.py`（**B1–B5 打在真浏览器上**：基线 137/0 → 五个注入分别红 4/1/1/1/2 条且全是具名红、bundle hash 五跳各不相同、恢复后回到 137/0 零连带）。上一轮新跑的两支：后端 `mutate_field_code_guard.py` 4 个注入（I1 摘掉整闸 / I2 丢 `toLowerCase` / I3、I4 逐个摘调用点）各跑两遍，**8/8 与预期吻合**；前端 `mutate_designer_field_code.py` 9 个注入 F1–F9 **各跑两遍 = 18 条 OK**，除刻意配对的 F8/F9 之外 7 支红集合两两不同（F8/F9 同标题不同断言，已在归档 `failureMessages` 里核，见 #36）。看板焦点桥那一支 4 个注入**各跑两遍**、四个预期红集合互不相同且零预期外的红（见「看板「移到」的焦点桥」一节）；表格这一支 2 个注入各跑两遍、零连带红（`ALL MUTANTS BEHAVED AS CLAIMED`，基线与恢复后各 9 全绿，`GridView.tsx` md5 字节校验）；列设置抽屉这一支 3 个注入（还原 schema 顺序 / 还原尾巴追加 / 写回时抹掉邻居配置）各跑两遍，三个预期红集合**互不相同**（{ORDER,HIDE} / {WIDTH} / {HIDE}）、零连带红、恢复后 3/3 绿。⚠ 判定口径七处记录在案：① 记录侧的重查注入允许连带红（理由见「记录侧」一节）；② **有一处守卫注入测不出来** —— `loading` 初值在 jsdom 里改坏不会红，见「设计器侧栏」一节，这条按"未覆盖"记账而不是抹掉；③ **churn 类注入必须按测试文件跑**，按全量跑会把 vitest 挂住 13 分钟而没有结论，见「表格视图的计数守卫」一节；④ **两支不能同时在飞**（上一轮实测把对方注入读成自己的基线红），锁的覆盖现在是 **17 支**（`grep -l _mutlock` 现数）：`z-lc-admin-ui/e2e/` 那 **14 支前端脚本全部**共用 `e2e/_mutlock.py`，后端接了 **3 支** —— `mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py` 与本窗新增的 `mutate_pipeline_wiring_guard.py`（它们跑 mvn，不争 5274，但仍不能和另一支同时改源码）；`_e2e/` 下其余 **5 支后端脚本仍未接**，见上文那条警告；⑤ **浏览器层的注入量具必须自己 build、自己起 preview、自己收尾**，不能假设有人在跑 —— 那两条产物指纹守卫（bundle hash 一致 + 不比 `src/` 里最新文件旧）本轮就是被这支脚本**顺带验实在开火**的：注入后重建出 `index-B6JS1BiJ.js`，若不重建，预览仍在伺服修复态的 `Bhd3Gz8F`，那三条红永远不会出现，量具会安静地报"零红、无结论"。**本轮这条守卫又开了两次火**：一次拦下"我的 readiness 探针自己撒了谎"（用了 macOS 上不存在的 `setsid`，`vite preview` 根本没起，而循环照样打印"responding after ~120s"）→ 门禁以 `BROWSER_EXIT=2` 拒跑而不是报绿；⑥ **战役脚本不许被 import 就跑起来**（本轮最贵）：`mutate_field_code_deployed_guard.py` 结尾原本是一行裸 `sys.exit(main())`，我用 `python3 -c "import ...; artifact_fingerprint()"` "只想读一个函数"，结果它当场抢锁、改坏源码、重建 jar、起了第二个 JVM —— 我以为在只读，其实开了第二支写手。修法是 `if __name__ == "__main__":`（本轮 4 支一起补：deployed 那支 + 三支 duplicate 守卫），并且**那几分钟窗口里量出来的 283/283 一律作废重跑**，没有记成结论；⑦ **按位解包的 `_` 占位会静默绑错槽**：`for _, _, _, e, _, _ in RUNS` 把 `e` 绑到了第 4 槽的**替换文本**上，于是"两支的预期红集合不得相同"这条前置检查变成**永远通过**（实测旧写法 5/5 全不相同、从不警告），而我新加的"预期红的名字必须存在于清单里"则在字符串上逐字符迭代、报 `' ' 出现 18860 次`、会把每一次真跑都拦死。修法是逐个具名解包（`_expected_of()`），并且**新前置检查要双向实测**：造一个该拦的样本 + 一个该放的样本，只测一个方向的守卫等于没写 |
+| 注入缺陷自证 | 上面那 **22** 支 `mutate_*.py`（`ls` 现数，09-26 00:2x 重敲的两个计数：`_e2e/` **8** 支后端 + `z-lc-admin-ui/e2e/` **14** 支前端；带锁的 **17** 支 = `grep -l _mutlock` 数出来） | 全部"预期全红、无未预期红"；**本轮（09-25 深夜 — 09-26 凌晨）新跑的三支**：前端 `mutate_pipeline_wiring_guard.py`（F1–F10 十支，见 #41 一节）、浏览器 `mutate_pipeline_browser_guard.py`（S1–S8 八支，11a 那 21 条各判一件事）、以及 F1–F10 那轮的产物 `index-D0LLXh1C.js` 后来就是 158 那三轮的被测件。上一窗新跑的五支**：后端 `mutate_group_fields_guard.py`（G1–G7 七个注入，判据分母钉成 `DynamicSqlBuilderAggregateTest` 这一个类的 16 条，每个注入跑两遍、7/7 与预期吻合、零连带红，恢复后复跑 16 全绿，`MUT_EXIT=0`）；前端 `mutate_pivot_guards.py`（P1–P10 十个注入各跑两遍 = 20 条 OK，判据分母 = `pivotModel.test.ts` 16 + `PivotView.test.tsx` 10 这 26 条，十个红集合互不相同、零连带红，恢复后 26 全绿）；前端 `mutate_pivot_browser_guard.py`（**第一次把注入自证做到浏览器层**：一支脚本自己 build、自己起 `vite preview`、自己跑整轮，基线 130/0 → 注入 P8 后 127/3 且三条全是具名红 → 恢复后 130/0；bundle hash 全程跟着变（`Bhd3Gz8F` → `B6JS1BiJ` → `Bhd3Gz8F`）说明被测件真的换过，`pivotModel.ts` 恢复后 md5 与注入前逐字节一致）。⚠ 这第三支**第一次跑时把自己报成了 FAILED**：它拿 `FAIL <名字>   << <读数>` 的整行去比 `EXPECTED_RED`，读数没剥掉 → 同一批名字**同时**判成"预期却没红"和"预期外的红"。修完解析是**整支重跑**通过的，不是拿归档日志离线重判（离线重判只能证明解析对了，证明不了那一轮真绿）。**第四、第五支把同一件事做到了字段编码闸的两层上**：后端 `mutate_field_code_deployed_guard.py`（**J1–J7 打在 18090 部署件上**：每支都要先 `mvn install` 换件、重启、再跑整份 `[15j]`，七个注入各自的预期红集合**互不相同**、分母恒为 283、`failures outside [15j]: (none)`，收线打印 `RESULT: deployed-layer falsification done`，恢复后 class 级指纹回到 pristine `bb52bb4ce511`。J4 的读数是 **0 条红 —— 这一支在部署件层按设计不可见**，它的红落在 Java 单测层，这条不是失败而是"哪一层看不见什么"的实测书证）；前端 `mutate_field_code_browser_guard.py`（**B1–B5 打在真浏览器上**：基线 137/0 → 五个注入分别红 4/1/1/1/2 条且全是具名红、bundle hash 五跳各不相同、恢复后回到 137/0 零连带）。上一轮新跑的两支：后端 `mutate_field_code_guard.py` 4 个注入（I1 摘掉整闸 / I2 丢 `toLowerCase` / I3、I4 逐个摘调用点）各跑两遍，**8/8 与预期吻合**；前端 `mutate_designer_field_code.py` 9 个注入 F1–F9 **各跑两遍 = 18 条 OK**，除刻意配对的 F8/F9 之外 7 支红集合两两不同（F8/F9 同标题不同断言，已在归档 `failureMessages` 里核，见 #36）。看板焦点桥那一支 4 个注入**各跑两遍**、四个预期红集合互不相同且零预期外的红（见「看板「移到」的焦点桥」一节）；表格这一支 2 个注入各跑两遍、零连带红（`ALL MUTANTS BEHAVED AS CLAIMED`，基线与恢复后各 9 全绿，`GridView.tsx` md5 字节校验）；列设置抽屉这一支 3 个注入（还原 schema 顺序 / 还原尾巴追加 / 写回时抹掉邻居配置）各跑两遍，三个预期红集合**互不相同**（{ORDER,HIDE} / {WIDTH} / {HIDE}）、零连带红、恢复后 3/3 绿。⚠ 判定口径七处记录在案：① 记录侧的重查注入允许连带红（理由见「记录侧」一节）；② **有一处守卫注入测不出来** —— `loading` 初值在 jsdom 里改坏不会红，见「设计器侧栏」一节，这条按"未覆盖"记账而不是抹掉；③ **churn 类注入必须按测试文件跑**，按全量跑会把 vitest 挂住 13 分钟而没有结论，见「表格视图的计数守卫」一节；④ **两支不能同时在飞**（上一轮实测把对方注入读成自己的基线红），锁的覆盖在**那一窗**是 **17 支**（`grep -l _mutlock` 现数；09-26 02:3x 再数是 **18 支**，本窗新增的 `mutate_pipeline_config_guard.py` 也带锁）：`z-lc-admin-ui/e2e/` 那 **14 支前端脚本全部**共用 `e2e/_mutlock.py`，后端接了 **3 支** —— `mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py` 与本窗新增的 `mutate_pipeline_wiring_guard.py`（它们跑 mvn，不争 5274，但仍不能和另一支同时改源码）；`_e2e/` 下其余 **5 支后端脚本仍未接**，见上文那条警告；⑤ **浏览器层的注入量具必须自己 build、自己起 preview、自己收尾**，不能假设有人在跑 —— 那两条产物指纹守卫（bundle hash 一致 + 不比 `src/` 里最新文件旧）本轮就是被这支脚本**顺带验实在开火**的：注入后重建出 `index-B6JS1BiJ.js`，若不重建，预览仍在伺服修复态的 `Bhd3Gz8F`，那三条红永远不会出现，量具会安静地报"零红、无结论"。**本轮这条守卫又开了两次火**：一次拦下"我的 readiness 探针自己撒了谎"（用了 macOS 上不存在的 `setsid`，`vite preview` 根本没起，而循环照样打印"responding after ~120s"）→ 门禁以 `BROWSER_EXIT=2` 拒跑而不是报绿；⑥ **战役脚本不许被 import 就跑起来**（本轮最贵）：`mutate_field_code_deployed_guard.py` 结尾原本是一行裸 `sys.exit(main())`，我用 `python3 -c "import ...; artifact_fingerprint()"` "只想读一个函数"，结果它当场抢锁、改坏源码、重建 jar、起了第二个 JVM —— 我以为在只读，其实开了第二支写手。修法是 `if __name__ == "__main__":`（本轮 4 支一起补：deployed 那支 + 三支 duplicate 守卫），并且**那几分钟窗口里量出来的 283/283 一律作废重跑**，没有记成结论；⑦ **按位解包的 `_` 占位会静默绑错槽**：`for _, _, _, e, _, _ in RUNS` 把 `e` 绑到了第 4 槽的**替换文本**上，于是"两支的预期红集合不得相同"这条前置检查变成**永远通过**（实测旧写法 5/5 全不相同、从不警告），而我新加的"预期红的名字必须存在于清单里"则在字符串上逐字符迭代、报 `' ' 出现 18860 次`、会把每一次真跑都拦死。修法是逐个具名解包（`_expected_of()`），并且**新前置检查要双向实测**：造一个该拦的样本 + 一个该放的样本，只测一个方向的守卫等于没写 |
 
 真浏览器门禁已经从「诊断工具」升格成**可信门禁**，靠的是两件事而不是等它自己变稳：
 ① 每个 check 独立 try/except + 失败截图与时间线，一次超时不再吞掉整轮；

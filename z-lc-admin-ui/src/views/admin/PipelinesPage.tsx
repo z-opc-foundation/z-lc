@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import {
   Button,
   Card,
-  Input,
   Modal,
   Popconfirm,
   Select,
@@ -280,20 +279,19 @@ export function PipelinesPage() {
                       }))}
                       onChange={(type) => patchStage(index, { type })}
                     />
-                    <Input.TextArea
-                      size="small"
-                      style={{ width: 260 }}
-                      rows={1}
-                      value={JSON.stringify(stage.config ?? {})}
-                      placeholder="阶段参数（当前引擎不读取，保留给后续实现）"
-                      onChange={(event) => {
-                        try {
-                          patchStage(index, { config: JSON.parse(event.target.value || '{}') as Record<string, unknown> });
-                        } catch {
-                          /* keep editing an invalid JSON without clobbering the draft */
-                        }
-                      }}
-                    />
+                    {/* 这里原来是一个可以打的"阶段参数"输入框, 而五个处理器没有一个读 config:
+                        填进去的东西改变不了任何行为 (#42)。后端现在直接 400 拒收这种配置,
+                        所以界面上不许再留一个"看着能填"的口子。老配置行里真带着参数时,
+                        这一格说的是实话 (保存会被拒), 而不是把它藏起来。 */}
+                    <Text
+                      type={Object.keys(stage.config ?? {}).length > 0 ? 'danger' : 'secondary'}
+                      data-testid={`pipeline-stage-config-${index}`}
+                      style={{ display: 'inline-block', width: 260 }}
+                    >
+                      {Object.keys(stage.config ?? {}).length > 0
+                        ? `参数 ${Object.keys(stage.config ?? {}).join(' / ')} 引擎不读取，保存会被拒`
+                        : '这一档没有可配参数（引擎不读取阶段参数）'}
+                    </Text>
                     <Space size={0}>
                       <Button size="small" type="text" icon={<ArrowUpOutlined />} disabled={index === 0} onClick={() => setStages((prev) => {
                         const next = [...prev];

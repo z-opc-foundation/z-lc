@@ -482,4 +482,206 @@ public class SchemaAdminBizServiceTest {
             assertTrue("引擎自建列要在 DDL 里: " + owned, ddl.contains(owned));
         }
     }
+
+    // ===== 缺陷 #47: 定义跑在物理表前面之后，provision 要能把缺的那几列补上 =====
+    //
+    // 补列是**有副作用**的 DDL，所以这一族要钉的是三件事:
+    //  ① 补出来的列必须和建表建出来的是同一份定义（宽度/可空/默认值/注释），两处各写一份类型映射
+    //     迟早一个改了一个没改，而这种不一致只有等下一次数据写歪了才看得见;
+    //  ② 只 ADD，不动已有列（DROP/MODIFY/CHANGE 一个都不许出现在这句话里）;
+    //  ③ 只补**自己那张表** —— 两张定义共用一张物理表时补列等于拿 B 的定义去改 A 的表。
+    //
+    // 由 _e2e/mutate_provision_reconcile_guard.py 逐支注入反证（改 columnClause / buildAddColumnDdl /
+    // otherLiveEntityOnSameTable 的那几个谓词）。
+
+    private String addColumnDdlOf(String tableName, com.zifang.z.lc.common.dto.FieldDefDTO f) throws Exception {
+        Method m = SchemaAdminBizService.class.getDeclaredMethod(
+                "buildAddColumnDdl", String.class, com.zifang.z.lc.common.dto.FieldDefDTO.class);
+        m.setAccessible(true);
+        return (String) m.invoke(service, tableName, f);
+    }
+
+    private com.zifang.z.lc.core.executor.entity.EntityEntity squatterOf(EntityDefDTO def) throws Exception {
+        Method m = SchemaAdminBizService.class.getDeclaredMethod(
+                "otherLiveEntityOnSameTable", EntityDefDTO.class);
+        m.setAccessible(true);
+        return (com.zifang.z.lc.core.executor.entity.EntityEntity) m.invoke(service, def);
+    }
+
+    /**
+     * 把 entityMapper 换成"返回这批行、并且**真的按 wrapper 里的谓词过滤**"的替身。
+     * <p>
+     * 默认的 noop 替身会把 QueryWrapper 整个忽略 —— 那样"漏加 .eq(deleted, 0)"或"漏加租户"
+     * 在单测层永远暴露不出来（和上面 {@link #matchApps} 同一个理由）。
+     */
+    private void useEntityRows(final com.zifang.z.lc.core.executor.entity.EntityEntity... rows) throws Exception {
+        final List<com.zifang.z.lc.core.executor.entity.EntityEntity> pool =
+                new ArrayList<>(java.util.Arrays.asList(rows));
+        ClassLoader cl = SchemaAdminBizService.class.getClassLoader();
+        setField("entityMapper", Proxy.newProxyInstance(cl,
+                new Class<?>[]{EntityMapper.class, BaseMapper.class},
+                new InvocationHandler() {
+                    @Override
+                    public Object invoke(Object proxy, Method method, Object[] args) {
+                        if ("selectList".equals(method.getName())) {
+                            return matchEntities(pool, args.length > 0 ? args[0] : null);
+                        }
+                        Class<?> rt = method.getReturnType();
+                        if (rt == int.class) {
+                            return 0;
+                        }
+                        if (rt == boolean.class) {
+                            return false;
+                        }
+                        if (List.class.isAssignableFrom(rt)) {
+                            return new ArrayList<>();
+                        }
+                        if ("selectCount".equals(method.getName())) {
+                            return 0L;
+                        }
+                        return null;
+                    }
+                }));
+    }
+
+    private com.zifang.z.lc.core.executor.entity.EntityEntity entityRow(long id, String tenant, String table,
+                                                                        int deleted, String entityCode) {
+        com.zifang.z.lc.core.executor.entity.EntityEntity e =
+                new com.zifang.z.lc.core.executor.entity.EntityEntity();
+        e.setId(id);
+        e.setTenantCode(tenant);
+        e.setAppCode("crm");
+        e.setEntityCode(entityCode);
+        e.setTableName(table);
+        e.setDeleted(deleted);
+        return e;
+    }
+
+    /** wrapper 里 <code>column = #{ew.paramNameValuePairs.MPGENVALn}</code> 绑的那个值；谓词不存在返回 null。 */
+    private static Object predicateValue(Object wrapper, String column) {
+        if (!(wrapper instanceof AbstractWrapper)) {
+            return null;
+        }
+        AbstractWrapper<?, ?, ?> aw = (AbstractWrapper<?, ?, ?>) wrapper;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile(column + "\\s*=\\s*#\\{ew\\.paramNameValuePairs\\.(\\w+)\\}")
+                .matcher(String.valueOf(aw.getSqlSegment()));
+        if (!m.find()) {
+            return null;
+        }
+        return aw.getParamNameValuePairs().get(m.group(1));
+    }
+
+    private List<com.zifang.z.lc.core.executor.entity.EntityEntity> matchEntities(
+            List<com.zifang.z.lc.core.executor.entity.EntityEntity> rows, Object wrapper) {
+        List<com.zifang.z.lc.core.executor.entity.EntityEntity> kept = new ArrayList<>(rows);
+        Object deleted = predicateValue(wrapper, "deleted");
+        if (deleted != null) {
+            kept.removeIf(e -> !String.valueOf(deleted).equals(String.valueOf(e.getDeleted())));
+        }
+        Object tenant = predicateValue(wrapper, "tenant_code");
+        if (tenant != null) {
+            kept.removeIf(e -> !String.valueOf(tenant).equals(e.getTenantCode()));
+        }
+        return kept;
+    }
+
+    /** 夹具自证: 替身真的按谓词过滤，否则下面"没报占着"那几条都是假的。 */
+    @Test
+    public void entityRowFixtureReallyAppliesTheWrapperPredicates() throws Exception {
+        useEntityRows(entityRow(2L, "t1", "lc_crm_task", 0, "other"),
+                entityRow(3L, "t1", "lc_crm_ghost", 1, "ghost"),
+                entityRow(4L, "t2", "lc_crm_other_tenant", 0, "elsewhere"));
+        // 谓词若真的生效: deleted=0 那支在 t1 命中, 软删/跨租户的两支都进不来。
+        EntityDefDTO inT1 = defOnTable("t1", 1L, "lc_crm_task");
+        assertNotNull("夹具: 未删除同租户的占表行要报出来", squatterOf(inT1));
+        assertNull("夹具: 谓词没生效(替身把 wrapper 忽略了), 下面的账都不能信",
+                squatterOf(defOnTable("t1", 1L, "lc_crm_ghost")));
+        assertNull("夹具: 谓词没生效(租户过滤漏了), 下面的账都不能信",
+                squatterOf(defOnTable("t9", 1L, "lc_crm_other_tenant")));
+    }
+
+    private EntityDefDTO defOnTable(String tenant, Long id, String table) {
+        EntityDefDTO def = entityWith("title", "amount");
+        def.setTenantCode(tenant);
+        def.setId(id);
+        def.setTableName(table);
+        return def;
+    }
+
+    @Test
+    public void addColumnShouldUseTheSameClauseAsCreateTable() throws Exception {
+        EntityDefDTO def = entityWith("amount");
+        com.zifang.z.lc.common.dto.FieldDefDTO f = def.getFields().get(0);
+        f.setFieldType("DECIMAL");
+        f.setFieldLength(18);
+        f.setScale(2);
+        f.setRequired(true);
+        f.setDefaultValue("0.00");
+        f.setDescription("金额");
+
+        String alter = addColumnDdlOf(def.getTableName(), f);
+        String added = alter.substring(alter.indexOf("ADD COLUMN") + "ADD COLUMN".length()).trim();
+        String created = null;
+        for (String line : ddlOf(def).split("\n")) {
+            String t = line.trim();
+            if (t.startsWith("`amount`")) {
+                created = t.endsWith(",") ? t.substring(0, t.length() - 1) : t;
+            }
+        }
+        assertNotNull("夹具: 建表语句里要真有 amount 那一行", created);
+        // 这一条把两处绑成同一个来源: 谁单独改了类型映射、可空性、默认值或注释, 这里就红。
+        assertEquals("补出来的列必须和建表建出来的那一列逐字相同: ", created, added);
+        assertTrue("两边都得带上 NOT NULL: " + added, added.contains("NOT NULL"));
+    }
+
+    @Test
+    public void addColumnShouldOnlyAddAndNeverRewriteOrDrop() throws Exception {
+        EntityDefDTO def = entityWith("amount");
+        String alter = addColumnDdlOf(def.getTableName(), def.getFields().get(0));
+        assertTrue("必须是 ADD COLUMN: " + alter, alter.contains("ADD COLUMN"));
+        for (String forbidden : new String[]{"DROP", "MODIFY", "CHANGE COLUMN", "TRUNCATE", "UPDATE "}) {
+            assertTrue("补列不许动已有列/数据, 但语句里有 " + forbidden + ": " + alter,
+                    !alter.toUpperCase().contains(forbidden));
+        }
+    }
+
+    @Test
+    public void reconcileShouldRefuseTableHeldByAnotherLiveEntity() throws Exception {
+        useEntityRows(entityRow(2L, "t1", "lc_crm_task", 0, "invoice"));
+        com.zifang.z.lc.core.executor.entity.EntityEntity held =
+                squatterOf(defOnTable("t1", 1L, "lc_crm_task"));
+        assertNotNull("别的未删除实体占着这张表, 补列之前必须问出来", held);
+        // 报错文案要能指到是谁占着: 只回一个"表被占用"没人查得动。
+        assertEquals("invoice", held.getEntityCode());
+        assertEquals("crm", held.getAppCode());
+    }
+
+    /** 自己那一行不算占着 —— 否则每次 provision 都会把自己判死。 */
+    @Test
+    public void ownRowShouldNotCountAsSquatter() throws Exception {
+        useEntityRows(entityRow(1L, "t1", "lc_crm_task", 0, "task"));
+        assertNull("自己占自己的表不是抢占", squatterOf(defOnTable("t1", 1L, "lc_crm_task")));
+    }
+
+    /** 软删实体留下的墓碑不算占着: 删实体不删表，算进去等于一个表名被永久占死。 */
+    @Test
+    public void softDeletedEntityShouldNotBlockReconcile() throws Exception {
+        useEntityRows(entityRow(2L, "t1", "lc_crm_task", 1, "old_task"));
+        assertNull("软删的那支不该拦住补列", squatterOf(defOnTable("t1", 1L, "lc_crm_task")));
+    }
+
+    /** 租户隔离: 别的租户指向同一个表名不是抢占（表在各自的数据源命名空间里）。 */
+    @Test
+    public void otherTenantShouldNotBlockReconcile() throws Exception {
+        useEntityRows(entityRow(2L, "t2", "lc_crm_task", 0, "other_tenant_task"));
+        assertNull("跨租户不该算抢占", squatterOf(defOnTable("t1", 1L, "lc_crm_task")));
+    }
+
+    /** MySQL/H2 的表名不分大小写: `TBL` 和 `tbl` 抢的是同一张表。 */
+    @Test
+    public void squatterMatchShouldIgnoreTableNameCase() throws Exception {
+        useEntityRows(entityRow(2L, "t1", "LC_CRM_TASK", 0, "invoice"));
+        assertNotNull("大小写不同的同一张表也要报占着", squatterOf(defOnTable("t1", 1L, "lc_crm_task")));
+    }
 }

@@ -3,6 +3,7 @@ package com.zifang.z.lc.web.controller;
 import com.zifang.util.core.meta.Result;
 import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.common.dto.AppDTO;
+import com.zifang.z.lc.common.dto.ProvisionReport;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.core.schema.SchemaAdminService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -222,43 +223,32 @@ public class SchemaAdminController {
     // ===== DDL Provisioning =====
 
     /**
-     * 为指定实体执行 DDL 建表, 返回执行的 DDL 语句.
+     * 为指定实体执行 DDL 建表, 返回**这一支的结果** (状态 + DDL + 缺哪些列).
+     * <p>
+     * 不再自己 catch Exception 拼 {@code "DDL execution failed: " + ex.getMessage()}:
+     * JDBC 的 message 里带着 {@code SQL [CREATE TABLE ...]}，那等于把物理表名和语句结构发给浏览器。
+     * 交给 {@code LcExceptionHandler} 兜 (它带 clientSafe)，坏消息的载体也统一成一处。
      *
      * @param id 实体主键
-     * @return DDL 语句; 业务校验失败返回 400, DDL 执行失败返回 500
      */
     @Operation(summary = "为指定实体建表")
     @PostMapping("/entity/provision")
-    public Result<String> provisionTable(@RequestParam Long id) {
-        try {
-            String ddl = schemaAdminService.provisionTable(id);
-            return Result.success(ddl);
-        } catch (IllegalArgumentException ex) {
-            return Result.<String>fail(ex.getMessage()).code(400);
-        } catch (Exception ex) {
-            log.error("Provision table failed for entityId={}", id, ex);
-            return Result.<String>fail("DDL execution failed: " + ex.getMessage()).code(500);
-        }
+    public Result<ProvisionReport.Item> provisionTable(@RequestParam Long id) {
+        return Result.success(schemaAdminService.provisionTable(id));
     }
 
     /**
-     * 批量为指定 app 下的所有实体执行 DDL 建表.
-     *
-     * @param appCode    应用编码
-     * @param tenantCode 租户编码
-     * @return key=entityCode, value=DDL 语句 的 Map; DDL 执行失败时整体返回 500
+     * 为指定 app 下的所有实体逐个建表, 返回逐支结果 + 汇总 (建成几张、跳过几张、几张没建成).
+     * <p>
+     * 旧口径是 {@code Map<entityCode, DDL>} + 整体 500: 第一个坏实体把其他实体的表一起挡住，
+     * 而且 Map 里有这个 entityCode 就等于宣布"建好了" —— 而 {@code IF NOT EXISTS} 对已存在的表
+     * 是空操作，那份定义可能一列都没落地。现在一支坏只红自己，坏的那支带原因。
      */
     @Operation(summary = "为某应用下所有实体批量建表")
     @PostMapping("/app/provision-all")
-    public Result<Map<String, String>> provisionAllTables(
+    public Result<ProvisionReport> provisionAllTables(
             @RequestParam String appCode,
             @RequestParam String tenantCode) {
-        try {
-            Map<String, String> result = schemaAdminService.provisionAllTables(tenantCode, appCode);
-            return Result.success(result);
-        } catch (Exception ex) {
-            log.error("Provision all tables failed for app={}", appCode, ex);
-            return Result.<Map<String, String>>fail("DDL execution failed: " + ex.getMessage()).code(500);
-        }
+        return Result.success(schemaAdminService.provisionAllTables(tenantCode, appCode));
     }
 }

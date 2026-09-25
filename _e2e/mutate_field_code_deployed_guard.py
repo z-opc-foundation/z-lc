@@ -55,8 +55,8 @@ Hard guards inherited from mutate_duplicate_guard_deployed.py, all of them earne
 """
 import hashlib
 import io
+import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -72,7 +72,8 @@ sys.path.insert(0, str(ROOT / "z-lc-admin-ui" / "e2e"))
 from _mutlock import acquire as acquire_lock, release as release_lock  # noqa: E402
 SCHEMA = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/schema/SchemaAdminBizService.java"
 MAPPER = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/mapper/DbTableMapperService.java"
-BAK = Path("/tmp/fcguard_deployed_bak")
+# 备份放 ~/.cache: /tmp 会被同机其他会话扫空, 备份中途消失 = 还原失败
+BAK = Path.home() / ".cache/zlc42/deployed_bak" / "tmp/fcguard_deployed_bak"
 JAR = ROOT / "z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar"
 HEALTH = "http://localhost:18090/api/lc/health"
 UNIT_LOG = "/tmp/fcguard_unit.log"
@@ -88,7 +89,10 @@ ILLEGAL_REFUSED = [f"非法列名 {c!r} 被拒且说的是列名规则" for c in
 ILLEGAL_NAMED = [f"非法列名 {c!r} 的文案指名是哪一列（不是笼统一句失败）" for c in ILLEGAL]
 NOTHING_LANDED = "上面那些被拒的提交一行都没落库（闸在写入之前，不是事后回滚）"
 B2BAD_REFUSED, B2BAD_NAMED = ILLEGAL_REFUSED[0], ILLEGAL_NAMED[0]
-IMPORT_OK = "POST /admin/db/table/import (逆向映射刚建好的物理表)"
+# #43 之后 [15j] 的映射宿主换成了"没有活主人的表"（软删掉宿主实体再映射），标题里那句
+# "刚建好的物理表"已经不是套件打印的那句了。名字对不上时这一支会被判成"没红"，
+# 而实际是整套的预期集里少了一条 —— 必须抄套件的字面，不能凭印象。
+IMPORT_OK = "POST /admin/db/table/import (逆向映射一张没有活主人的物理表)"
 MAP_SKIP = "逆向映射跳过引擎自建列（一律拒绝会把 /table/import 打死：真表的 id/deleted 是合法物理列）"
 MAP_ALL = "用户列一列不少地映射回来"
 MAP_DESC = "跳过的清单写进 description，不是静默丢掉"
@@ -152,8 +156,28 @@ def sh(cmd, cwd=ROOT, timeout=1200):
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
 
 
-def bak_name(path):
-    return BAK / (str(path.relative_to(ROOT)).replace("/", "_") + ".orig")
+def snapshot_sources():
+    """一次运行一份独占备份。
+
+    原来是 `BAK` 跨运行复用 + `if not b.exists(): copyfile` + `originals = b.read_bytes()`:
+    上一轮战役留下的 .orig 永不过期, 于是每次开局都把**更早一轮**的源码盖回工作树。
+    同一写法在 mutate_pipeline_wiring_guard.py 上实测抹掉了 09-26 未提交的 #42 改动, 所以这里
+    换成不存在共享路径的形状; 真被 SIGKILL 留下注入残局, 下一次会在基线那句红给我看。
+    """
+    run_dir = BAK / f"run-{os.getpid()}-{time.strftime('%m%d-%H%M%S')}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    originals = {}
+    for f in FILES:
+        if not f.exists():
+            raise RuntimeError(f"source file missing, cannot even baseline: {f}")
+        disk = f.read_bytes()
+        b = run_dir / (str(f).replace("/", "_").lstrip("_") + ".orig")
+        b.write_bytes(disk)
+        if b.read_bytes() != disk:
+            raise RuntimeError(f"backup of {f} did not stick")
+        originals[f] = disk
+    print(f"sources snapshotted -> {run_dir}")
+    return originals
 
 
 def artifact_fingerprint():
@@ -279,13 +303,7 @@ def main():
 
 
 def run_all():
-    BAK.mkdir(exist_ok=True)
-    originals = {}
-    for f in FILES:
-        b = bak_name(f)
-        if not b.exists():
-            shutil.copyfile(str(f), str(b))
-        originals[f] = b.read_bytes()
+    originals = snapshot_sources()
 
     def restore_all():
         for f in FILES:

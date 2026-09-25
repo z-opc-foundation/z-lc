@@ -3,11 +3,11 @@ package com.zifang.z.lc.core.schema;
 import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.common.dto.AppDTO;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
+import com.zifang.z.lc.common.dto.ProvisionReport;
 import org.junit.Test;
 
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -89,16 +89,20 @@ public class SchemaAdminServiceTest {
         assertEquals(int.class, m.getReturnType());
     }
 
+    /**
+     * 返回类型不是风格问题：旧的 {@code String} 返回的是那条 DDL，而建没建成只有库里知道，
+     * 所以调用方拿到返回值也没法判断成功 —— 见缺陷 #43。
+     */
     @Test
     public void shouldDeclareProvisionTable() throws NoSuchMethodException {
         Method m = SchemaAdminService.class.getMethod("provisionTable", Long.class);
-        assertEquals(String.class, m.getReturnType());
+        assertEquals(ProvisionReport.Item.class, m.getReturnType());
     }
 
     @Test
     public void shouldDeclareProvisionAllTables() throws NoSuchMethodException {
         Method m = SchemaAdminService.class.getMethod("provisionAllTables", String.class, String.class);
-        assertEquals(Map.class, m.getReturnType());
+        assertEquals(ProvisionReport.class, m.getReturnType());
     }
 
     @Test

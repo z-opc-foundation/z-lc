@@ -42,15 +42,21 @@ export interface PipelineStageType {
   mandatory: boolean;
   /** 今天在写路径上什么都不做 (只打一行日志), 配与不配不改变行为。 */
   noOpOnWrite: boolean;
+  /**
+   * 后端 `PipelineStages.CONFIG_KEYS_BY_TYPE` 里这一档**真被处理器读取**的 config 键。
+   * 今天五档全是空清单 —— 空清单不是"没写", 它正是配置页不再提供参数输入框的理由。
+   * 漂了会被 `pipelineVocabulary.test.ts` 拦住 (它直接读 java 文件对表)。
+   */
+  configKeys: string[];
 }
 
 /** 迭代顺序 = 后端没有配置时那条默认链的执行顺序。 */
 export const PIPELINE_STAGE_TYPES: PipelineStageType[] = [
-  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true },
-  { type: 'REF_CHECK', label: '引用检查', mandatory: false, noOpOnWrite: true },
-  { type: 'REQUIRED_CHECK', label: '必填校验', mandatory: true, noOpOnWrite: false },
-  { type: 'TYPE_CONVERT', label: '类型转换', mandatory: true, noOpOnWrite: false },
-  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false },
+  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true, configKeys: [] },
+  { type: 'REF_CHECK', label: '引用检查', mandatory: false, noOpOnWrite: true, configKeys: [] },
+  { type: 'REQUIRED_CHECK', label: '必填校验', mandatory: true, noOpOnWrite: false, configKeys: [] },
+  { type: 'TYPE_CONVERT', label: '类型转换', mandatory: true, noOpOnWrite: false, configKeys: [] },
+  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false, configKeys: [] },
 ];
 
 /** 引擎真有挂接点的触发事件; AFTER_* 一个都不在这里。 */

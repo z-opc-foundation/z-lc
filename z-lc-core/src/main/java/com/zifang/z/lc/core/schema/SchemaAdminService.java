@@ -3,6 +3,7 @@ package com.zifang.z.lc.core.schema;
 import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.common.dto.AppDTO;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
+import com.zifang.z.lc.common.dto.ProvisionReport;
 
 import java.util.List;
 
@@ -76,16 +77,16 @@ public interface SchemaAdminService {
     // ===== DDL Provisioning =====
 
     /**
-     * 为指定实体创建物理表 (CREATE TABLE IF NOT EXISTS)
-     *
-     * @return DDL 语句
+     * 为指定实体创建物理表，并**回读物理列**核对这份定义真的落地了。
+     * <p>
+     * 返回的不是 DDL 字符串: {@code CREATE TABLE IF NOT EXISTS} 对一张已在的表是空操作，
+     * "这条语句没报错"可以完全等于"这份定义一列都没建出来"。
      */
-    String provisionTable(Long entityId);
+    ProvisionReport.Item provisionTable(Long entityId);
 
     /**
-     * 为某应用下所有实体批量建表
-     *
-     * @return entityCode → DDL 语句 映射
+     * 为某应用下所有实体逐个建表。一个实体坏**不连累**其他实体，
+     * 但报告里必须看得见哪些没建成、为什么。
      */
-    java.util.Map<String, String> provisionAllTables(String tenantCode, String appCode);
+    ProvisionReport provisionAllTables(String tenantCode, String appCode);
 }

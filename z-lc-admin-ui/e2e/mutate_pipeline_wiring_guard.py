@@ -11,7 +11,7 @@
 `stringifyStages` 用 `stage.order ?? index` 把旧 order 原样写回（界面顺序动了、执行链没动），
 历史行里的 AFTER_CREATE 被渲染成一个体面的中文标签（说"更新后"，其实引擎根本没有写后挂接点）。
 
-十支注入就是这段代码最可能写错的十种样子（不是稻草人，每种各自打掉一处口径）。
+十三支注入就是这段代码最可能写错的十三种样子（不是稻草人，每种各自打掉一处口径）。
 判红只看两件事：**预期的那条用例必须红**，**不该红的必须不红**。F7/F8/F9 都落在列表那一条用例里
 （同一次渲染的三个不同断言），所以这三支额外钉了失败消息的关键字 —— 光看用例名分不出它们。
 
@@ -31,12 +31,20 @@
   F9  列表不再标注空链 —— 空链这一行看起来像"没配阶段"而不是"保存会被拒"
   F10 默认草稿顺序反过来 —— 值校验排到类型转换之前（后端会拒，而这是新建时的默认值）
 
+#42 把"阶段参数"那一格从"能填但不生效"改成"说实话"，所以这一层多了三支（F11~F13）：
+  F11 前端词表登记一个后端没有的参数 —— 界面上又多出一个填了不生效的口子
+  F12 配置页把参数输入框装回来 —— 只加框、不删那句实话，否则红的是正向断言，负向那条空跑
+  F13 后端**真**登记了一个参数而前端没跟上 —— 两边都空的时候 `toEqual(javaConfigKeys())`
+      是真空为真；这一支伸手改 java（vitest 只把它当文本读，不编译），是那句
+      "后端登记的参数键变了"唯一的猎物，缺了它那条断言从未被证明会响
+
 F3/F4 各有一处**已知的漏网**并如实记在这里：幽灵检查那一条用例读的是 PipelinesPage.tsx 的源码，
 往 PIPELINE_STAGE_TYPES 里塞 WEBHOOK 不会让页面源文件出现这个词，所以它抓的是另外三条
 （清单对表 + 草稿的选择项 + 列表那一列的「无执行器」标记 —— 后两者读的都是同一份词汇表，
 这一条不是"没抓到"，是"被另一处口径抓到"）。
 """
 
+import hashlib
 import json
 import re
 import subprocess
@@ -47,15 +55,21 @@ from pathlib import Path
 UI = Path(__file__).resolve().parents[1]
 API = UI / "src/api/pipeline.ts"
 PAGE = UI / "src/views/admin/PipelinesPage.tsx"
+# F13 要往"参照集"那一侧伸手: 词表两边今天都是空的, 只在界面上动手永远打不红那一句
+# "后端登记的参数键变了"。这里把它当**只读文本**用 (vitest 只 readFileSync 它, 不编译),
+# 所以改完必须按字节还原 —— run_all 末尾会复验。
+STAGES_JAVA = UI.parent / "z-lc-core/src/main/java/com/zifang/z/lc/core/pipeline/config/PipelineStages.java"
 SUITES = ["src/api/pipelineVocabulary.test.ts", "src/views/admin/PipelinesPage.test.tsx"]
 
-BASELINE_TOTAL = 10
+BASELINE_TOTAL = 12
 LOG_DIR = Path(tempfile.gettempdir()) / "zlc_mut_pipe41_logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 T_TYPES = "阶段清单与后端 PROCESSOR_BY_TYPE 一字不差（含顺序，那就是执行顺序）"
 T_FLAGS = "必填闸门与不做事标记按后端的两个集合标注，不是前端自己猜"
 T_TRIG = "触发事件只给引擎真有挂接点的那几个"
+T_CONFIG_KEYS = "阶段参数词表与后端 CONFIG_KEYS_BY_TYPE 同源（两边今天都是空的）"
+T_NO_PARAM_BOX = "配置页不再提供一个能填、但引擎不会读的参数框"
 T_GHOST = '页面上再也没有"没有执行器"的幽灵阶段'
 T_SORT = "parseStages 按 order 排，与后端 parseTypes 的排序键一致"
 T_MOVE = "上下移动真的改变将要执行的顺序：order 按数组位置重写"
@@ -64,7 +78,8 @@ T_JSON = "坏 JSON 不会把阶段清单悄悄变成空"
 T_LIST = "列表把引擎兑现不了的东西逐个标出来, 且不按数组位置假装是执行顺序"
 T_DRAFT = "草稿里只给后端真支持的选择项, 且移动阶段会改写落库的 order"
 
-COLLECTED = [T_TYPES, T_FLAGS, T_TRIG, T_GHOST, T_SORT, T_MOVE, T_DEFAULT, T_JSON, T_LIST, T_DRAFT]
+COLLECTED = [T_TYPES, T_FLAGS, T_TRIG, T_CONFIG_KEYS, T_NO_PARAM_BOX, T_GHOST,
+             T_SORT, T_MOVE, T_DEFAULT, T_JSON, T_LIST, T_DRAFT]
 
 # (label, [(file, anchor, mutant)], 预期红, 失败消息里必须出现的关键字或 None, 额外稳定复跑次数)
 RUNS = [
@@ -79,9 +94,9 @@ RUNS = [
     ("F3 清单里塞回幽灵阶段 WEBHOOK（又能选出没有执行器的阶段）",
      # 连带红是**同一份词汇表的第三处读者**: 列表那一列靠 `PIPELINE_STAGE_TYPES` 查 meta 来判
      # "这个阶段没有执行器"，词汇表里一旦有了 WEBHOOK，脏数据那行就被渲染成一个体面的正常阶段。
-     [(API, "  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false },",
-       "  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false },\n"
-       "  { type: 'WEBHOOK', label: '外部通知', mandatory: false, noOpOnWrite: false },")],
+     [(API, "  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false, configKeys: [] },",
+       "  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false, configKeys: [] },\n"
+       "  { type: 'WEBHOOK', label: '外部通知', mandatory: false, noOpOnWrite: false, configKeys: [] },")],
      [T_TYPES, T_DRAFT, T_LIST], None),
     ("F4 触发事件塞回 AFTER_CREATE（又能存一份永远不会被执行的配置）",
      # 同 F3: 挂接点那一格也是拿 `isPipelineTriggerSupported` 判的，词汇表一放宽，
@@ -90,12 +105,12 @@ RUNS = [
        "export const PIPELINE_SUPPORTED_TRIGGERS = ['BEFORE_CREATE', 'BEFORE_UPDATE', 'AFTER_CREATE'] as const;")],
      [T_TRIG, T_DRAFT, T_LIST], "写后没有回调落点"),
     ("F5 REQUIRED_CHECK 的 mandatory 翻成 false（默认草稿会被后端拒）",
-     [(API, "  { type: 'REQUIRED_CHECK', label: '必填校验', mandatory: true, noOpOnWrite: false },",
-       "  { type: 'REQUIRED_CHECK', label: '必填校验', mandatory: false, noOpOnWrite: false },")],
+     [(API, "  { type: 'REQUIRED_CHECK', label: '必填校验', mandatory: true, noOpOnWrite: false, configKeys: [] },",
+       "  { type: 'REQUIRED_CHECK', label: '必填校验', mandatory: false, noOpOnWrite: false, configKeys: [] },")],
      [T_FLAGS, T_DEFAULT, T_DRAFT], None),
     ("F6 DICT_RESOLVE 的 noOpOnWrite 翻成 false（对用户谎称它会改变数据）",
-     [(API, "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true },",
-       "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: false },")],
+     [(API, "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true, configKeys: [] },",
+       "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: false, configKeys: [] },")],
      [T_FLAGS, T_LIST], None),
     ("F7 列表不再标注「无执行器」（脏数据显示成一个正常阶段）",
      [(PAGE, "{index + 1}. {meta ? `${stageTypeLabel(stage.type)} ${stage.type}` : `${stage.type} 无执行器`}",
@@ -126,6 +141,32 @@ RUNS = [
      [(API, "  return PIPELINE_STAGE_TYPES.filter((item) => item.mandatory).map((item, index) => ({",
        "  return PIPELINE_STAGE_TYPES.filter((item) => item.mandatory).reverse().map((item, index) => ({")],
      [T_DEFAULT, T_DRAFT], "值校验排到转换之前"),
+
+    # ---- #42 那一半：阶段参数 ----
+    ("F11 前端词表登记一个后端没有的参数（又造出一个填了不生效的口子）",
+     [(API, "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true, configKeys: [] },",
+       "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true,"
+       " configKeys: ['trimStrings'] },")],
+     [T_CONFIG_KEYS], "前端不许声明后端没登记的参数"),
+    ("F12 配置页把参数输入框装回来（那句实话留着，框也留着）",
+     # 只加框、不删文案：删掉文案会先打掉正向那一句，负向断言就没被测到（负向断言要有自己的猎物）。
+     [(PAGE, "  Card,\n  Modal,", "  Card,\n  Input,\n  Modal,"),
+      (PAGE, "                        : '这一档没有可配参数（引擎不读取阶段参数）'}\n                    </Text>",
+       "                        : '这一档没有可配参数（引擎不读取阶段参数）'}\n                    </Text>\n"
+       "                    <Input.TextArea\n"
+       "                      data-testid={`pipeline-stage-config-edit-${index}`}\n"
+       "                      value={JSON.stringify(stage.config ?? {})}\n"
+       "                      onChange={(e) =>\n"
+       "                        patchStage(index, { config: { trim: e.target.value } })\n"
+       "                      }\n"
+       "                    />")],
+     [T_NO_PARAM_BOX], "参数框回来了"),
+    ("F13 后端真登记了一个参数，而前端词表和那句\u201c没有可配参数\u201d没跟上",
+     # 这一支伸到参照集那一侧改 java: 两边都空的时候 `toEqual(javaConfigKeys())` 是**真空为真**,
+     # 只有让后端多出一个键, 才说得出"这个守卫真的会在参数落地那天响"。vitest 只把它当文本读。
+     [(STAGES_JAVA, "            m.put(type, Collections.<String>emptyList());",
+       '            m.put(type, java.util.Collections.singletonList("trimStrings"));')],
+     [T_CONFIG_KEYS], "后端登记的参数键变了"),
 ]
 
 ORIG: dict[Path, str] = {}
@@ -221,9 +262,15 @@ def main() -> int:
         release()
 
 
+TARGETS = (API, PAGE, STAGES_JAVA)
+
+
 def run_all() -> int:
-    for path in (API, PAGE):
+    preflight()
+    for path in TARGETS:
         ORIG[path] = path.read_text(encoding="utf-8")
+    # 改的是 java 参照集, 还原失败会把谎留在引擎源码里: 除了按文本比, 再钉一个 md5
+    digest = {p: hashlib.sha256(t.encode("utf-8")).hexdigest() for p, t in ORIG.items()}
 
     bad = 0
     try:
@@ -257,15 +304,36 @@ def run_all() -> int:
         if failed or total != BASELINE_TOTAL or sorted(titles) != sorted(COLLECTED):
             print(f"  !! 恢复后仍有红或分母不对: {failed}")
             bad += 1
-        for path in (API, PAGE):
-            if path.read_text(encoding="utf-8") != ORIG[path]:
+        for path in TARGETS:
+            text = path.read_text(encoding="utf-8")
+            if text != ORIG[path]:
                 print(f"  !! NOT RESTORED: {path}")
+                bad += 1
+            elif hashlib.sha256(text.encode("utf-8")).hexdigest() != digest[path]:
+                # 文本相等却摘要不等 = 读到的和我记下的不是同一份 (有人在同期写它)
+                print(f"  !! {path.name} 字节摘要与开工前不符")
                 bad += 1
     finally:
         for path, text in ORIG.items():
             path.write_text(text, encoding="utf-8")
     print("RESULT: " + ("前端口径注入自证完成" if bad == 0 else f"{bad} problem(s)"))
     return 0 if bad == 0 else 1
+
+
+def preflight() -> None:
+    """锚点在花钱之前先数一遍: 一支写歪的锚点会让整轮在几分钟后中止, 那几分钟白烧。"""
+    bad = []
+    for label, edits, _, _ in RUNS:
+        for path, anchor, mutated in edits:
+            text = path.read_text(encoding="utf-8")
+            n = text.count(anchor)
+            if n != 1:
+                bad.append(f"{label}: {path.name} 里锚点出现 {n} 次\n{anchor[:120]}")
+            elif anchor == mutated:
+                bad.append(f"{label}: 注入是空操作")
+    if bad:
+        raise SystemExit("锚点预检未过（一个字节都没改）:\n  " + "\n  ".join(bad))
+    print(f"锚点预检: {sum(len(e) for _, e, _, _ in RUNS)} 处全部唯一")
 
 
 if __name__ == "__main__":  # 战役脚本不许被 import 就跑起来

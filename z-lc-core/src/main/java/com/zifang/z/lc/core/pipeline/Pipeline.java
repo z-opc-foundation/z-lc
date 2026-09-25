@@ -80,7 +80,14 @@ public class Pipeline {
 
         List<String> types;
         try {
-            types = PipelineStages.validateAndResolve(config.getTriggerEvent(), config.getStages());
+            PipelineStages.Resolution parsed =
+                    PipelineStages.resolve(config.getTriggerEvent(), config.getStages());
+            types = parsed.types();
+            for (String warning : parsed.unreadConfig()) {
+                // 运行期不因为"多填了没人读的参数"按住业务写入, 但也不能装看不见:
+                // 谁该改这份配置, 这条日志点名叫出来 (写入口会直接拒同一份内容)。
+                log.warn("流水线配置 [id={}, entity={}] {}", config.getId(), config.getEntityCode(), warning);
+            }
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("流水线配置 [id=" + config.getId() + ", entity="
                     + config.getEntityCode() + "] 无法执行: " + ex.getMessage(), ex);

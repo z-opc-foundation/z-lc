@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""#41 处理流水线那 21 条浏览器检查的**浏览器层**注入自证（`browser-e2e.mjs` 第 11a 段）。
+"""#41/#42 处理流水线那 23 条浏览器检查的**浏览器层**注入自证（`browser-e2e.mjs` 第 11a 段）。
 
 跑法（在 z-lc-admin-ui 下，需要 18090 的后端在跑，且 5274 空着 —— 这一支自己起 preview）：
 
     python3 e2e/mutate_pipeline_browser_guard.py
     python3 e2e/mutate_pipeline_browser_guard.py --only S1,S5   # 只重跑两支，收线会打 PARTIAL
 
-为什么单开一支（vitest 那十支 F1–F10 不够）：`mutate_pipeline_wiring_guard.py` 判的是 jsdom 里
+为什么单开一支（vitest 那十三支 F1–F13 不够）：`mutate_pipeline_wiring_guard.py` 判的是 jsdom 里
 `PipelinesPage.test.tsx` 那两条用例，它能证明 `parseStages` 排了序、选择项里没有幽灵，
 但证明不了**真构建出来的那份 bundle** 在真浏览器里把 order 画成了执行顺序，也证明不了
 "空链被拒"那一次真的是服务端拒的而不是界面在前端偷偷拦下来。第 11a 段这一节自己就带了一条
 "真的发出了请求"的网络断言，那一条如果没有注入给它当猎物，它和一句永远为真的话没有区别。
 
-八支注入，每支各自摘掉一句保证，预期红集合互不相同：
+九支注入，每支各自摘掉一句保证，预期红集合互不相同：
 
   S1 parseStages 不再按 order 排       → 画出来的是数组位置（2 条红：顺序 + 每格里的阶段编码）
   S2 DICT_RESOLVE 的 noOpOnWrite 翻假  → 那一档不再说"今天什么都不做"（1 条红）
@@ -31,6 +31,8 @@
   S6 挂接点列不再给中文名              → 「创建前」变回裸码 BEFORE_CREATE（1 条红）
   S7 阶段删空时不再说会被后端拒        → 那句红字消失（1 条红）
   S8 选择项里不再说必填/不做事         → 用户在这里点删除前得不到任何提示（1 条红）
+  S9 (#42) 那一格换回能打的参数框      → 两条一起红：每档还在不在说"有没有参数" +
+                                        那一格还是不是一个能填的框
 
 ⚠ 三条**没有**注入、按未覆盖记账（写在这里而不是假装全都能抓到）：
   「种下一份 order 与数组位置不一致的配置」是这一节的前提，它的失效形状是服务端写入口被改回
@@ -68,7 +70,7 @@ BUILD_TIMEOUT = 900
 ROUND_TIMEOUT = 3000
 FAIL_DETAIL_SEP = "   << "
 
-# 一轮"跑完了"的最小条数。这一节 21 条、全门禁 158 条 —— 低于此值一定是**有段落中途退出**
+# 一轮"跑完了"的最小条数。这一节 23 条、全门禁 160 条 —— 低于此值一定是**有段落中途退出**
 # （浏览器崩 / 前置条件断 / 超时），而不是"检查变少了"。中途退出的一轮里"零条红"没有意义：
 # 2026-09-26 实测过一支，浏览器在还原轮崩掉，报出 `PASS 4 / FAIL 1`，那 1 条红是
 # `page.waitForTimeout: Target page, context or browser has been closed` —— 崩红不是判据。
@@ -87,10 +89,17 @@ N_MODAL = '阶段删空时界面当场说清这一份保存会被后端拒绝'
 N_SENT = '点保存真的发出了请求（这一节测的是服务端那道闸，不是界面在前端偷偷拦）'
 N_ONESHOT = '整轮 pipeline-config/create 恰好一个 POST（放行的登记不许多于实际发生的那一次）'
 N_TOAST = '空链真的被后端拒了，而界面没有把它报成「已保存」（UI 不许替后端说好话）'
+# #42 那两条 (每一档那一格说了什么 / 它不是一个能填的框)
+N_CELLS = '每一档都还在说这一档有没有参数（格子整个消失也算"没有输入框"，那是删证据不是修谎）'
+N_NOBOX = '阶段参数不再是一个能填的框（填了也不生效的配置，给个输入框就是骗人）'
 
 SORT_LINE = "      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));"
-DICT_ROW = "  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true },"
-VALUE_ROW = "  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false },"
+# 词表每一行末尾多了 `configKeys: []` (#42) —— 锚是逐字比对的, 前端清单一改这里就得跟着改,
+# 否则这几支会在 anchor 检查上抛"锚出现 0 次"。这比悄悄少跑一支好。
+DICT_ROW = ("  { type: 'DICT_RESOLVE', label: '字典解析', mandatory: false, noOpOnWrite: true,"
+            " configKeys: [] },")
+VALUE_ROW = ("  { type: 'VALUE_VALIDATE', label: '值域校验', mandatory: true, noOpOnWrite: false,"
+             " configKeys: [] },")
 TRIG_ROW = ("export const PIPELINE_SUPPORTED_TRIGGERS = ['BEFORE_CREATE', 'BEFORE_UPDATE'] as const;")
 SAVE_HEAD = ("    if (!editing?.entityCode?.trim()) {\n"
              "      message.warning('请选择实体');\n"
@@ -101,6 +110,33 @@ TRIGGER_TAG = ("<Tag data-testid={`pipeline-trigger-${row.id ?? 'draft'}`}>"
 MODAL_WARN = ('<Text type="danger">还没有阶段 —— 空链保存会被后端拒绝，因为它绕过必填/类型/值域三道闸门</Text>')
 OPTION_LABEL = ("label: `${item.label} ${item.type}${item.mandatory ? '（必填）' : ''}"
                 "${item.noOpOnWrite ? '（写路径暂不做事）' : ''}`,")
+
+# S9 (#42): 那一格现在是一句陈述; 注入把它换回 #42 修掉之前那个"能打的参数框"。
+PARAM_TEXT = """<Text
+                      type={Object.keys(stage.config ?? {}).length > 0 ? 'danger' : 'secondary'}
+                      data-testid={`pipeline-stage-config-${index}`}
+                      style={{ display: 'inline-block', width: 260 }}
+                    >
+                      {Object.keys(stage.config ?? {}).length > 0
+                        ? `参数 ${Object.keys(stage.config ?? {}).join(' / ')} 引擎不读取，保存会被拒`
+                        : '这一档没有可配参数（引擎不读取阶段参数）'}
+                    </Text>"""
+PARAM_BOX = """<Input.TextArea
+                      size="small"
+                      style={{ width: 260 }}
+                      rows={1}
+                      value={JSON.stringify(stage.config ?? {})}
+                      placeholder="阶段参数（当前引擎不读取，保留给后续实现）"
+                      onChange={(event) => {
+                        try {
+                          patchStage(index, { config: JSON.parse(event.target.value || '{}') as Record<string, unknown> });
+                        } catch {
+                          /* keep editing an invalid JSON without clobbering the draft */
+                        }
+                      }}
+                    />"""
+PAGE_IMPORT = "  Card,\n  Modal,"
+PAGE_IMPORT_WITH_INPUT = "  Card,\n  Input,\n  Modal,"
 
 # (tag, 摘掉的是哪句保证, [(file, anchor, repl)...], 预期红集合)
 RUNS = [
@@ -127,6 +163,12 @@ RUNS = [
      [(PAGE, MODAL_WARN, "<Text>—</Text>")], [N_MODAL]),
     ("S8", "选择项里不再说这一档摘不得 / 今天什么都不做",
      [(PAGE, OPTION_LABEL, "label: `${item.label} ${item.type}`,")], [N_NOOPOPT]),
+    # S9 (#42): 把那一格换回"能打的参数框"。两支同时改: 撤掉陈述 + 请回 Input。
+    # 这正是 #42 修掉之前那个状态 —— 五个处理器没有一个读 config, 而界面摆着一个输入框,
+    # 填什么都改变不了任何行为 (后端现在会把这种配置 400 拒掉)。
+    ("S9", "阶段参数又变回一个能填、却不会被读的输入框",
+     [(PAGE, PARAM_TEXT, PARAM_BOX), (PAGE, PAGE_IMPORT, PAGE_IMPORT_WITH_INPUT)],
+     [N_CELLS, N_NOBOX]),
 ]
 
 LOG_DIR = Path(tempfile.gettempdir()) / "zlc_mut_pipe41_browser_logs"
@@ -316,7 +358,7 @@ def main() -> int:
 
     ran = [r[0] for r in RUNS if not ONLY or r[0] in ONLY]
     tail = f"（PARTIAL: 只跑了 {len(ran)}/{len(RUNS)} 支 = {ran}，这份日志不能当整族绿）" if ONLY else ""
-    print(f"\nRESULT: {'11a 那八支各自打掉一句保证' if bad == 0 else f'{bad} problem(s)'}{tail}",
+    print(f"\nRESULT: {'11a 那九支各自打掉一句保证' if bad == 0 else f'{bad} problem(s)'}{tail}",
           flush=True)
     return 1 if bad else 0
 

@@ -327,6 +327,62 @@ public class PipelineConfigServiceTest {
     }
 
     @Test
+    public void createRejectsStageParamsTheEngineDoesNotRead() {
+        // #42: 配置页那个"阶段参数"输入框存的 config, 五个处理器一个字都不读。
+        // 收下它 = 让用户填一份看起来能改变行为、实际永远不生效的东西 —— 与 #41 同一类。
+        final PipelineConfigEntity e = valid();
+        e.setStages("[{\"type\":\"REQUIRED_CHECK\",\"order\":1},"
+                + "{\"type\":\"TYPE_CONVERT\",\"config\":{\"trimStrings\":true},\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]");
+        expectReject(new Runnable() {
+            @Override
+            public void run() {
+                service.create(e);
+            }
+        }, "TYPE_CONVERT", "trimStrings", "不读取任何参数");
+        assertEquals("被拒的配置一行都不该落库", 0, store.size());
+    }
+
+    @Test
+    public void updateRejectsStageParamsToo() throws Exception {
+        // 两个写入口都要拒: 只堵 create 的话, 从"编辑"进来照样能存一份装饰参数
+        Stubbed svc = new Stubbed();
+        wired(svc, store, idGen);
+        PipelineConfigEntity mine = existingRow(3L);
+        svc.store(mine);
+
+        final PipelineConfigEntity edit = mine;
+        edit.setStages("[{\"type\":\"TYPE_CONVERT\",\"order\":1},"
+                + "{\"type\":\"REQUIRED_CHECK\",\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"config\":{\"regex\":\"^x\"},\"order\":3}]");
+        expectReject(new Runnable() {
+            @Override
+            public void run() {
+                svc.update(edit);
+            }
+        }, "VALUE_VALIDATE", "regex");
+    }
+
+    @Test
+    public void emptyStageConfigIsAcceptedOnBothWriteEntrances() throws Exception {
+        // 反向证据: 界面给每档默认写 config:{} —— 把它一起拒掉就是"新建配置根本存不了"
+        PipelineConfigEntity e = valid();
+        e.setStages("[{\"type\":\"REQUIRED_CHECK\",\"config\":{},\"order\":1},"
+                + "{\"type\":\"TYPE_CONVERT\",\"config\":{},\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"config\":{},\"order\":3}]");
+        assertNotNull(service.create(e).getId());
+
+        Stubbed svc = new Stubbed();
+        wired(svc, store, idGen);
+        PipelineConfigEntity mine = existingRow(4L);
+        svc.store(mine);
+        mine.setStages("[{\"type\":\"TYPE_CONVERT\",\"config\":{},\"order\":1},"
+                + "{\"type\":\"REQUIRED_CHECK\",\"config\":{},\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"config\":{},\"order\":3}]");
+        assertNotNull(svc.update(mine));
+    }
+
+    @Test
     public void createRejectsAChainThatWouldBypassTheWriteGates() {
         final PipelineConfigEntity e = valid();
         e.setStages("[{\"type\":\"REF_CHECK\",\"order\":1}]");

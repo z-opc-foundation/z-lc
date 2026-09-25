@@ -144,6 +144,18 @@ public class PipelineWriteChainTest {
     }
 
     @Test
+    public void unreadStageParamsWarnButDoNotBlockWrites() {
+        // 在写入口上"参数没人读就拒"这道闸之前存下的老配置行, 运行期不许因此把该实体的写入
+        // 全按住; 但链必须照配置跑 —— "看见不认识的东西就退回默认链"是另一种装死。
+        configs.rows.add(config(1L, Pipeline.BEFORE_CREATE,
+                "[{\"type\":\"REQUIRED_CHECK\",\"order\":1},"
+                        + "{\"type\":\"TYPE_CONVERT\",\"config\":{\"trimStrings\":true},\"order\":2},"
+                        + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]", 1));
+        defaultPipeline().preWrite(APP, entity(), body("name", "a"), Pipeline.BEFORE_CREATE);
+        assertEquals(Arrays.asList("RequiredCheck", "TypeConvert", "ValueValidate"), calls);
+    }
+
+    @Test
     public void configIsLookedUpPerTriggerPointNotPerRow() {
         configs.rows.add(config(1L, Pipeline.BEFORE_CREATE,
                 stagesOf(PipelineStages.REQUIRED_CHECK, PipelineStages.TYPE_CONVERT,

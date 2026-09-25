@@ -30,24 +30,30 @@ IT LcHttpContractTest、这里的 [15p]), 本脚本只管**部署件层**: 真�
   P11 Controller 的 enabled 只认 0/1 摘掉 -> 2 红: 99 那次请求把流水线**停用**, 于是紧接着的顺序探针
       也跟着换消息。第二条红是因果必需的, 不是连带噪声 —— 它证明 99 那条检查真的有牙。
   P12 Service 写入口的 enabled 只认 0/1 摘掉 -> enabled=2 那对 + 计数 = 3 (P11 打开关, P12 打存库)
+  P13 #42: 写入口不再拒"没人读的阶段参数" -> create 那对 + update 那对 + 两条计数 + "被拒的 update
+      一次都没改到那一行" = 7。update 那三条里只有 config 这一条会真的落库 (另外两条闸还在),
+      所以 suite 里那条 config 用的链序**照抄被接受的那份** —— 否则落库顺手改了执行顺序,
+      顺序探针会一起红, 这一支就不再是它自己那句保证的证据 (同 P4 的遮蔽, 方向相反)。
+  P14 #42: "config 不是对象"那一笔不记账 -> 那对 + 两条计数 = 4 (未知键那道闸照旧, 所以只有这一族红)
 
 前置体检 (空参照集会打印"满分", 所以必须先 FATAL):
   * 每个预期红的名字都必须真的出现在基线那一轮 [15p] 的 PASS 清单里 —— 名字写错了不是"没红",
     而是"这条检查不存在"
-  * 每支注入都要证明产物字节变了 (class 级指纹), 分母恒等于基线 (342), [15p] 恒为 58 条
+  * 每支注入都要证明产物字节变了 (class 级指纹), 分母恒等于基线 (353), [15p] 恒为 69 条
   * 源文件按字节快照还原, 还原后重新构建、重启、再跑一遍整份
 本脚本会重启 18090 那个 JVM, 所以跑的时候不能有别的注入进程或人在打它。
 """
 import hashlib
 import io
+import os
 import re
-import shutil
 import socket
 import subprocess
 import sys
 import time
 import urllib.request
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path("/Users/zifang/workplace/ceo_workplace/z-opc-foundation/z-lc")
@@ -60,11 +66,14 @@ STAGES = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/pipeline/config/Pi
 SERVICE = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/pipeline/config/PipelineConfigService.java"
 PIPELINE = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/pipeline/Pipeline.java"
 CTRL = ROOT / "z-lc-web/src/main/java/com/zifang/z/lc/web/controller/PipelineConfigController.java"
-BAK = Path("/tmp/pipe41_deployed_bak")
+# 备份放在 ~/.cache 而不是 /tmp: 同一台机器上别的会话会扫 /tmp (实测连别人的日志都扫掉过),
+# 备份在战役中途消失 = 还原失败, 那正是这一支最不能出的错。
+BAK = Path.home() / ".cache/zlc42/deployed_bak/pipeline"
 JAR = ROOT / "z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar"
 HEALTH = "http://localhost:18090/api/lc/health"
 UNIT_CLASS = "PipelineWriteChainTest"
-UNIT_LOG = "/tmp/pipe41_unit.log"
+#  scratch 一律写 ~/.cache: 这台机器上有多个会话会扫 /tmp, 日志在半路消失过。
+UNIT_LOG = str(Path.home() / ".cache/zlc42/unit_mut/pipe41_unit.log")
 SECTION = "15p"
 
 GATES = ["REQUIRED_CHECK", "TYPE_CONVERT", "VALUE_VALIDATE"]
@@ -89,7 +98,10 @@ NOT_ARRAY = "阶段链不是数组 -> 拒"
 FRAC = "order 不是整数 -> 拒"
 ENABLED2 = "enabled=2 -> 拒（这一行在 listByEvent 里永远查不到，等于存了条死数据）"
 
-COUNT = "上面 15 次被拒的提交一行都没落库（闸在写入之前）"
+# 名字里没有条数 (01:2x 实测教训): 这条曾被写成 f"上面 {len(REJECTS) + 2} 次...", 于是 #42 加了
+# 两条被拒提交就把它换成 "17 次", 下面 6 支注入的预期红集当场指向一条不存在的检查。
+# suite 那边把条数挪进了失败详情, 这里跟着改名。
+COUNT = "上面被拒的提交一行都没落库（闸在写入之前）"
 # 同一批"该拒的没拒"在 suite 里有**两个**互不依赖的读数: 一个是 15 次提交一行都没落库,
 # 另一个是"被拒的第二份没有把第一份顶掉"。实测(P4..P9/P12)证实: 摘掉任一道写入前的
 # 配置校验闸, 这两条**一起**变红 —— 少写一条就是把真实的连带红当成"注入不干净"。
@@ -103,6 +115,19 @@ VV_LIMIT = "三道闸门都在配置链里：值校验报出上限"
 UPD_CHAIN = "两个写前挂接点各自生效：更新走 REQUIRED_CHECK 在前的那条链"
 CREATE_STILL_TC = "而同一条空值在创建挂接点上仍是 TypeConvert 先报（两条链互不顶替）"
 NO_99 = "enabled 只认 0/1，给个 99 不能当成开启"
+
+# #42: 阶段参数 config。这两条在写入口拒, 与"没有执行器的阶段"是同一类谎 (收下不执行的东西)。
+UNREAD_CREATE = "阶段参数没人读 -> 拒（填了不生效的配置比没有配置更坏）"
+UNREAD_UPDATE = "阶段参数没人读 -> update 也拒"
+NOT_OBJECT = "阶段参数不是对象 -> 拒"
+UPD_UNTOUCHED = "上面 3 次被拒的 update 一次都没改到那一行（后面还要拿这一行验执行顺序）"
+
+# suite 这一窗给"该拒的 update"补了(update 也拒)那一对探针之后, 创建闸失效的注入**波及面变大**了:
+# 以前只有 create 路径的坏配置被挡住, 现在 update 路径也会把一条坏配置真写进行里,
+# 于是后面那几条"按配置链执行"的检查读到的就是那条坏配置。这两条名字是为那批连带红准备的锚。
+NO_EXEC_UPDATE = "没有执行器的阶段 -> update 也拒"
+NO_GATES_UPDATE = "摘掉三道闸门 -> update 也拒"
+LEGIT_PASS = "合法写入照常通过（这道闸没把正常路径一起按住）"
 
 # ---- anchors (每个都必须**恰好出现一次**, 否则这一支 SKIPPED 而不是猜) --------------------------
 P1_A = ('        if (configService == null || entity == null || appCode == null || triggerEvent == null) {\n'
@@ -166,18 +191,32 @@ P11_R = '        // mutant'
 P12_A = '        } else if (entity.getEnabled() != 0 && entity.getEnabled() != 1) {'
 P12_R = '        } else if (false) {'
 
+# P13/P14 (#42): 写入口那道"参数没人读就拒"的闸。摘法是死分支而不是删掉整段 ——
+# unread 照算 (运行期那条 warn 还指着它), 只有"拒"这一下没了; 删整段会连累 resolve 的返回值。
+P13_A = '        if (!unread.isEmpty()) {'
+P13_R = '        if (false) {'
+P14_A = ('                    unread.add("阶段 [" + type + "] 的 config 不是对象 (实际: "\n'
+         '                            + shorten(configNode.asText()) + ")" + acceptedConfigHint(type));')
+P14_R = '                    // mutant: 形状不对也不记账'
+
 # tag -> (edits, 预期 [15p] 红, 预期单测层红或 None=不跑, 预期**别的节**的红)
 #
 # 第四项不是"放宽": 别的节红一条都不许有, 除了**明写在这里**的那几条。P3 挖的是 `Chain.run`
 # 里那一处 `throw` —— 整条写前链的拒绝从此蒸发, 波及面天然是全 suite, 这四条红是**同一个缺陷
 # 的第二批证据**（逐条读过的结论写在 P3 那一行下面）, 所以按名字钉住, 名字漂了照样 MISMATCH。
 RUNS = [
+    # P1 摘的是 `Pipeline.run` 开头那句"没有 configService/entity/appCode/trigger 就走默认链"的
+    # 短路 —— 换件之后**任何**一次执行都不再查配置。单测层这一支原来预期 7 条红, #42 之后是 8 条:
+    # 多出来那条 `unreadStageParamsWarnButDoNotBlockWrites` 断的是"库里那份带没人读参数的老配置
+    # 跑起来要 warn 但仍写得进", 而 warn 是 resolve 出来之后才打的 —— P1 让 resolve 根本不被调用,
+    # 那句 warn 就没了。它是**同一个缺陷的第二批证据**, 不是白名单。
     ("P1", [(PIPELINE, P1_A, P1_R)], [TC_FIRST, REENABLE, CREATE_STILL_TC],
      ["configuredSubsetRunsExactlyThoseStages", "configuredOrderIsTheExecutionOrder",
       "configIsLookedUpPerTriggerPointNotPerRow", "beforeUpdateAndBeforeCreateAreDifferentChains",
       "legacyConfigMissingMandatoryStagesFailsLoudInsteadOfFallingBack",
       "stageWithoutABeanInContainerFailsLoudInsteadOfBeingSkipped",
-      "multipleEnabledConfigsPickTheNewestWithoutMerging"], []),
+      "multipleEnabledConfigsPickTheNewestWithoutMerging",
+      "unreadStageParamsWarnButDoNotBlockWrites"], []),
     ("P2", [(PIPELINE, P2_A, P2_R)], [UPD_CHAIN],
      ["beforeUpdateAndBeforeCreateAreDifferentChains"], []),
     # P3 的连带红（实测 + 逐条读源码）: 这四条都在断言"该被写前链挡下来的写入没写成"——
@@ -189,11 +228,25 @@ RUNS = [
      ["processorNamesAreWrappedIntoPipelineExceptionWithTheStageThatThrew"],
      ["显式清空必填列仍被拒绝", "伪造的前像不会写库",
       "preview 统计 total/validCount", "行级错误带回行号"]),
-    ("P4", [(STAGES, P4_A, P4_R)], pair(WEBHOOK) + pair(SCRIPT) + [LOWER + TWIN, COUNT, COUNT2],
+    # P4/P6 的连带红 09-26 整族重跑时才补齐（原来各少 9 条 / 8 条, 报的正是 MISMATCH 而不是"通过"）。
+    # 机理是同一条: 这两支把"写入口那道闸"变成死分支, 于是**update 路径**这一窗新加的那一对探针
+    # (NO_EXEC_UPDATE / NO_GATES_UPDATE) 从"被拒"变成"写进去了" —— 一行坏配置落地之后,
+    # 后面所有"按配置链执行"的检查读到的就是它, 于是 TC_FIRST / REENABLE / UPD_CHAIN / VV_LIMIT /
+    # CREATE_STILL_TC / UPD_UNTOUCHED 一起换读数。P4 还多两条: LEGIT_PASS(坏配置里引用的阶段在
+    # 容器里没有 bean, 链按 #41 的口径** fail loud**, 所以一次合法写入被它顶掉) 与 ENVELOPE(同理,
+    # 报出来的信封换了内容)。这一批红不是"注入不干净", 恰恰是"闸为什么必须在写入之前"的书证。
+    ("P4", [(STAGES, P4_A, P4_R)],
+     pair(WEBHOOK) + pair(SCRIPT) + [LOWER + TWIN, COUNT, COUNT2]
+     + pair(NO_EXEC_UPDATE)
+     + [TC_FIRST, REENABLE, UPD_CHAIN, CREATE_STILL_TC, VV_LIMIT, UPD_UNTOUCHED, LEGIT_PASS],
      None, []),
     ("P5", [(STAGES, P5_A, P5_R)],
      pair(AFTER_CREATE) + pair(AFTER_UPDATE) + pair(AFTER_DELETE) + [COUNT, COUNT2], None, []),
-    ("P6", [(STAGES, P6_A, P6_R)], pair(NO_GATES) + [COUNT, COUNT2], None, []),
+    # P6 的连带比 P4 少一条 LEGIT_PASS: 摘掉必填闸门之后**没有**跑不起来的阶段, 链照旧执行,
+    # 一次合法写入仍然通过 —— 它少的是校验而不是多了个不存在的处理器。差别就在这儿。
+    ("P6", [(STAGES, P6_A, P6_R)],
+     pair(NO_GATES) + [COUNT, COUNT2] + pair(NO_GATES_UPDATE)
+     + [TC_FIRST, REENABLE, CREATE_STILL_TC, VV_LIMIT, UPD_UNTOUCHED, ENVELOPE], None, []),
     ("P7", [(STAGES, P7_A, P7_R)], pair(INVERTED) + [COUNT, COUNT2], None, []),
     ("P8", [(STAGES, P8_A, P8_R)], pair(DUP_STAGE) + [COUNT, COUNT2], None, []),
     ("P9", [(STAGES, P9_A, P9_R)], pair(FRAC) + [COUNT, COUNT2], None, []),
@@ -203,6 +256,20 @@ RUNS = [
     ("P10", [(STAGES, P10_A, P10_R)], [EMPTY_CHAIN + TWIN], None, []),
     ("P11", [(CTRL, P11_A, P11_R)], [NO_99, TC_FIRST], None, []),
     ("P12", [(SERVICE, P12_A, P12_R)], pair(ENABLED2) + [COUNT, COUNT2], None, []),
+    # P13/P14 打的是 #42 那道"阶段参数没人读"的闸。单测层填 None 不是"忘了填", 而是这一支的
+    # UNIT_CLASS 看不见它: 那一层跑的是 PipelineWriteChainTest, 而运行期走的是 resolve (照旧容忍),
+    # 真正会红的 5 条住在 PipelineStagesTest / PipelineConfigServiceTest —— 那边由
+    # _e2e/mutate_pipeline_config_guard.py 的 U1/U3 负责, 两层各管各的载体。
+    #
+    # P13 的预期红集里有 NOT_OBJECT 那一对, 是 09-26 实测补上的 (我原先只写了 UNREAD 那一族四条
+    # + 三条计数, 于是这一支 MISMATCH)。理由不是"顺手多红两条": parseTypes 把**两种**坏形状
+    # ("值是对象但键没人读" 和 "压根不是对象") 记进**同一个** `unread` 清单, P13 摘的是
+    # `if (!unread.isEmpty())` 这唯一的消费点 —— 清单照旧被填, 只是没人再看它, 所以两条一起漏。
+    # 这恰好是那一处合并刻意的代价被量出来的样子: 少一个分支, 两种谎一起放出去。
+    ("P13", [(STAGES, P13_A, P13_R)],
+     pair(UNREAD_CREATE) + pair(UNREAD_UPDATE) + pair(NOT_OBJECT)
+     + [COUNT, COUNT2, UPD_UNTOUCHED], None, []),
+    ("P14", [(STAGES, P14_A, P14_R)], pair(NOT_OBJECT) + [COUNT, COUNT2], None, []),
 ]
 
 FILES = sorted({STAGES, SERVICE, PIPELINE, CTRL}, key=lambda p: str(p))
@@ -219,8 +286,30 @@ def sh(cmd, cwd=ROOT, timeout=1800):
     return subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
 
 
-def bak_name(path):
-    return BAK / (str(path.relative_to(ROOT)).replace("/", "_") + ".orig")
+def snapshot_sources():
+    """给工作树取一份**这一次运行专属**的备份, 并把这份备份当作唯一要还原回去的状态。
+
+    原来这里是 `BAK = /tmp/pipe41_deployed_bak` + `if not b.exists(): copyfile` +
+    `originals = b.read_bytes()`: 备份目录跨运行复用、且永不过期, 于是每次开局都把**更早一轮**
+    存的四份源码盖回工作树。实测后果不是假红, 是把 #42 在 PipelineStages.java / Pipeline.java
+    里未提交的改动整段抹掉 (09-26 01:47:56, 盘上四份与 HEAD 逐字节相同), 而日志只留下一句
+    "restored sources: clean"。改成每次运行一个独占目录: 串味在没有路径可走这一步就没了。
+    真被 SIGKILL 打断而留下注入残局时, 下一次会在基线那一句红给我看, 而不是悄悄"修好"。
+    """
+    run_dir = BAK / f"run-{os.getpid()}-{datetime.now().strftime('%m%d-%H%M%S')}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    originals = {}
+    for f in FILES:
+        if not f.exists():
+            raise RuntimeError(f"source file missing, cannot even baseline: {f}")
+        disk = f.read_bytes()
+        b = run_dir / (str(f.relative_to(ROOT)).replace("/", "_") + ".orig")
+        b.write_bytes(disk)
+        if b.read_bytes() != disk:
+            raise RuntimeError(f"backup of {f.name} did not stick")
+        originals[f] = disk
+    print(f"sources snapshotted -> {run_dir}")
+    return originals
 
 
 def artifact_fingerprint():
@@ -327,7 +416,9 @@ def run_e2e(label):
     """
     p = subprocess.run(["python3", "_e2e/e2e_api_test.py"], cwd=str(ROOT),
                        capture_output=True, text=True)
-    Path(f"/tmp/e2e_pipe41_{label}.log").write_text(p.stdout + p.stderr)
+    e2e_dir = Path.home() / ".cache/zlc42/deploy_mut"
+    e2e_dir.mkdir(parents=True, exist_ok=True)
+    (e2e_dir / f"e2e_pipe41_{label}.log").write_text(p.stdout + p.stderr)
     summary = re.search(r"E2E RESULT: (\d+)/(\d+) passed", p.stdout)
     section, fails, mine, passed_in_section, all_pass = None, [], [], [], []
     for line in p.stdout.splitlines():
@@ -356,6 +447,7 @@ def run_unit():
     """(total, red-method-names) for PipelineWriteChainTest; 跑不起来就抛, 不返回"没有红"."""
     p = sh(["mvn", "-o", "-B", "test", "-pl", "z-lc-core", f"-Dtest={UNIT_CLASS}"])
     out = p.stdout + p.stderr
+    Path(UNIT_LOG).parent.mkdir(parents=True, exist_ok=True)
     Path(UNIT_LOG).write_text(out)
     totals = [int(x) for x in re.findall(
         rf"Tests run: (\d+), Failures: \d+, Errors: \d+[^\n]*in [\w.]*{UNIT_CLASS}", out)]
@@ -409,15 +501,7 @@ def main():
 
 
 def run_all():
-    BAK.mkdir(exist_ok=True)
-    originals = {}
-    for f in FILES:
-        b = bak_name(f)
-        if not b.exists():
-            shutil.copyfile(str(f), str(b))
-        originals[f] = b.read_bytes()
-        if not f.exists():
-            raise RuntimeError(f"source file missing, cannot even baseline: {f}")
+    originals = snapshot_sources()
 
     def restore_all():
         for f in FILES:

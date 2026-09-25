@@ -2,6 +2,7 @@ package com.zifang.z.lc.web.controller;
 
 import com.zifang.util.core.meta.Result;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
+import com.zifang.z.lc.common.dto.ProvisionReport;
 import com.zifang.z.lc.core.mapper.DbTableMapperService;
 import com.zifang.z.lc.core.schema.SchemaAdminService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -128,8 +129,17 @@ public class DbTableController {
             // 3. 可选：自动建表（如果表已存在则跳过）
             if (autoProvision) {
                 try {
-                    schemaAdminService.provisionTable(created.getId());
-                    log.info("[DbTableController] Provisioned table for entity {}", created.getEntityCode());
+                    // 结论必须读回来：`CREATE TABLE IF NOT EXISTS` 对一张已在的表是空操作，
+                    // 旧写法把 provisionTable 的返回值丢掉、无论如何都 log "Provisioned table" ——
+                    // 那是把"调用过一条没报错的 DDL"说成"这张表按这份定义建起来了" (缺陷 #43)。
+                    ProvisionReport.Item prov = schemaAdminService.provisionTable(created.getId());
+                    if (ProvisionReport.FAILED.equals(prov.getStatus())) {
+                        log.warn("[DbTableController] Provision FAILED for entity {}: {}",
+                                created.getEntityCode(), prov.getMessage());
+                    } else {
+                        log.info("[DbTableController] Provision {} for entity {}",
+                                prov.getStatus(), created.getEntityCode());
+                    }
                 } catch (Exception ddl) {
                     log.warn("[DbTableController] Provision skipped (table may already exist): {}",
                             ddl.getMessage());
@@ -181,9 +191,13 @@ public class DbTableController {
                     EntityDefDTO created = schemaAdminService.createEntity(tenantCode, appCode, src);
                     if (autoProvision) {
                         try {
-                            schemaAdminService.provisionTable(created.getId());
+                            ProvisionReport.Item prov = schemaAdminService.provisionTable(created.getId());
+                            if (ProvisionReport.FAILED.equals(prov.getStatus())) {
+                                errors.add(src.getTableName() + " 元数据收下但表没落地: " + prov.getMessage());
+                            }
                         } catch (Exception ddl) {
                             // 表已存在时忽略
+                            errors.add(src.getTableName() + " provision 异常: " + ddl.getMessage());
                         }
                     }
                     imported.add(created);

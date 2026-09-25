@@ -221,4 +221,94 @@ public class PipelineStagesTest {
         assertFalse(PipelineStages.isSupportedType(null));
         assertTrue(PipelineStages.isSupportedType(" TYPE_CONVERT "));
     }
+
+    // ===== 阶段参数 config: 引擎不读的一律在写入口拒 (#42) =====
+
+    private static final String THREE_GATES =
+            "[{\"type\":\"REQUIRED_CHECK\",\"order\":1},{\"type\":\"TYPE_CONVERT\",\"order\":2},"
+                    + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]";
+
+    @Test
+    public void emptyOrDefaultStageConfigIsAccepted() {
+        // 反向证据 (没有这条, "凡是带 config 就拒"也能全绿): 界面给每一份阶段默认写 config:{},
+        // 把它当成"填了参数"拒掉, 那道闸会连正常路径一起按住 —— #36 就是这么发生的。
+        assertEquals(Arrays.asList(PipelineStages.REQUIRED_CHECK, PipelineStages.TYPE_CONVERT,
+                PipelineStages.VALUE_VALIDATE),
+                PipelineStages.validateAndResolve(PipelineStages.BEFORE_CREATE,
+                        "[{\"type\":\"REQUIRED_CHECK\",\"config\":{},\"order\":1},"
+                                + "{\"type\":\"TYPE_CONVERT\",\"config\":{},\"order\":2},"
+                                + "{\"type\":\"VALUE_VALIDATE\",\"config\":{},\"order\":3}]"));
+        // config 整个缺省 (= 老配置行的样子) 同样要过
+        assertEquals(3, resolve(PipelineStages.BEFORE_CREATE, THREE_GATES).size());
+        // 显式 null 也不算"填了参数"
+        assertEquals(3, PipelineStages.validateAndResolve(PipelineStages.BEFORE_CREATE,
+                "[{\"type\":\"REQUIRED_CHECK\",\"config\":null,\"order\":1},"
+                        + "{\"type\":\"TYPE_CONVERT\",\"order\":2},"
+                        + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]").size());
+    }
+
+    @Test
+    public void rejectsStageParamsTheEngineDoesNotReadAndNamesStageAndEachKey() {
+        String msg = expectReject(PipelineStages.BEFORE_CREATE,
+                "[{\"type\":\"REQUIRED_CHECK\",\"order\":1},"
+                        + "{\"type\":\"TYPE_CONVERT\",\"config\":{\"trimStrings\":true},\"order\":2},"
+                        + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]",
+                "TYPE_CONVERT", "trimStrings", "不读取任何参数");
+        assertTrue("消息要说清这是'填了不执行', 不是'不合法': " + msg,
+                msg.contains("一个字都不执行"));
+    }
+
+    @Test
+    public void namesEveryUnknownKeyInsteadOfJustTheFirst() {
+        // 只点第一个键的话, 用户改完一个再存又被拒, 一次回合只能学一个错
+        String msg = expectReject(PipelineStages.BEFORE_CREATE,
+                "[{\"type\":\"REQUIRED_CHECK\",\"order\":1},"
+                        + "{\"type\":\"TYPE_CONVERT\",\"order\":2},"
+                        + "{\"type\":\"VALUE_VALIDATE\",\"config\":{\"min\":1,\"regex\":\"^a\"},\"order\":3}]",
+                "VALUE_VALIDATE", "min", "regex");
+        assertTrue("两个键都该出现: " + msg, msg.contains("min / regex"));
+    }
+
+    @Test
+    public void rejectsNonObjectStageConfigInsteadOfIgnoringIt() {
+        expectReject(PipelineStages.BEFORE_CREATE,
+                "[{\"type\":\"REQUIRED_CHECK\",\"order\":1},"
+                        + "{\"type\":\"TYPE_CONVERT\",\"config\":[1,2],\"order\":2},"
+                        + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]",
+                "TYPE_CONVERT", "config 不是对象");
+    }
+
+    @Test
+    public void runtimeResolutionToleratesUnreadParamsThatTheWriteEntranceRefuses() {
+        // 不对称是刻意的: 已经存着的老配置行不该因为一个装饰字段把该实体的全部写入按住。
+        // 写入口拒同一份内容, 运行期只把它当"要提醒"。
+        String stages = "[{\"type\":\"REQUIRED_CHECK\",\"order\":1},"
+                + "{\"type\":\"TYPE_CONVERT\",\"config\":{\"strict\":false},\"order\":2},"
+                + "{\"type\":\"VALUE_VALIDATE\",\"order\":3}]";
+        PipelineStages.Resolution parsed = PipelineStages.resolve(PipelineStages.BEFORE_CREATE, stages);
+        assertEquals(Arrays.asList(PipelineStages.REQUIRED_CHECK, PipelineStages.TYPE_CONVERT,
+                PipelineStages.VALUE_VALIDATE), parsed.types());
+        assertEquals(1, parsed.unreadConfig().size());
+        assertTrue(parsed.unreadConfig().get(0), parsed.unreadConfig().get(0).contains("strict"));
+
+        // 而真正会影响数据对错的错配 (缺闸门), 两层都必须拒
+        try {
+            PipelineStages.resolve(PipelineStages.BEFORE_CREATE,
+                    "[{\"type\":\"REQUIRED_CHECK\",\"order\":1}]");
+            fail("缺必填阶段在运行期也必须拒");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("缺少必填阶段"));
+        }
+    }
+
+    @Test
+    public void noStageReadsAnyParameterYet() {
+        // ⚠ 这条不是"有测试守着的正向保证", 它记的是**当前为空**这个事实:
+        // 词表为空时,"登记的键真被处理器读到"那句检查没有任何猎物 (真空为真)。
+        // 第一个真参数落地时, 必须同时补一条"该处理器确实读了它"的检查, 否则这里就
+        // 重新长出 #42 —— 记进 _e2e/README.md 的待办, 别把它当已覆盖。
+        for (String type : PipelineStages.supportedTypes()) {
+            assertEquals(type + " 今天不该声明任何参数", 0, PipelineStages.configKeysOf(type).size());
+        }
+    }
 }

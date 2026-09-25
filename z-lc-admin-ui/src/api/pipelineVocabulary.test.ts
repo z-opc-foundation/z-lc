@@ -89,6 +89,25 @@ function engine() {
   };
 }
 
+/**
+ * 后端 `buildConfigKeysByType` 里登记的参数键 (今天一个都没有)。
+ * 只解析"哪些键被登记", 不解析"登记在哪一档" —— 那个 map 是按 PROCESSOR_BY_TYPE 循环填的,
+ * 逐档的键清单在源码里根本不存在, 硬要按行号读会读出一份并不存在的对应关系。
+ */
+function javaConfigKeys(): string[] {
+  const java = read(STAGES_JAVA, '后端阶段口径 PipelineStages.java');
+  const body = region(java, /private static Map<String, List<String>> buildConfigKeysByType/,
+    'return Collections.unmodifiableMap', 'CONFIG_KEYS_BY_TYPE');
+  const puts = [...body.matchAll(/m\.put\([\s\S]*?\);/g)].map((m) => m[0] ?? '');
+  // 空参照集不能算通过: 解析不到任何 m.put 就是被那个方法改了名/搬了家
+  expect(puts.length, 'CONFIG_KEYS_BY_TYPE 里一个 m.put 都没解析出来, 词表在别处').toBeGreaterThan(0);
+  return [...new Set(puts.flatMap((one) => [...one.matchAll(/"([^"]+)"/g)].map((m) => m[1] ?? '')))].sort();
+}
+
+function uiConfigKeys(): string[] {
+  return [...new Set(PIPELINE_STAGE_TYPES.flatMap((item) => item.configKeys))].sort();
+}
+
 describe('流水线前端口径与引擎同源', () => {
   it('阶段清单与后端 PROCESSOR_BY_TYPE 一字不差（含顺序，那就是执行顺序）', () => {
     expect(PIPELINE_STAGE_TYPES.map((item) => item.type)).toEqual(engine().types);
@@ -109,6 +128,30 @@ describe('流水线前端口径与引擎同源', () => {
     expect(isPipelineTriggerSupported('AFTER_CREATE'), '写后没有回调落点，不能算支持').toBe(false);
     expect([...PIPELINE_SUPPORTED_TRIGGERS]).toEqual(engine().triggers);
     expect(isPipelineTriggerSupported('BEFORE_CREATE')).toBe(true);
+  });
+
+  it('阶段参数词表与后端 CONFIG_KEYS_BY_TYPE 同源（两边今天都是空的）', () => {
+    // ⚠ 空清单相等是**真空为真**: 它证明的是"两边都没有登记", 不是"有参数时被读到了"。
+    // 第一个真参数落地时, 这一句仍然会绿, 所以那一句"处理器确实读了它"必须跟着一起补,
+    // 否则 #42 只是换了个字段名重新长回来 —— 记进 _e2e/README.md 的待办。
+    // 先问"后端有没有多出键", 再问"两边对不对得上": 两句的失败消息指向两种相反的漂法,
+    // 反过来写会让"后端登记了参数"也报成"前端不许声明", 红消息就把人往错的方向带。
+    expect(javaConfigKeys(), `后端登记的参数键变了 (${javaConfigKeys()}), 配置页的"没有可配参数"这句就该改`).toEqual([]);
+    expect(uiConfigKeys(), '前端不许声明后端没登记的参数').toEqual(javaConfigKeys());
+    for (const item of PIPELINE_STAGE_TYPES) {
+      expect(Array.isArray(item.configKeys), `${item.type} 少了 configKeys 这一栏`);
+    }
+  });
+
+  it('配置页不再提供一个能填、但引擎不会读的参数框', () => {
+    const page = read(PAGE_TSX, '流水线配置页');
+    // 先钉"这一格真的换了句实话", 再说"没有输入框" —— 只留后面那半句的话,
+    // 把整格删掉也能全绿 (负向断言要有猎物)。
+    expect(page.includes('引擎不读取'), '老配置行带着没人读的参数时, 页面必须说出来').toBe(true);
+    expect(page.includes('pipeline-stage-config-'), '每一档那一格的位置还在 (换成了一句陈述)').toBe(true);
+    expect(page.includes('Input.TextArea'), '参数框回来了: 填进去的东西后端一个字都不读').toBe(false);
+    expect(page.includes('patchStage(index, { config'), '界面不许再往 config 里写任何东西').toBe(false);
+    expect(page.includes('保留给后续实现'), '不许再拿"以后会实现"暗示现在填了有用').toBe(false);
   });
 
   it('页面上再也没有"没有执行器"的幽灵阶段', () => {

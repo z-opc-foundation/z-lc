@@ -1637,4 +1637,462 @@ class LcHttpContractTest {
         }
         throw new IllegalStateException("未知连接池实现，测不了 active: " + pool.getClass().getName());
     }
+
+    /* ================================================================== */
+    /* 缺陷 #43: provision 说"建好了"，而那份定义的列一列都没建              */
+    /* ================================================================== */
+
+    /** 物理表里真有的列 (小写)。这道闸的判据必须来自库，不能来自我们自己拼的 DDL 字符串。 */
+    private List<String> physicalColumnsOf(String table) throws Exception {
+        List<String> cols = new ArrayList<>();
+        try (java.sql.Connection conn = dataSource.getConnection();
+             java.sql.ResultSet rs = conn.getMetaData().getColumns(null, null, table, null)) {
+            while (rs.next()) {
+                cols.add(rs.getString("COLUMN_NAME").toLowerCase(java.util.Locale.ROOT));
+            }
+        }
+        return cols;
+    }
+
+    private String provisionApp(String tag) throws Exception {
+        String app = "itp" + tag;
+        post("/api/lc/admin/app/create",
+                "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app + "\",\"appName\":\"建表探针\"}");
+        return app;
+    }
+
+    private JsonNode createEntity(String app, String entityCode, String table, String... columnCodes)
+            throws Exception {
+        StringBuilder fields = new StringBuilder();
+        for (int i = 0; i < columnCodes.length; i++) {
+            if (i > 0) {
+                fields.append(',');
+            }
+            fields.append("{\"fieldCode\":\"").append(columnCodes[i])
+                    .append("\",\"fieldName\":\"列").append(i)
+                    .append("\",\"fieldType\":\"STRING\",\"fieldLength\":32,\"sortOrder\":").append(i + 1)
+                    .append('}');
+        }
+        return post("/api/lc/admin/app/entity/create",
+                "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app
+                        + "\",\"entityCode\":\"" + entityCode
+                        + "\",\"entityName\":\"实体 " + entityCode
+                        + "\",\"tableName\":\"" + table + "\",\"fields\":[" + fields + "]}",
+                "appCode", app, "tenantCode", TENANT);
+    }
+
+    private JsonNode deleteEntity(String id) throws Exception {
+        return call(MockMvcRequestBuilders.delete("/api/lc/admin/entity").param("id", id));
+    }
+
+    private String uniqueTag() {
+        return Long.toString(System.nanoTime() % 100000000L, 36);
+    }
+
+    @Test
+    @DisplayName("缺陷#43 回归：同一张物理表不许被两个活实体抢，被拒时要点名是哪一方占着")
+    void twoLiveEntitiesCannotShareOnePhysicalTable() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_shared_" + app;
+        assertTrue(createEntity(app, "keep", table, "aa").path("success").asBoolean(), "先建的那个实体要能建出来");
+
+        JsonNode second = createEntity(app, "other", table, "bb");
+        String msg = second.path("message").asText();
+        assertFalse(second.path("success").asBoolean(), "撞表名却被收下: " + second);
+        assertTrue(msg.contains("物理表名已被其他实体占用"), msg);
+        // 光说"撞了"不够：不点名是哪一方占着，用户只能一个个试。
+        assertTrue(msg.contains(app + "/keep"), "没点名占用方: " + msg);
+        assertNoSchemaLeak(msg);
+
+        // 表名在 MySQL/H2 里不分大小写，`ITP_shared` 抢的是同一张表。
+        JsonNode mixedCase = createEntity(app, "upper", table.toUpperCase(java.util.Locale.ROOT), "cc");
+        assertFalse(mixedCase.path("success").asBoolean(), "大小写变体绕过了这道闸");
+        assertTrue(mixedCase.path("message").asText().contains("物理表名已被其他实体占用"),
+                mixedCase.path("message").asText());
+
+        // 被拒的那一支不许留下元数据：否则"存下了但表永远建不出来"的坏定义会一直挂着。
+        JsonNode list = get("/api/lc/admin/app/entity/list", "appCode", app, "tenantCode", TENANT);
+        List<String> codes = new ArrayList<>();
+        for (JsonNode row : list.path("data")) {
+            codes.add(row.path("entityCode").asText());
+        }
+        assertEquals(java.util.Collections.singletonList("keep"), codes, "被拒的实体不该落库: " + codes);
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    /** 现造一张"不是这个引擎建出来的"表: 有 id，但没有那五列里的其余四列。 */
+    private void createForeignTable(String table) throws Exception {
+        jdbc().execute("CREATE TABLE `" + table + "` (`id` BIGINT, `note` VARCHAR(32))");
+    }
+
+    private static List<String> columnNamesOf(JsonNode item) {
+        List<String> cols = new ArrayList<>();
+        for (JsonNode col : item.path("missingColumns")) {
+            cols.add(col.asText());
+        }
+        return cols;
+    }
+
+    @Test
+    @DisplayName("缺陷#43 回归：IF NOT EXISTS 是空操作，建表结果必须回读物理列才敢报成功")
+    void provisionVerifiesColumnsInsteadOfClaimingSuccess() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_shape_" + app;
+        JsonNode first = createEntity(app, "gone", table, "bb");
+        assertTrue(first.path("success").asBoolean(), first.toString());
+        JsonNode prov = post("/api/lc/admin/entity/provision", null, "id",
+                first.path("data").path("id").asText());
+        assertEquals("CREATED", prov.path("data").path("status").asText(),
+                "第一支建表之后的状态: " + prov);
+        assertTrue(physicalColumnsOf(table).contains("bb"), "第一次建表就该有 bb 列: " + table);
+
+        // 删实体不删表 (引擎不做破坏性 DDL)，所以这个表名可以再被占用 —— 这是有意的。
+        deleteEntity(first.path("data").path("id").asText());
+        JsonNode second = createEntity(app, "later", table, "cc");
+        assertTrue(second.path("success").asBoolean(), "软删实体之后表名该能复用: " + second);
+
+        // 这一支在 #43 时是 FAILED，#47 之后是修得好的一类: 定义跑到旧表前面时按定义**只补列**。
+        // 但状态必须是 ALTERED —— 既不是 CREATED (这张表不是这次建出来的)，也不是 EXISTS_INTACT
+        // (它刚才真的被改过，把这两件事说成一样是缺陷 #47 的另一半)。
+        JsonNode again = post("/api/lc/admin/entity/provision", null, "id",
+                second.path("data").path("id").asText());
+        String verdict = again.path("data").path("status").asText();
+        assertEquals("ALTERED", verdict, "补列那一支报的状态: " + again);
+        // 报"补了 1 列"不算数: 判据是库，不是我们自己拼的那段 ALTER。
+        assertTrue(physicalColumnsOf(table).contains("cc"), "说补上了，库里却没有: " + again);
+        assertEquals("cc", again.path("data").path("addedColumns").get(0).asText(),
+                "补了哪一列必须点名: " + again);
+        assertTrue(again.path("data").path("missingColumns").isEmpty(),
+                "补齐了还挂着缺列: " + columnNamesOf(again.path("data")));
+        // 旧口径在这里返回的正是那条没报错的 DDL 字符串本身 —— 成功与失败给的是同一个东西。
+        assertFalse(again.path("message").asText().toUpperCase(java.util.Locale.ROOT).contains("CREATE TABLE"),
+                "把 DDL 当错误消息透出去了: " + again.path("message").asText());
+
+        // 补列修不好的那一族必须仍然判 FAILED，否则"回读物理列"就成了一句空话:
+        // 一张缺引擎自建列的表**不归这份定义管**，而 CREATE TABLE IF NOT EXISTS 对它又完全空操作
+        // (DDL 一列都不报错) —— 只看"没抛异常"就会在这里报成功。
+        String foreign = "itp_foreign_" + app;
+        createForeignTable(foreign);
+        JsonNode intruder = createEntity(app, "borrowed", foreign, "bb");
+        assertTrue(intruder.path("success").asBoolean(), intruder.toString());
+        JsonNode refused = post("/api/lc/admin/entity/provision", null, "id",
+                intruder.path("data").path("id").asText());
+        String rmsg = refused.path("data").path("message").asText();
+        assertEquals("FAILED", refused.path("data").path("status").asText(),
+                "不归这份定义管的表: " + refused);
+        assertTrue(rmsg.contains("缺引擎自建列"), "没说是哪一类缺列: " + rmsg);
+        assertTrue(rmsg.contains(foreign), "没点名是哪张表: " + rmsg);
+        List<String> rmissing = columnNamesOf(refused.path("data"));
+        assertTrue(rmissing.contains("tenant_code") && rmissing.contains("deleted"),
+                "缺哪几列必须点名: " + rmissing);
+        // 一列都不许动: 别人的表不能因为有人把它登记成实体，就被改成这份定义想要的样子。
+        List<String> kept = physicalColumnsOf(foreign);
+        assertTrue(kept.contains("note"), "别人的列被改掉了: " + kept);
+        assertFalse(kept.contains("deleted"), "补列越界补进了引擎自建列: " + kept);
+        assertFalse(rmsg.toUpperCase(java.util.Locale.ROOT).contains("CREATE TABLE"),
+                "失败时也只该给人话，不是 DDL: " + rmsg);
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    @Test
+    @DisplayName("缺陷#43 回归：provision-all 一支坏只红自己，其他实体的表照样建出来")
+    void provisionAllIsolatesOneBadEntityFromItsNeighbours() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String taken = "itp_block_" + app;
+        String foreign = "itp_foreign_" + app;
+        String free = "itp_free_" + app;
+        JsonNode holder = createEntity(app, "holder", taken, "bb");
+        post("/api/lc/admin/entity/provision", null, "id", holder.path("data").path("id").asText());
+        deleteEntity(holder.path("data").path("id").asText());
+        createEntity(app, "repaired", taken, "cc");           // 修得好的一类: 旧表少一栏
+        createForeignTable(foreign);
+        createEntity(app, "broken", foreign, "ee");           // 修不好的一类: 这张表不归它管
+        createEntity(app, "neighbour", free, "dd");
+
+        JsonNode report = post("/api/lc/admin/app/provision-all", null, "appCode", app, "tenantCode", TENANT);
+        assertTrue(report.path("success").asBoolean(), "部分成功不该是 500: " + report);
+        JsonNode data = report.path("data");
+        assertEquals(3, data.path("total").asInt(), "批里数到的实体数: " + data);
+        assertFalse(data.path("allOk").asBoolean(), "坏的那支必须让汇总看得见");
+        assertEquals(1, data.path("failedCount").asInt(), "批里只该有一支坏: " + data);
+        // 修好的那支要在汇总里单独数出来: 把 ALTERED 记成"什么都没做"，界面那句"这次真的补了列"就没人证。
+        assertEquals(1, data.path("created").asInt(), "这次真建出来的那张表: " + data);
+        assertEquals(1, data.path("altered").asInt(), "这次真补过列的那张表: " + data);
+
+        java.util.Map<String, String> status = new java.util.LinkedHashMap<>();
+        for (JsonNode item : data.path("items")) {
+            status.put(item.path("entityCode").asText(), item.path("status").asText());
+        }
+        assertEquals("ALTERED", status.get("repaired"), "批里三支各自的状态: " + status);
+        assertEquals("FAILED", status.get("broken"), "批里三支各自的状态: " + status);
+        assertEquals("CREATED", status.get("neighbour"), "批里三支各自的状态: " + status);
+        // 这一句才是"不连坐"的全部意思：邻居的表真的在库里，而不只是报告里写了它的名字。
+        assertTrue(physicalColumnsOf(free).contains("dd"), "邻居的表被一起挡掉了: " + status);
+        assertTrue(physicalColumnsOf(taken).contains("cc"), "修好的那支只是嘴上说了: " + status);
+        assertFalse(physicalColumnsOf(foreign).contains("ee"), "坏的那支把手伸进了别人的表: " + status);
+        JsonNode list = post("/api/lc/runtime/list", "{\"page\":1,\"size\":1}",
+                "entityCode", "neighbour", "appCode", app, "tenantCode", TENANT);
+        assertTrue(list.path("success").asBoolean(), list.path("message").asText());
+
+        // 再点一次不许"越点越成功": 建成过的都该说"本来就在"，坏的那支还得是坏的。
+        JsonNode again = post("/api/lc/admin/app/provision-all", null, "appCode", app, "tenantCode", TENANT);
+        JsonNode data2 = again.path("data");
+        assertEquals(1, data2.path("failedCount").asInt(), "第二次点，坏的那支还得是坏的: " + data2);
+        assertFalse(data2.path("allOk").asBoolean(), "第二次点也不许越点越成功: " + data2);
+        assertEquals(0, data2.path("created").asInt(), "第二次点不该再声称建了新表: " + data2);
+        assertEquals(0, data2.path("altered").asInt(), "第二次点不该再声称补过列: " + data2);
+        assertEquals(2, data2.path("unchanged").asInt(), "建成过的两支都该回到\"本来就在\": " + data2);
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    @Test
+    @DisplayName("缺陷#43 回归：同一实体里两列同名在写入口就拒，文案说的是真撞的那条约束")
+    void duplicateFieldCodeInsideOneEntityIsRejectedAtTheEntrance() throws Exception {
+        String app = provisionApp(uniqueTag());
+        JsonNode j = createEntity(app, "dup", "itp_dup_" + app, "x", "x");
+        String msg = j.path("message").asText();
+        assertFalse(j.path("success").asBoolean(), "重复列名被收下了: " + j);
+        assertTrue(msg.contains("同一实体里有重复的字段编码"), msg);
+        // 旧行为是走到库才被 uk_field_entity_code 打回，文案说"同一租户下的编码必须唯一" ——
+        // 用户按它去换实体编码，换了十个还是这句。
+        assertFalse(msg.contains("同一租户下的编码"), "还是库约束那条误导文案: " + msg);
+        assertNoSchemaLeak(msg);
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    /* ---------------- 缺陷 #45: 实体建好字段之后，"保存"这条路一次都没通过过 ---------------- */
+
+    private static String field(String code, String name, int order) {
+        return "{\"fieldCode\":\"" + code + "\",\"fieldName\":\"" + name
+                + "\",\"fieldType\":\"STRING\",\"fieldLength\":32,\"sortOrder\":" + order + "}";
+    }
+
+    /** 建一支"只有名字、属性待定"的实体: createEntity 那个 helper 会把 fieldName 钉成"列 i"。 */
+    private JsonNode createBare(String app, String table, String... codes) throws Exception {
+        StringBuilder fields = new StringBuilder();
+        for (int i = 0; i < codes.length; i++) {
+            if (i > 0) {
+                fields.append(',');
+            }
+            fields.append(field(codes[i], "列" + codes[i], i + 1));
+        }
+        return post("/api/lc/admin/app/entity/create",
+                "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app
+                        + "\",\"entityCode\":\"case\",\"entityName\":\"工单\",\"tableName\":\""
+                        + table + "\",\"fields\":[" + fields + "]}",
+                "appCode", app, "tenantCode", TENANT);
+    }
+
+    /** 一次真实的"设计器保存": 带全部字段、改其中一些的名字。 */
+    private JsonNode putFields(String id, String app, String table, String... fieldJson) throws Exception {
+        return call(MockMvcRequestBuilders.put("/api/lc/admin/entity").param("id", id)
+                .content("{\"id\":" + id + ",\"tenantCode\":\"" + TENANT
+                        + "\",\"appCode\":\"" + app + "\",\"entityCode\":\"case\""
+                        + ",\"entityName\":\"工单\",\"tableName\":\"" + table
+                        + "\",\"fields\":[" + String.join(",", fieldJson) + "]}"));
+    }
+
+    /** 读回来的第 index 列 (按 sortOrder 排, 见 listFields)。 */
+    private String fieldNameAt(JsonNode entity, int index) {
+        return entity.path("fields").get(index).path("fieldName").asText();
+    }
+
+    private JsonNode firstEntity(String app) throws Exception {
+        return get("/api/lc/admin/app/entity/list", "appCode", app, "tenantCode", TENANT)
+                .path("data").get(0);
+    }
+
+    /** 库里的真实行数，**含墓碑** —— 「按编码对齐」和「全删再全插」的差别只在这把尺上看得见。 */
+    private List<Map<String, Object>> fieldRows(long entityId) {
+        return jdbc().queryForList(
+                "SELECT field_code, deleted, field_name FROM z_lc_field WHERE entity_id = ? "
+                        + "ORDER BY field_code, deleted", entityId);
+    }
+
+    private static int tombstones(List<Map<String, Object>> rows) {
+        int n = 0;
+        for (Map<String, Object> row : rows) {
+            if (((Number) row.get("DELETED")).intValue() == 1) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    @Test
+    @DisplayName("缺陷#45 回归：带字段的保存不再是 400（旧写法软删旧行再插同名新行，撞自己留下的墓碑）")
+    void savingAnEntityThatAlreadyHasFieldsSucceeds() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_edit_" + app;
+        JsonNode created = createBare(app, table, "ref", "drop_me");
+        assertOk(created, "create entity");
+        String id = created.path("data").path("id").asText();
+
+        JsonNode put = putFields(id, app, table,
+                field("ref", "单号(改过)", 1), field("extra_col", "后加的", 2));
+        String msg = put.path("message").asText();
+        // 旧行为: uk_field_entity_code 是 (entity_id, field_code) 且**不看 deleted** —— 软删的那行
+        // 还占着 `ref`, 于是插新行必撞, 而文案说的是"同一租户下的编码必须唯一"(指错了约束)。
+        assertOk(put, "第二次保存 (带已存在的字段) message=" + msg);
+        assertEquals(200, lastHttpStatus, "保存实体拿到了非 200: " + msg);
+        assertFalse(msg.contains("同一租户下的编码"), "还是那条指错约束的文案: " + msg);
+
+        JsonNode back = firstEntity(app);
+        List<String> codes = new ArrayList<>();
+        for (JsonNode f : back.path("fields")) {
+            codes.add(f.path("fieldCode").asText());
+        }
+        assertEquals(java.util.Arrays.asList("ref", "extra_col"), codes,
+                "读回来的字段清单不对: " + back.path("fields"));
+        assertEquals("单号(改过)", fieldNameAt(back, 0), "保留下来的那一列改了名却没落库");
+        assertFalse(codes.contains("drop_me"), "被移除的字段还在清单里");
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    @Test
+    @DisplayName("缺陷#45 回归：删掉的字段再加回来是复活那一行，不是插第二行（同码只能有一行）")
+    void reAddingADroppedFieldRevivesItsRowInsteadOfInsertingAnother() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_rev_" + app;
+        JsonNode created = createBare(app, table, "ref", "drop_me");
+        String id = created.path("data").path("id").asText();
+
+        assertOk(putFields(id, app, table, field("ref", "单号", 1)), "移除一支字段");
+        List<Map<String, Object>> afterRemove = fieldRows(Long.parseLong(id));
+        assertEquals(2, afterRemove.size(), "移除一支应当只留一行墓碑: " + afterRemove);
+        assertEquals(1, tombstones(afterRemove), "被移除的那行没被软删: " + afterRemove);
+
+        JsonNode again = putFields(id, app, table,
+                field("ref", "单号", 1), field("drop_me", "又加回来了", 2));
+        assertOk(again, "把删掉的字段加回来");
+        List<Map<String, Object>> rows = fieldRows(Long.parseLong(id));
+        // 这一句把"复活"和"再插一行"分开: 就算不撞约束, 全删再全插也会每保存一次多留一行历史。
+        assertEquals(2, rows.size(), "加回来时多插了一行（应该复活原来那行）: " + rows);
+        assertEquals(0, tombstones(rows), "复活的行没被改回未删: " + rows);
+        assertEquals("又加回来了", fieldNameAt(firstEntity(app), 1), "复活后属性没跟上");
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    @Test
+    @DisplayName("缺陷#45 回归：字段编码的大小写变体是同一条列，不许插出第二行")
+    void fieldCodeCaseVariantStaysOneColumn() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_cs_" + app;
+        JsonNode created = createBare(app, table, "ref");
+        String id = created.path("data").path("id").asText();
+
+        JsonNode put = putFields(id, app, table, field("REF", "同一列换了大小写", 1));
+        assertOk(put, "只改大小写的保存: " + put.path("message").asText());
+        // MySQL/H2 的列名不分大小写: 把 `REF` 当成新列插一行, 元数据就说这张表有两个列,
+        // 而物理表里只有一列 —— 正是 #34/#43 那一族"元数据与库不一致"的形状。
+        assertEquals(1, fieldRows(Long.parseLong(id)).size(),
+                "大小写变体插出了第二行: " + fieldRows(Long.parseLong(id)));
+        JsonNode back = firstEntity(app);
+        assertEquals("ref", back.path("fields").get(0).path("fieldCode").asText(),
+                "编码身份被大小写变体改写了（同一列换了个名字）");
+        assertEquals("同一列换了大小写", fieldNameAt(back, 0), "同一行上的其余属性没落库");
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    /* ---------------- 缺陷 #46: 运行时的权威源是事件链，而折叠从不删任何东西 ---------------- */
+
+    private JsonNode writeRecord(String app, String fieldValuesJson) throws Exception {
+        return post("/api/lc/runtime/create",
+                "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app
+                        + "\",\"fieldValues\":" + fieldValuesJson + "}",
+                "entityCode", "case", "appCode", app, "tenantCode", TENANT);
+    }
+
+    private JsonNode runtimeList(String app) throws Exception {
+        return post("/api/lc/runtime/list", "{\"page\":1,\"size\":20}",
+                "entityCode", "case", "appCode", app, "tenantCode", TENANT);
+    }
+
+    /** 事件链折叠出来的运行时字段编码 —— 不是库里的 {@code z_lc_field}，是运行时真正拿去拼 SELECT 的那份。 */
+    private List<String> replayColumns(String app) throws Exception {
+        List<String> out = new ArrayList<>();
+        for (JsonNode e : D(get("/api/lc/app/schema", "appCode", app, "tenantCode", TENANT))) {
+            if ("case".equals(e.path("entityCode").asText())) {
+                for (JsonNode f : e.path("fields")) {
+                    out.add(f.path("fieldCode").asText());
+                }
+            }
+        }
+        return out;
+    }
+
+    /** 运行时列表端出来的每一行: 栏名 + ref 的值，用来同时防住"删不掉"和"删过头"两个方向。 */
+    private List<String> runtimeRowKeys(JsonNode envelope) {
+        List<String> out = new ArrayList<>();
+        for (JsonNode row : envelope.path("data").path("records")) {
+            List<String> keys = new ArrayList<>();
+            for (Iterator<String> it = row.fieldNames(); it.hasNext(); ) {
+                keys.add(it.next());
+            }
+            java.util.Collections.sort(keys);
+            out.add(String.join(",", keys) + "|ref=" + row.path("ref").asText(null));
+        }
+        return out;
+    }
+
+    @Test
+    @DisplayName("缺陷#46 回归：从定义里删掉一栏，运行时不再把那一栏的旧值端出来")
+    void removedFieldBecomesInvisibleToRuntimeReads() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_rp_" + app;
+        JsonNode created = createBare(app, table, "ref", "drop_me");
+        assertOk(created, "create entity");
+        String id = created.path("data").path("id").asText();
+        post("/api/lc/admin/entity/provision", null, "id", id);
+        assertOk(writeRecord(app, "{\"ref\":\"AAA-1\",\"drop_me\":\"旧值\"}"), "写一条记录");
+
+        // 先证明猎物进得来: 删之前运行时确实端出 drop_me。没有这一句, 下面那句"不再端出"
+        // 可以对着一个空结果打绿灯（缺陷 #46 恰恰就是把旧值一直留在结果里的那一种）。
+        List<String> before = runtimeRowKeys(runtimeList(app));
+        assertTrue(before.toString().contains("drop_me"),
+                "删之前运行时就该端出 drop_me（猎物没进列表）: " + before);
+
+        assertOk(putFields(id, app, table, field("ref", "单号", 1)), "从定义里删掉 drop_me");
+
+        assertEquals(java.util.Arrays.asList("ref"), replayColumns(app),
+                "事件链折叠出的运行时定义还留着已被删除的字段（UPDATE 只会替换或追加, 没人发删除）");
+        List<String> after = runtimeRowKeys(runtimeList(app));
+        assertFalse(after.toString().contains("drop_me"), "删掉的字段还在每一次列表里: " + after);
+        assertTrue(after.toString().contains("ref=AAA-1"),
+                "留下来的那一栏数据被删没了（这一句把「删过头」和「删对了」分开）: " + after);
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
+
+    @Test
+    @DisplayName("缺陷#46 回归：实体删掉之后运行时不再认得它（整实体 DELETE 过去是空操作）")
+    void deletedEntityStopsServingRecords() throws Exception {
+        String app = provisionApp(uniqueTag());
+        String table = "itp_del_" + app;
+        JsonNode created = createBare(app, table, "ref");
+        String id = created.path("data").path("id").asText();
+        post("/api/lc/admin/entity/provision", null, "id", id);
+        assertOk(writeRecord(app, "{\"ref\":\"DDD-1\"}"), "写一条记录");
+        assertTrue(runtimeRowKeys(runtimeList(app)).toString().contains("ref=DDD-1"),
+                "删实体之前运行时读得到这条记录（猎物）");
+
+        assertOk(deleteEntity(id), "DELETE /api/lc/admin/entity");
+
+        assertTrue(replayColumns(app).isEmpty(),
+                "折叠里还留着这支已删除的实体（整实体 DELETE 没带 fieldCode, 过去一个字都不做）: "
+                        + replayColumns(app));
+        JsonNode list = runtimeList(app);
+        boolean served = list.path("success").asBoolean()
+                && list.path("data").path("records").size() > 0;
+        assertFalse(served, "管理端已经查不到的实体, 运行时还在对外供记录: http=" + lastHttpStatus
+                + " " + runtimeRowKeys(list));
+
+        post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
+    }
 }

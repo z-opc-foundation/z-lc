@@ -133,7 +133,15 @@ async function seedTestData() {
     headers: { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' },
     body: '{}',
   }).then((r) => r.json());
-  if (!provRes.success) console.error('  provision failed:', provRes.message);
+  if (!provRes.success) throw new Error(`provision-all 直接失败: ${provRes.message}`);
+  // success 只是 HTTP 那层的话：#43 之后批量的结论在 data.allOk 里。原来只看 success，
+  // 于是"表一列都没建出来"也能让整轮 160 项开跑，最后那 160 个失败指不回真正的原因。
+  if (provRes.data && provRes.data.allOk !== true) {
+    const bad = (provRes.data.items || []).filter((i) => i.status === 'FAILED')
+      .map((i) => `${i.entityCode}: ${(i.missingColumns || []).join('/') || i.message}`);
+    throw new Error(`seed 的表没全建成 (created=${provRes.data.created} unchanged=${provRes.data.unchanged})`
+      + ` —— 这一轮建立在缺列的表上，后面红指不回原因: ${JSON.stringify(bad).slice(0, 300)}`);
+  }
 
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -1681,6 +1689,19 @@ async function runOnce(runNum, appCode) {
         check('草稿默认就带着三道闸门可删（删不到按钮 = 默认链本身空了，"删空"那一路走不到）',
           deleteBtns === 3, `删除按钮数=${deleteBtns}`);
 
+        // #42: 这一格原来是一个能打的"阶段参数"输入框，而五个处理器没有一个读 config。
+        // 后端现在直接 400 拒收带这种参数的配置，所以界面上不许再留一个"看着能填"的口子。
+        // 两条一组：先数到"每一档那一格真的还在"（负向那半句的猎物），再说"它不是输入框"。
+        const configCells = (await page.locator('.ant-modal [data-testid^="pipeline-stage-config-"]').allInnerTexts())
+          .map((t) => t.replace(/\s+/g, ' ').trim());
+        check('每一档都还在说这一档有没有参数（格子整个消失也算"没有输入框"，那是删证据不是修谎）',
+          configCells.length === 3 && configCells.every((t) => t.includes('参数')),
+          JSON.stringify(configCells));
+        const paramBoxes = await page.locator('.ant-modal textarea[placeholder*="阶段参数"]').count();
+        check('阶段参数不再是一个能填的框（填了也不生效的配置，给个输入框就是骗人）',
+          paramBoxes === 0 && configCells.every((t) => t.includes('引擎不读取')),
+          `参数框数=${paramBoxes}，格子=${JSON.stringify(configCells)}`);
+
         for (let i = 0; i < 3; i += 1) {
           await page.locator('.ant-modal .anticon-delete').first().click();
         }
@@ -1808,6 +1829,207 @@ async function runOnce(runNum, appCode) {
     } catch (e) {
       check('字段编码闸', false, e?.message);
       await shot(page, `r${runNum}-08c-field-code-FAIL`);
+    }
+
+    /* ---- 11d. provision 的四种结论在浏览器里各说各的话，且每一句都有库作证（#43 + #47）---- */
+    // jsdom 那十几例钉的是"报告这么说时界面怎么画"，报告本身有没有撒谎它看不见；这一支走真后端。
+    // 老版本的这一节只测 FAILED 一条路 —— #47 之后"加一栏再 provision"不再必然失败（它真的补列），
+    // 于是那个"唯一的 200+FAILED 形状"的前提死了。现在的 FAILED 要让库自己开口拒绝：
+    // 给一张**有行**的表加 NOT NULL 且无默认值的一栏，H2 自己拒（NULL not allowed），
+    // 报告只能跟着红。所以四态一次跑完：CREATED → ALTERED → EXISTS_INTACT → FAILED → 修好回 ALTERED。
+    try {
+      const H = { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' };
+      const stamp = Date.now().toString().slice(-6);
+      const probeApp = `uiprov${stamp}`;
+      const probeTable = `ui_case${stamp}`;
+      const fld = (code, order, extra) => Object.assign(
+        { fieldCode: code, fieldName: `列${code}`, fieldType: 'STRING',
+          fieldLength: 32, sortOrder: order }, extra || {});
+      const putFields = async (fields) => fetch(`${API}/api/lc/admin/entity?id=${probeId}`, {
+        method: 'PUT', headers: H,
+        body: JSON.stringify({
+          id: probeId, tenantCode: 'default', appCode: probeApp, entityCode: 'case',
+          entityName: '工单', tableName: probeTable,
+          fields,
+        }),
+      }).then((r) => r.json());
+      // 判"补上了没有"不能只读报告自述（#43 的谎正是报告说建成而库里没有）：/admin/db/table
+      // 走 JDBC 元数据，是这份报告之外唯一能作证"表里真有哪些列"的地方。
+      const dbCols = async () => {
+        const r = await fetch(`${API}/api/lc/admin/db/table?tableName=${probeTable}`, { headers: H })
+          .then((x) => x.json()).catch(() => null);
+        return ((r && r.data && r.data.fields) || []).map((f) => f.fieldCode);
+      };
+
+      const mk = await fetch(`${API}/api/lc/app/create`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({ tenantCode: 'default', appCode: probeApp, appName: 'provision 探针' }),
+      }).then((r) => r.json());
+      check('provision 探针应用建成', mk.success === true, JSON.stringify(mk).slice(0, 140));
+
+      const ent = await fetch(`${API}/api/lc/admin/app/entity/create?appCode=${probeApp}&tenantCode=default`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({
+          tenantCode: 'default', appCode: probeApp, entityCode: 'case', entityName: '工单',
+          tableName: probeTable,
+          fields: [fld('ref', 1)],
+        }),
+      }).then((r) => r.json());
+      check('provision 探针实体建成', ent.success === true, JSON.stringify(ent).slice(0, 140));
+      const probeId = ent.data && ent.data.id;
+
+      const p1 = await fetch(`${API}/api/lc/admin/entity/provision?id=${probeId}`,
+        { method: 'POST', headers: H, body: '{}' }).then((r) => r.json());
+      check('第一次 provision 服务端自己报 CREATED',
+        p1.success === true && p1.data && p1.data.status === 'CREATED', JSON.stringify(p1).slice(0, 200));
+      check('CREATED 之后库里就是那一栏（量具先自证：它读得到真列）',
+        (await dbCols()).join(',') === 'ref', (await dbCols()).join(','));
+
+      const seeded = await fetch(`${API}/api/lc/runtime/create?entityCode=case`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({ entityCode: 'case', appCode: probeApp, tenantCode: 'default',
+                               fieldValues: { ref: 'row-1' } }),
+      }).then((r) => r.json()).catch(() => ({}));
+      check('先写一行进去（空表会让 NOT NULL 补列直接成功，FAILED 那一支就没有猎物）',
+        seeded.success === true, JSON.stringify(seeded).slice(0, 160));
+
+      await page.goto(`${BASE}/designer/${probeApp}`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      const side = page.locator('.ant-card[style*="248px"]').first();
+      await side.locator('.ant-list-item').first().waitFor({ state: 'visible', timeout: 15000 });
+      await side.locator('.ant-list-item').first().click();
+      // 这颗按钮不能用 `getByRole('button', {name:'Provision', exact:true})`：antd 的图标 span 带
+      // `aria-label="cloud-upload"`，算进可及名后它是 "cloud-upload Provision"，exact 永远匹配不上
+      // （实测就是这一节超时的那一句）。侧栏那颗叫 "Provision 全部实体"，所以锚在词尾。
+      const provBtn = page.getByRole('button', { name: /Provision$/ });
+      check('设计器里有且只有一颗单实体 Provision 按钮（点错成"全部实体"这一节就白测）',
+        await provBtn.count() === 1, `count=${await provBtn.count()}`);
+
+      await page.evaluate(() => {
+        const w = window;
+        w.__toasts = [];
+        const scan = () => {
+          document.querySelectorAll('.ant-message-notice').forEach((node) => {
+            const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+            if (t && w.__toasts.indexOf(t) < 0) w.__toasts.push(t);
+          });
+        };
+        new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+        setInterval(scan, 120);
+        scan();
+      });
+      const clickProvision = async () => {
+        await page.evaluate(() => { window.__toasts = []; });
+        const respPromise = page.waitForResponse(
+          (res) => res.url().includes('/admin/entity/provision') && res.request().method() === 'POST',
+          { timeout: 20000 },
+        );
+        await provBtn.click({ timeout: 15000 });
+        let resp = null;
+        try { resp = await respPromise; } catch { /* 下面"没等到响应"那一条会红，不让它带走整节 */ }
+        let toast = '';
+        for (let i = 0; i < 100; i += 1) {
+          toast = (await page.evaluate(() => (window.__toasts || []).join('|'))).replace(/\s/g, '');
+          if (toast) break;
+          await page.waitForTimeout(120);
+        }
+        // 等这条 toast 自己收掉再返回：antd 默认挂 3s，不等待的话下一支的"整页没有一句
+        // 已建成/列一列不缺"会对着**上一支**的 toast 打红 —— 假红，而且只在快慢之间漂。
+        for (let i = 0; i < 60; i += 1) {
+          if (!(await page.locator('.ant-message-notice').count())) break;
+          await page.waitForTimeout(100);
+        }
+        return { http: resp ? resp.status() : null, toast };
+      };
+      const banner = () => page.locator('.ant-alert').filter({ hasText: '未建成' }).first();
+      const alertCount = () => page.locator('.ant-alert').filter({ hasText: '未建成' }).count();
+
+      /* (a) ALTERED：定义跑到表前面，一次 provision 真的把那一栏补进库里 */
+      const putA = await putFields([fld('ref', 1), fld('later_col', 2)]);
+      check('加一栏的定义收下（改元数据本身合法, #45 已定口径）',
+        putA.success === true, JSON.stringify(putA).slice(0, 160));
+      const a = await clickProvision();
+      check('点了按钮真的打到 provision 接口且 HTTP 200（这一节测的是服务端结论，不是前端偷偷拦）',
+        a.http === 200, `http=${a.http}`);
+      check('#47 写侧：界面按新状态说「补了 1 列」并点名是哪一栏（旧口径在这里永远报未建成）',
+        a.toast.includes('按这份定义补了1列') && a.toast.includes('later_col'), a.toast.slice(0, 240));
+      check('库里真的多了这一栏（界面说补上了，判据得来自库而不是这句 toast）',
+        (await dbCols()).includes('later_col'), (await dbCols()).join(','));
+      check('补成功之后「未建成」横幅不许留在页上（挂着就是谎报失败）',
+        await alertCount() === 0, `count=${await alertCount()}`);
+      const ddlAfterAlter = (await page.locator('.ant-card').filter({ hasText: 'DDL' }).first()
+        .innerText().catch(() => '')).replace(/\s+/g, '');
+      check('DDL 面板改口说这次真的执行过 ALTER（还写"没有建成"就是把上一轮的话当本轮）',
+        ddlAfterAlter.includes('真的执行过') && !ddlAfterAlter.includes('这张表没有建成'),
+        ddlAfterAlter.slice(0, 200));
+
+      /* (b) EXISTS_INTACT：同一份定义再点一次，一列都不缺就不许再宣称补过列 */
+      const b = await clickProvision();
+      check('幂等：再点一次说「这次没有执行 DDL」，不许继续宣称补了列（把空操作记成成果就是 #43）',
+        b.toast.includes('这次没有执行DDL') && !b.toast.includes('补了'), b.toast.slice(0, 240));
+      check('再点一次库里一列不多不少（"没执行 DDL" 这句是库认账的，不是自述）',
+        (await dbCols()).sort().join(',') === ['later_col', 'ref'].sort().join(','),
+        (await dbCols()).join(','));
+
+      /* (c) FAILED：库自己拒的 DDL，界面不许说成做成 */
+      const putC = await putFields([fld('ref', 1), fld('later_col', 2),
+                                    fld('needs_value', 3, { required: true })]);
+      check('加一个必填且无默认值的一栏（有行的表上 H2 会自己拒）',
+        putC.success === true, JSON.stringify(putC).slice(0, 160));
+      const c = await clickProvision();
+      check('库拒的 DDL：HTTP 仍 200，而界面必须报「未建成」（200 不等于建成）',
+        c.http === 200 && (await banner().innerText().catch(() => '')).includes('未建成'),
+        `http=${c.http} toast=${c.toast.slice(0, 160)}`);
+      await banner().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+      const bannerTxt = (await banner().innerText().catch(() => '')).replace(/\s+/g, '');
+      // 点名要拿**那枚 code 标签**比，不能用 `includes('case')`：服务端 message 里本来就带着
+      // 表名 ui_caseXXXXXX，任何一条泛泛的红色横幅都能把 'case' 这个词撞出来（第一版就是这样，
+      // 注入把实体名换成状态名以后它照样打绿灯）。
+      const chipTxt = (await banner().locator('code').first().innerText().catch(() => '')).trim();
+      check('「未建成」横幅常驻，并点名是哪一份实体定义（不点名只能一个个猜）',
+        bannerTxt.includes('未建成（1）') && chipTxt === 'case',
+        `banner=${bannerTxt.slice(0, 120)} chip=${chipTxt}`);
+      check('横幅写清缺了哪一栏（光说"没建成"，用户不知道该动哪一栏）',
+        bannerTxt.includes('缺列needs_value'), bannerTxt.slice(0, 220));
+      check('FAILED 不是报告撒的谎：库里确实没有这一栏',
+        !(await dbCols()).includes('needs_value'), (await dbCols()).join(','));
+      const bodyTxt = (await page.locator('body').innerText()).replace(/\s+/g, '');
+      // 「列一列不缺」是同一句谎话的另一件外衣，且负向断言得钉住猎物：同一句里先要求
+      // 那句红色横幅真的在页上，否则注入把横幅整个摘掉时这条会对着空页面打绿灯（D1 实测）。
+      check('整页确实报了未建成、且没有一句"已建成/列一列不缺/补了列"（200 不等于建成）',
+        bodyTxt.includes('未建成（1）') && !bodyTxt.includes('已按这份定义建出物理表')
+        && !bodyTxt.includes('列一列不缺') && !bodyTxt.includes('按这份定义补了'),
+        bodyTxt.slice(0, 240));
+      const ddlTxt = (await page.locator('.ant-card').filter({ hasText: 'DDL' }).first()
+        .innerText().catch(() => '')).replace(/\s+/g, '');
+      check('DDL 面板说"这张表没有建成"，且不冒充服务端实际执行过的 DDL',
+        ddlTxt.includes('这张表没有建成') && !ddlTxt.includes('这是服务端实际执行的DDL'),
+        ddlTxt.slice(0, 200));
+      await shot(page, `r${runNum}-08d-provision-failed`);
+
+      /* (d) 修得回来：给那一栏一个默认值，同一个按钮就把失败清掉 */
+      const putD = await putFields([fld('ref', 1), fld('later_col', 2),
+                                    fld('needs_value', 3, { required: true, defaultValue: 'n/a' })]);
+      check('给必填栏补上默认值（改的是定义，不是去库里手动改表）',
+        putD.success === true, JSON.stringify(putD).slice(0, 160));
+      const d = await clickProvision();
+      check('补上默认值后同一个按钮真的修好了：ALTERED 点名那一栏，横幅清掉',
+        d.toast.includes('按这份定义补了1列') && d.toast.includes('needs_value')
+        && await alertCount() === 0, `toast=${d.toast.slice(0, 200)} alert=${await alertCount()}`);
+      const rowsAfter = await fetch(
+        `${API}/api/lc/runtime/list?entityCode=case&appCode=${probeApp}&tenantCode=default`,
+        { method: 'POST', headers: H, body: JSON.stringify({ page: 1, size: 10 }) })
+        .then((r) => r.json()).catch(() => ({}));
+      const rec = ((rowsAfter.data && rowsAfter.data.records) || [])[0] || {};
+      check('补列不许把已有那一行弄丢：旧行的 ref 还在，新栏按默认值落上（#47 只加不改不删）',
+        rec.ref === 'row-1' && rec.needs_value === 'n/a', JSON.stringify(rec).slice(0, 200));
+      await shot(page, `r${runNum}-08d-provision-altered`);
+
+      await fetch(`${API}/api/lc/app/archive`, {
+        method: 'POST', headers: H, body: JSON.stringify({ appCode: probeApp }),
+      }).then((r) => r.json()).catch(() => ({}));
+    } catch (e) {
+      check('provision 结论走真后端（#43/#47 浏览器层）', false, e?.message);
+      await shot(page, `r${runNum}-08d-provision-FAIL`);
     }
 
     /* ---- 12. 批量导入：界面说的行数必须等于库里多出来的行数 ---- */

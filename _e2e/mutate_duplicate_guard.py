@@ -3,15 +3,17 @@
 (.eq("deleted", 0) against a unique index that does not include `deleted`) and prove
 which tests go red. Files are restored in a finally-block and byte-verified, so an
 exception can never leave a mutant on disk."""
+import os
+import time
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 CORE = Path("/Users/zifang/workplace/ceo_workplace/z-opc-foundation/z-lc/z-lc-core")
 SRC = CORE / "src/main/java/com/zifang/z/lc/core"
-BAK = Path("/tmp/dupfix_bak")
+# 备份放 ~/.cache: /tmp 会被同机其他会话扫空, 备份中途消失 = 还原失败
+BAK = Path.home() / ".cache/zlc42/deployed_bak" / "tmp/dupfix_bak"
 CLASSES = "SchemaAdminBizServiceTest,AppAdminBizServiceTest,RelationServiceImplTest,DictAdminServiceImplTest"
 
 SCHEMA = SRC / "schema/SchemaAdminBizService.java"
@@ -44,8 +46,28 @@ FILES = sorted({f for _, edits, _ in MUTANTS for f, _, _ in edits})
 FAIL_RE = re.compile(r"\[ERROR\]\s+(\w+Test)\.(\w+):(\d+)")
 
 
-def bak_name(path):
-    return BAK / (path.name.replace(".", "_") + ".orig")
+def snapshot_sources():
+    """一次运行一份独占备份。
+
+    原来是 `BAK` 跨运行复用 + `if not b.exists(): copyfile` + `originals = b.read_bytes()`:
+    上一轮战役留下的 .orig 永不过期, 于是每次开局都把**更早一轮**的源码盖回工作树。
+    同一写法在 mutate_pipeline_wiring_guard.py 上实测抹掉了 09-26 未提交的 #42 改动, 所以这里
+    换成不存在共享路径的形状; 真被 SIGKILL 留下注入残局, 下一次会在基线那句红给我看。
+    """
+    run_dir = BAK / f"run-{os.getpid()}-{time.strftime('%m%d-%H%M%S')}"
+    run_dir.mkdir(parents=True, exist_ok=False)
+    originals = {}
+    for f in FILES:
+        if not f.exists():
+            raise RuntimeError(f"source file missing, cannot even baseline: {f}")
+        disk = f.read_bytes()
+        b = run_dir / (str(f).replace("/", "_").lstrip("_") + ".orig")
+        b.write_bytes(disk)
+        if b.read_bytes() != disk:
+            raise RuntimeError(f"backup of {f} did not stick")
+        originals[f] = disk
+    print(f"sources snapshotted -> {run_dir}")
+    return originals
 
 
 def run_tests():
@@ -63,13 +85,7 @@ def run_tests():
 
 
 def main():
-    BAK.mkdir(exist_ok=True)
-    originals = {}
-    for f in FILES:
-        b = bak_name(f)
-        if not b.exists():
-            shutil.copyfile(str(f), str(b))
-        originals[f] = b.read_bytes()
+    originals = snapshot_sources()
 
     def restore_all():
         for f in FILES:
