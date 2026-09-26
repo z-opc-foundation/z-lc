@@ -6,11 +6,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 集成测试里的 z-wf 桩：把 {@code WfAdapter} 打出来的那一句原样记下来，再按脚本回话.
@@ -57,6 +59,8 @@ final class StubWf implements AutoCloseable {
     private final ServerSocket server;
     private final List<Recorded> requests = Collections.synchronizedList(new ArrayList<Recorded>());
     private final AtomicBoolean stopped = new AtomicBoolean(false);
+    /** 桩手上还开着的连接数 —— {@link #awaitIdle(long)} 读它。 */
+    private final AtomicInteger open = new AtomicInteger();
     private final Thread acceptor;
 
     private volatile int status = 200;
@@ -139,6 +143,7 @@ final class StubWf implements AutoCloseable {
     }
 
     private void handle(Socket socket) {
+        open.incrementAndGet();
         try (Socket s = socket) {
             InputStream in = s.getInputStream();
             String requestLine = readLine(in);
@@ -162,8 +167,11 @@ final class StubWf implements AutoCloseable {
             if (silence) {
                 return;
             }
-            if (delayMs > 0) {
-                Thread.sleep(delayMs);
+            // 「慢」要能通过对端关闭这件事被观察到：一边睡一边读，客户放弃（关掉 socket）就立刻收线。
+            // 少了这一段，被测那侧到底"到点走了"还是"还挂在 socket 上"在这里长得一样，
+            // 而派发池槽位什么时候回来恰恰是要断言的那件事（见 awaitIdle）。
+            if (delayMs > 0 && !awaitEof(s, in, delayMs)) {
+                return;
             }
             byte[] out1 = ("HTTP/1.1 " + status + " " + (status == 200 ? "OK" : "Error")
                     + "\r\nContent-Type: application/json; charset=UTF-8"
@@ -173,9 +181,61 @@ final class StubWf implements AutoCloseable {
             out.write(out1);
             out.write(body.getBytes(StandardCharsets.UTF_8));
             out.flush();
-        } catch (IOException | InterruptedException ex) {
+        } catch (IOException ex) {
             // 桩自己不参与断言：连接被中断就是"没有回话"，由被测那方判失败。
+        } finally {
+            open.decrementAndGet();
         }
+    }
+
+    /**
+     * 睡到 {@code ms} 到点（返回 true，然后照常回话）；期间对端关掉连接就提前返回 false，不占着这条线。
+     * <p>
+     * 这里给 socket 加了 100ms 的读超时，是为了让"对端什么时候放弃"这件事有一个上限：
+     * {@link InputStream#read()} 在没有数据也没有 EOF 时会一直阻塞，桩自己也就跟着一直挂着，
+     * 那正是缺陷 #61 这一支要看的样子 —— 客户端要到点以后关线，桩才收得到 EOF。
+     */
+    private static boolean awaitEof(Socket s, InputStream in, long ms) throws IOException {
+        int previous = s.getSoTimeout();
+        s.setSoTimeout(100);
+        try {
+            long deadline = System.currentTimeMillis() + ms;
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    if (in.read() == -1) {
+                        return false;
+                    }
+                } catch (SocketTimeoutException quiet) {
+                    // 这一百毫秒没动静，继续等：等的是"到点"或"对端关线"，两个都还没来。
+                }
+            }
+            return true;
+        } finally {
+            s.setSoTimeout(previous);
+        }
+    }
+
+    /**
+     * 等到桩手上所有连接都收线，最长 {@code deadlineMs}；收不齐返回 false。
+     * <p>
+     * 这是"派发池的槽位什么时候回来"的替身：客户端只有在自己放弃之后才会关掉那条 socket，
+     * 桩这边看到 EOF 才收线。调用顺序固定为「发起一次会挂死的写 → 先断言桩真收到了请求 →
+     * 再 awaitIdle」，少了中间那句断言，{@code open} 一直是 0 会把"链根本没接上"也放成绿灯。
+     */
+    boolean awaitIdle(long deadlineMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + deadlineMs;
+        while (System.currentTimeMillis() < deadline) {
+            if (open.get() == 0) {
+                return true;
+            }
+            Thread.sleep(25L);
+        }
+        return open.get() == 0;
+    }
+
+    /** 诊断用：判红那一刻还压着几条连接（不参与判定，所以读到的值允许和上面的结论差一拍）。 */
+    int openCount() {
+        return open.get();
     }
 
     private static String readLine(InputStream in) throws IOException {

@@ -12,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -22,12 +21,13 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -158,11 +158,18 @@ class WorkflowTriggerContractTest {
         assertFalse(fire.path("detail").isTextual() && !fire.path("detail").asText().isEmpty(),
                 "成功行不该带失败原因: " + fire);
 
-        // 正向对照：没有绑定的实体写记录，一句都不该发（把"发不发"和"发几条"分开钉）。
-        long other = writeRecord(app, "{\"ref\":\"WF-2\"}", false);
-        assertEquals(1, STUB.count(), "第二次写是 undo 路径之外的一次普通 create，绑定仍然只有一条: "
-                + STUB.requests());
-        assertTrue(other > 0);
+        // 逐条新建都要各发一句：第二条记录不会复用第一条的发起。
+        long second = writeRecord(app, "{\"ref\":\"WF-2\"}");
+        assertTrue(second > 0);
+        assertEquals(2, STUB.count(), "两条记录该发两句: " + STUB.requests());
+
+        // 对照（把"发不发"和"发几条"分开钉）：同一个应用里没有绑定的那个实体，写记录一句都不该多发。
+        provisionEntity(app, "plain", "t_wfp_" + app);
+        writeRecord(app, "plain", "{\"ref\":\"NB-1\"}");
+        assertEquals(2, STUB.count(),
+                "没有登记的实体不该发单，否则\"绑定决定发不发\"这句就是假的: " + STUB.requests());
+        assertEquals(0, get(FIRES, "appCode", app, "entityCode", "plain").path("data").size(),
+                "没发单的实体在账上也不该有行");
     }
 
     /* ------------------------------------------------------------------ */
@@ -185,9 +192,9 @@ class WorkflowTriggerContractTest {
                 .path("message").asText().contains("status_change"), "引擎没有状态机事件这一类");
         assertTrue(refused(BINDING_CREATE, bindingJson(app, "BEFORE_CREATE", "p_four"))
                 .path("message").asText().contains("流水线"), "写前挂接点属于 #41 那一族");
-        assertTrue(refused(BINDING_CREATE, bindingJson(app, "AFTER_CREATE", "   "))
-                .path("message").asText().contains("processDefinitionKey"), "空 KEY: " + refused(BINDING_CREATE,
-                bindingJson(app, "AFTER_CREATE", "   ")));
+        JsonNode blankKey = refused(BINDING_CREATE, bindingJson(app, "AFTER_CREATE", "   "));
+        assertTrue(blankKey.path("message").asText().contains("processDefinitionKey"),
+                "空 KEY 要指名是哪一格: " + blankKey);
         assertTrue(refused(BINDING_CREATE, "{\"appCode\":\"" + app + "\",\"entityCode\":\"" + ENTITY
                         + "\",\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"p\",\"autoSubmit\":0}")
                 .path("message").asText().contains("自动提单"), "关掉自动提单的绑定没有任何运行时行为");
@@ -195,7 +202,12 @@ class WorkflowTriggerContractTest {
         // 猎物：同样的字段换成引擎真兑现的那一组，必须能登记（否则上面那 5 个 400 是"闸什么都拒"）。
         assertOk(createBinding(app, "{\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"p_ok\"}"),
                 "可兑现的那一条应当登记得下来");
-        assertEquals(1, STUB.count(), "登记绑定本身不该发起任何流程（只有写记录才发）: " + STUB.requests());
+        assertEquals(0, STUB.count(), "登记绑定本身不该发起任何流程（只有写记录才发）: " + STUB.requests());
+
+        // 阳性对照：上面那 5 个 400 之所以是"拒了兑现不了的"，得先证明这条链是通的 ——
+        // 写一条记录，桩必须收到一句。
+        writeRecord(app, "{\"ref\":\"OK-1\"}");
+        assertEquals(1, STUB.count(), "登记成功的那一条要真发得出去: " + STUB.requests());
     }
 
     @Test
@@ -209,7 +221,8 @@ class WorkflowTriggerContractTest {
 
         long recordId = writeRecord(app, "{\"ref\":\"DUP-1\"}");
         assertEquals(1, STUB.count(), "重复绑定没能进去 ⇒ 只该发一句: " + STUB.requests());
-        assertEquals("STARTED", fireRow(app, recordId).path("status").asText());
+        assertEquals("STARTED", fireRow(app, recordId).path("status").asText(),
+                "发出去那一句的结局: " + fireRow(app, recordId) + " 桩收到: " + STUB.requests());
     }
 
     /* ------------------------------------------------------------------ */
@@ -253,6 +266,48 @@ class WorkflowTriggerContractTest {
         assertTrue(fire.path("detail").asText().contains("250ms"),
                 "超时上限要走 z-lc.workflow.dispatch-timeout-ms（这个键此前只是写在注释里，没人绑）: "
                         + fire);
+        assertEquals(1, STUB.count(), "这一支测的是「打出去了但回得慢」，桩一句都没收到就什么都没测: "
+                + STUB.requests());
+        // 上面两条只证明"调用方到点走了"。走掉之后那条 HTTP 调用还挂在共享客户端的 60s 读超时上，
+        // 派发池的槽位也跟着被按住 —— 这一条才是这一支的牙齿：连接必须在有上限之后还回来。
+        assertTrue(STUB.awaitIdle(2000L),
+                "挂死的那一次发起没有在有上限之后把槽位还回来（桩这边还压着 " + STUB.openCount()
+                        + " 条连接）");
+    }
+
+    @Test
+    @DisplayName("#61 一次超时会传染下一次发起吗：挂死要在有上限之后松手，随后连发三条各自成功")
+    void timeoutDoesNotPoisonTheNextFires() throws Exception {
+        // 动机（这一条是实测逼出来的，不是设想）：契约层第一次跑通"回得慢"之后，紧跟它的
+        // 三条无因地读不到发起 —— 日志里是 WorkflowTriggerDispatcher 那句「并发发起已达上限
+        // （2 个在飞、不排队）」。查下来是"等待有上限"只做在了调用方：future.get(250ms) 到点
+        // 返回了，而那条在途 HTTP 调用借的是共享 z-util-http 客户端（读超时 60s），
+        // cancel(true) 只中断线程、中断不了 okhttp 的阻塞读 ⇒ 槽位被按住到 60s，两次挂死就把
+        // 整个 2 槽池抽干，之后每一条记录的绑定都"什么都没发"。
+        // 所以这一条要的是"一次超时不许传染下一次"，靠 delay(3000) 让挂死时长跨过修复后的上限：
+        // 修好后连接在 ~750ms 归还 ⇒ 后面三条全绿；没修就是桩自己睡到 3000ms 才松手 ⇒ 这里红。
+        String app = provisionedApp("poison");
+        assertOk(createBinding(app, "{\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"p_poison\"}"),
+                "绑定登记");
+
+        STUB.delay(3000);
+        long slow = writeRecord(app, "{\"ref\":\"P-0\"}");
+        assertEquals("FAILED", fireRow(app, slow).path("status").asText(),
+                "前置条件没成立：这一次超时没有发生，那这一条什么都没测");
+        assertEquals(1, STUB.count(), "前置条件：那一句挂死的发起要真的打到桩上: " + STUB.requests());
+        assertTrue(STUB.awaitIdle(1500L),
+                "挂死那一次没有在有上限之后松手（派发槽位还被按着，桩这边压着 " + STUB.openCount()
+                        + " 条连接）");
+        STUB.reset();
+
+        for (int i = 1; i <= 3; i++) {
+            long id = writeRecord(app, "{\"ref\":\"P-" + i + "\"}");
+            JsonNode row = fireRow(app, id);
+            assertEquals("STARTED", row.path("status").asText(),
+                    "第 " + i + " 条被上一条超时带坏了（脏连接复用）: " + row);
+        }
+        // reset 会清掉已记的请求，所以这里数的是超时之后那三条。
+        assertEquals(3, STUB.count(), "超时之后应当连发三句: " + STUB.requests());
     }
 
     @Test
@@ -324,10 +379,16 @@ class WorkflowTriggerContractTest {
                 "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app + "\"}",
                 "entityCode", ENTITY, "appCode", app, "tenantCode", TENANT);
         assertOk(undone, "撤销刚才那条: " + undone.path("message").asText());
+        assertTrue(undone.path("data").path("applied").asBoolean(),
+                "撤销没有真的动任何一行，那后面的「重做没发单」是空跑: " + undone);
         JsonNode redone = post("/api/lc/undo/redo",
                 "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app + "\"}",
                 "entityCode", ENTITY, "appCode", app, "tenantCode", TENANT);
         assertOk(redone, "重做刚才那条: " + redone.path("message").asText());
+        // 上面两个 applied 断言是这一条的牙齿：只钉"桩没收到"的话，"什么都没撤销所以没重做"
+        // 也会绿（#48 收口时那条"0 要有阳性对照"的同一个形状）。
+        assertTrue(redone.path("data").path("applied").asBoolean(),
+                "重做没有回放任何一行: " + redone);
         assertEquals(1, STUB.count(),
                 "重做是同一条记录的回放，再发一次就是重复提单（当前口径：不做）: " + STUB.requests());
         assertTrue(recordId > 0);
@@ -368,8 +429,9 @@ class WorkflowTriggerContractTest {
     @DisplayName("#61 结局账的列在两份建表脚本里必须一致（替身能模仿真库，不能代替真库）")
     void bothSchemaFilesCarryTheSameWorkflowColumns() throws Exception {
         for (String table : Arrays.asList("z_lc_workflow_binding", "z_lc_workflow_fire")) {
-            Set<String> test = columnsOf(table, "schema.sql");
-            Set<String> dev = columnsOf(table, "db/schema-h2.sql");
+            Set<String> test = columnsOf(table, new File(repoRoot(), "z-lc-web/src/test/resources/schema.sql"));
+            Set<String> dev = columnsOf(table,
+                    new File(repoRoot(), "z-lc-admin/src/main/resources/db/schema-h2.sql"));
             assertFalse(test.isEmpty(), "z-lc-web 测试建表脚本里找不到 " + table + " 的列");
             assertFalse(dev.isEmpty(), "z-lc-admin dev 建表脚本里找不到 " + table + " 的列");
             assertEquals(dev, test, table + " 在两份脚本里长得不一样（#51/#54/#57 那一族：只在真库才红）");
@@ -395,17 +457,23 @@ class WorkflowTriggerContractTest {
                 + Long.toString(System.nanoTime() % 100000000L, 36);
         post("/api/lc/admin/app/create",
                 "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app + "\",\"appName\":\"流程绑定探针\"}");
+        provisionEntity(app, ENTITY, "t_wf_" + app);
+        return app;
+    }
+
+    /** 真建一个只有一列 {@code ref} 的实体，并 provision 出物理表（#47 之后运行时读的是真表）。 */
+    private void provisionEntity(String app, String entityCode, String table) throws Exception {
         JsonNode created = post("/api/lc/admin/app/entity/create",
                 "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app
-                        + "\",\"entityCode\":\"" + ENTITY + "\",\"entityName\":\"工单\",\"tableName\":\""
-                        + "t_wf_" + app + "\",\"fields\":[{\"fieldCode\":\"ref\",\"fieldName\":\"单号\","
+                        + "\",\"entityCode\":\"" + entityCode + "\",\"entityName\":\"实体 " + entityCode
+                        + "\",\"tableName\":\"" + table
+                        + "\",\"fields\":[{\"fieldCode\":\"ref\",\"fieldName\":\"单号\","
                         + "\"fieldType\":\"STRING\",\"fieldLength\":32,\"sortOrder\":1}]}",
                 "appCode", app, "tenantCode", TENANT);
-        assertOk(created, "建探针实体: " + created.path("message").asText());
+        assertOk(created, "建探针实体 " + entityCode + ": " + created.path("message").asText());
         JsonNode prov = post("/api/lc/admin/entity/provision", null, "id",
                 created.path("data").path("id").asText());
         assertOk(prov, "建物理表: " + prov.path("message").asText());
-        return app;
     }
 
     private static String bindingJson(String app, String event, String key) {
@@ -419,18 +487,18 @@ class WorkflowTriggerContractTest {
                         + tail.substring(1));
     }
 
-    /** 写一条记录并拿回主键；{@code expectSuccess=false} 时不做断言（留给"对照"那种形状）。 */
+    /** 写一条 {@code case} 记录并拿回主键。 */
     private long writeRecord(String app, String fieldValuesJson) throws Exception {
+        return writeRecord(app, ENTITY, fieldValuesJson);
+    }
+
+    private long writeRecord(String app, String entityCode, String fieldValuesJson) throws Exception {
         JsonNode res = post("/api/lc/runtime/create",
                 "{\"tenantCode\":\"" + TENANT + "\",\"appCode\":\"" + app
                         + "\",\"fieldValues\":" + fieldValuesJson + "}",
-                "entityCode", ENTITY, "appCode", app, "tenantCode", TENANT);
+                "entityCode", entityCode, "appCode", app, "tenantCode", TENANT);
         assertOk(res, "写记录: " + res.path("message").asText());
         return res.path("data").asLong();
-    }
-
-    private long writeRecord(String app, String fieldValuesJson, boolean ignored) throws Exception {
-        return writeRecord(app, fieldValuesJson);
     }
 
     private JsonNode fireRow(String app, long recordId) throws Exception {
@@ -452,10 +520,10 @@ class WorkflowTriggerContractTest {
     }
 
     /** 从两份建表脚本里抠出某张表的列名集合（两份的排版风格不同，只有列名这一层可比）。 */
-    private static Set<String> columnsOf(String table, String classpathResource) throws IOException {
+    private static Set<String> columnsOf(String table, File script) throws IOException {
         StringBuilder text = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                new ClassPathResource(classpathResource).getInputStream(), StandardCharsets.UTF_8))) {
+                new FileInputStream(script), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 text.append(line).append('\n');
@@ -465,7 +533,7 @@ class WorkflowTriggerContractTest {
         if (from < 0) {
             return new LinkedHashSet<String>();
         }
-        int open = text.indexOf('(', from);
+        int open = text.indexOf("(", from);
         int close = text.indexOf("PRIMARY KEY", from);
         if (open < 0 || close < 0) {
             return new LinkedHashSet<String>();
@@ -476,6 +544,23 @@ class WorkflowTriggerContractTest {
             columns.add(matcher.group(1));
         }
         return columns;
+    }
+
+    /**
+     * 两份脚本不在同一个模块里，而 z-lc-web 不依赖 z-lc-admin（所以第二份不可能在 classpath 上），
+     * 只能按仓库结构去够。surefire 的工作目录是模块目录，故向上找到"看得见 z-lc-admin/pom.xml"
+     * 的那一层。找不到就当场报错 —— 静默跳过会让这一条变成"永远绿"的空跑。
+     */
+    private static File repoRoot() {
+        File dir = new File(System.getProperty("user.dir")).getAbsoluteFile();
+        for (int depth = 0; depth < 5 && dir != null; depth++) {
+            if (new File(dir, "z-lc-admin/pom.xml").isFile() && new File(dir, "z-lc-web/pom.xml").isFile()) {
+                return dir;
+            }
+            dir = dir.getParentFile();
+        }
+        throw new IllegalStateException("从 " + System.getProperty("user.dir")
+                + " 向上找不到 z-lc 仓库根（两份建表脚本没法比，这一条断言无效）");
     }
 
     private JsonNode get(String path, String... kv) throws Exception {

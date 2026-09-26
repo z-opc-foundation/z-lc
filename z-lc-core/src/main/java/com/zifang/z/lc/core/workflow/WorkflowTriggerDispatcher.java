@@ -45,10 +45,16 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>结局要能回读。</b>每一次尝试（成功或失败）都在 {@code z_lc_workflow_fire} 里留一行，
  *       {@code GET /api/lc/workflow-binding/fires} 读得到。只写日志的话，"已保存绑定"这句话
  *       没有任何一层能证明它兑现过。</li>
- *   <li><b>等待必须有上限。</b>共享的 z-util-http 客户端读超时是 60s（{@code HttpExecutor.java:56}），
- *       一次挂死的 z-wf 会把用户的"新建记录"按住 60 秒。所以这条调用走一个固定 2 槽、
- *       不排队的池，超时就判 FAILED 并把线程 interrupt 掉（socket 读未必立刻中断，但 60s 到点自己会结束，
- *       占用的槽位有上限）。</li>
+ *   <li><b>等待必须有上限，而且上限要落在持有 socket 的那一层。</b>共享的 z-util-http 客户端读超时
+ *       是 60s（{@code HttpExecutor.java:56}），一次挂死的 z-wf 会把用户的"新建记录"按住 60 秒，
+ *       所以这条调用走一个固定 2 槽、不排队的池，并且 {@code future.get(timeoutMs)} 到点就判 FAILED。
+ *       <p>
+ *       ⚠ 但"放走等的人"并不等于"腾出槽位"：那条 HTTP 调用还压在槽上直到它自己结束。契约层实测过
+ *       这个形状 —— 连续两次挂死的发起就把 2 个槽占满，之后<b>每一条新记录的绑定都发不出去</b>
+ *       （账上写着「并发发起已达上限」，见 {@code WorkflowTriggerContractTest#timeoutDoesNotPoisonTheNextFires}）。
+ *       真正收口这件事的不是这里，而是 {@link WfAdapter} 那条短超时传输：预算只有一个键
+ *       （{@code z-lc.workflow.dispatch-timeout-ms}），派发侧拿它等多久、传输层拿它加一点余量收尾，
+ *       槽位因此在毫秒级自己回来。</li>
  * </ul>
  */
 @Component
@@ -56,8 +62,8 @@ public class WorkflowTriggerDispatcher {
 
     private static final Logger log = LogManager.getLogger(WorkflowTriggerDispatcher.class);
 
-    /** 一次发起最多等多久；配置项 {@code z-lc.workflow.dispatch-timeout-ms} 可覆盖. */
-    static final long DEFAULT_TIMEOUT_MS = 3000L;
+    /** 一次发起最多等多久；与 {@link WfAdapter} 的传输预算是同一个键、同一个默认值. */
+    static final long DEFAULT_TIMEOUT_MS = WfAdapter.DEFAULT_TIMEOUT_MS;
 
     @Resource
     private WorkflowBindingService bindingService;
@@ -99,14 +105,18 @@ public class WorkflowTriggerDispatcher {
     }
 
     /**
-     * 类注释里那句"配置项 {@code z-lc.workflow.dispatch-timeout-ms} 可覆盖"之前只是写着，没有任何地方
-     * 把它绑进来 —— 这是 #42 那一族的反面（那族是有人绑没人读，这一支是有人写进注释没人绑）。
+     * 类注释里那句"配置项可覆盖"之前只是写着，没有任何地方把它绑进来 —— 这是 #42 那一族的反面
+     * （那族是有人绑没人读，这一支是有人写进注释没人绑）。
      * 契约层 {@code WorkflowTriggerContractTest} 用 250ms 起服务并断言 FAILED 行里点名的就是这个值，
      * 摘掉下面这个注解会当场红。
+     * <p>
+     * 键与默认值都取自 {@link WfAdapter}：那一边拿同一个数收住 socket，这里拿它收住等待。
+     * 分成两个键就会有一个数没人对齐，而"派发等到 250ms 就放弃、传输却还能占住槽 60s"正是
+     * {@link #workers} 被占满的那种走法。
      */
-    @Value("${z-lc.workflow.dispatch-timeout-ms:3000}")
+    @Value("${" + WfAdapter.TIMEOUT_PROPERTY + ":" + WfAdapter.DEFAULT_TIMEOUT_MS + "}")
     void setTimeoutMs(long timeoutMs) {
-        this.timeoutMs = timeoutMs;
+        this.timeoutMs = timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
     }
 
     void setWorkers(ExecutorService workers) {

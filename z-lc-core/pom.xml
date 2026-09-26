@@ -57,6 +57,16 @@
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-http</artifactId>
         </dependency>
+        <!-- 唯一的例外，且不是"自造一套客户端"：z-util-http 改超时的入口只有
+             {@code new HttpExecutor(OkHttpClient)} 一个（实测 HttpRequestDefinition 没有任何超时字段，
+             HttpClientFactory 注释里的 contextParams.timeout 全包无人读）。写后发起必须能给自己一个
+             比共享客户端 60s 短得多的预算，否则一次挂死的流程引擎会把派发池两个槽按住 60s，
+             之后每一条新记录都发不出去（缺陷 #61 契约层实测）。版本号不写在这里 ——
+             由 z-boot-dependencies BOM 管，与 z-util-http 带来的那一份同源，不存在两处各 pin 一件事。 -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+        </dependency>
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-parser-json</artifactId>

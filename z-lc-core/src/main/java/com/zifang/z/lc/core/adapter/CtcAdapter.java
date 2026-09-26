@@ -71,12 +71,30 @@ public class CtcAdapter implements Adapter {
      * POST JSON 请求封装. 公共方法, 供 4 个 Adapter 共享.
      */
     static HttpExecutionResult doPostJson(String url, Map<String, String> headers, String jsonBody) {
+        return doPostJson(HttpExecutor.getDefault(), url, headers, jsonBody);
+    }
+
+    /**
+     * 同一个请求，但由调用方指定执行器 —— 因为"这一次调用最多允许占住一个线程多久"只有
+     * {@link HttpExecutor} 构造时给的 OkHttpClient 说得出来（z-util-http 1.0.12 实测：
+     * {@code HttpRequestDefinition} 没有任何超时字段，{@code HttpClientFactory} 注释里那个
+     * {@code contextParams.timeout} 在整包里只出现在注释里，没有任何一行代码读它）。
+     * <p>
+     * 现在只有一个调用方用它：{@link WfAdapter} 的写后发起。见那里的 {@link #TRANSPORT_BUDGET_NOTE}。
+     */
+    static HttpExecutionResult doPostJson(HttpExecutor executor, String url,
+                                          Map<String, String> headers, String jsonBody) {
         Map<String, String> all = headers == null ? new HashMap<>() : new HashMap<>(headers);
         all.put("Content-Type", "application/json; charset=UTF-8");
-        return doRequest("POST", url, all, jsonBody);
+        return doRequest(executor, "POST", url, all, jsonBody);
     }
 
     static HttpExecutionResult doRequest(String method, String url, Map<String, String> headers, String body) {
+        return doRequest(HttpExecutor.getDefault(), method, url, headers, body);
+    }
+
+    static HttpExecutionResult doRequest(HttpExecutor executor, String method, String url,
+                                         Map<String, String> headers, String body) {
         HttpRequestLine line = new HttpRequestLine();
         line.setRequestMethod(RequestMethod.valueOf(method));
         line.setUrl(url);
@@ -101,8 +119,12 @@ public class CtcAdapter implements Adapter {
             reqBody.setBody(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             def.setHttpRequestBody(reqBody);
         }
-        return HttpExecutor.getDefault().execute(def);
+        return (executor == null ? HttpExecutor.getDefault() : executor).execute(def);
     }
+
+    /** 指给 {@link #doPostJson(HttpExecutor, String, Map, String)} 的存在理由，避免两处各写一遍。 */
+    static final String TRANSPORT_BUDGET_NOTE =
+            "一次挂死的发起会把派发池的槽位按住到共享客户端的 60s 读超时（缺陷 #61 契约层实测）";
 
     /**
      * 判"远端到底答没答应"。
