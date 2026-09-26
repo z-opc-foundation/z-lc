@@ -30,6 +30,8 @@ D1–D7 的预期集是按新夹具重推的，D8–D13 是 #47 自己的。
   D11 400 给但不说是哪一栏              -> 只应打掉"点名是哪一栏、并指向 provision"一条
   D12 400 把驱动原文拼进文案             -> 只应打掉"不带 SQL 文本与物理表名"那一条（与 D11 互补）
   D13 新建的表也说成"表本来就在"          -> CREATED 那一条 + 汇总里的 created（D5 的镜像）
+  D14 摘掉 #54 的必填闸（有行就不发那条 DDL）-> 只应打掉"FAILED 带的是平台自己的可操作原因"一条
+                                          （为什么在 H2 上只红这一条，见 RUNS 里 D14 的注释）
 
 三轮实测（第 1 轮 11 支跑出 8 处偏差，第 2 轮 13 支只剩 1 处，第 3 轮 `RESULT: deployed-layer
 falsification done`、13/13 逐字相同、还原干净、恢复后 434/434）：D4/D9/D11 从第一遍就逐字相同，
@@ -109,7 +111,8 @@ Q_ONLY_ADD = "补列只加不删：上一支实体留下的那一栏还在（动
 Q_ALTER_MSG = "成功文案说的是这次真的补了列，不许退回「列一列不缺」"
 Q_DB_REFUSES = "库自己拒的 DDL 不许说成 ALTERED：补不上就是 FAILED"
 Q_FAILED_NAMED = "FAILED 点名没补上的那一栏"
-Q_FAILED_REASON = "FAILED 带上库给的原因（H2 实测 NULL not allowed），但不带 DDL 文本"
+Q_FAILED_REASON = "FAILED 带的是平台自己的可操作原因，不是库的错误文本（250 实测: MySQL 8 对这条 DDL 根本不报错）"
+
 Q_DB_LACKS = "库里确实没有那一列（FAILED 不是报告撒的谎）"   # 见下面的 NOT_COVERED
 Q_BATCH_NOT_500 = "一支坏实体不再把整批 provision 变成 500（旧口径抛异常，调用方只知道「失败了」）"
 Q_SIX_KEYS = "汇总带 total/created/unchanged/altered/failedCount/allOk 六个数（#47 多了 altered 这一格）"
@@ -183,6 +186,8 @@ RECONCILE_MUT = ('            ProvisionReport.Item legacy = item(def, ProvisionR
                  '            legacy.setMissingColumns(missingUser);\n'
                  '            return legacy;')
 ALTER_COUNT = '                report.setAltered(report.getAltered() + 1);'
+# 缺陷 #54 的闸: 必填、无默认值、表里有行 —— 这条 DDL 根本不该发出去。
+REFUSE_ANCHOR = '            if (f.getRequired() != null && f.getRequired() && !hasDeclaredDefault(f)) {'
 # 读侧: 缺列的 400 是 #47 的另一半，它整个住在 z-lc-web 的那个 advice 里。
 H_400 = ('        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Result.fail(\n'
          '                "这一栏在物理表里还不存在: " + column + "。定义已经改到表前面了，去设计器点一次「provision」补列"\n'
@@ -296,6 +301,19 @@ RUNS = [
      #   `provision 回三态之一 (status=CREATED)` —— 住在 [4]，改的是所有 provision 共用的那句判定，
      #     所以它必红；不认领它就会让一次正当注入看起来像"一支注入搅了两节"（见 P_TRISTATE 注释）。
      [S_CREATED, Q_STATUS_GRID, Q_HOLDER_REAL, P_TRISTATE]),
+    ("D14", [(SCHEMA, REFUSE_ANCHOR, '            if (false) {')],
+     # 缺陷 #54 那一族在本层的形状：摘掉"有行 + 必填 + 无默认值 => 一列都不发"的闸，回到
+     # "先发 DDL，看库给什么脸色"。预期只有 [Q_FAILED_REASON] 一条 —— 理由要说清，因为这恰恰
+     # 是本层最容易自欺的地方：
+     #   `库自己拒的 DDL 不许说成 ALTERED` (Q_DB_REFUSES) **不会红**。这一层的量具打的是 dev 的
+     #   H2（HEALTH=localhost:18090），H2 对这条语句当场报错 => 走了异常分支 => 状态仍是 FAILED、
+     #   仍点名 needs_value（`still` 的回读照样缺）、`库里确实没有那一列` 也照样成立。摘闸在 H2 上
+     #   唯一改到的就是那句原因: 平台那句可操作的话被 briefCause(H2 原文) 顶掉。
+     #   => 这一支在本层打不到#54 真正的那一半（MySQL 8 接受语句、把已有行静默填成空串，于是
+     #   状态翻成 ALTERED 且列真的进了库）。那一半在两个地方有牙: java 单测层的 N1/N3
+     #   (mutate_collation_guard.py，用假的 physicalColumns/hasRows 把"库接受了"演出来)，
+     #   以及同一份套件打真 MySQL 8 (`bash _e2e/deploy_250.sh api`)。本层不许把它记成"已证伪"。
+     [Q_FAILED_REASON]),
 ]
 
 

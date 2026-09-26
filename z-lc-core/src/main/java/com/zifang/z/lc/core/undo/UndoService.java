@@ -104,6 +104,11 @@ public class UndoService {
      * {@code 2026-09-20T02:30:00.000+00:00}; 而 FieldTypeRegistry 的日期解析只认
      * {@code yyyy-MM-dd HH:mm:ss} / {@code yyyy-MM-dd}. 不换算的话, 快照能存但不能重放 ——
      * 撤销删除时会以 "Field requires date: ..." 直接失败, 凡是带日期/时间字段的实体都中招.
+     * <p>
+     * 但"读回来的是什么类型"本身随驱动变: H2 给 java.sql.Timestamp, 而 MySQL 8 的 Connector/J
+     * 给 java.time.LocalDateTime —— 它既不是 Date 也不是 String, 上面两支全落空, 于是快照里存进
+     * 了带 T 的 ISO 串 (250 上真 MySQL 实测: {@code "last_visit":"1937-11-05T12:00:00"}),
+     * 重放当场失败。java.time 这一族必须在**写快照时**就归一, 不能指望读的那头.
      */
     private Object wireFormat(Object value, String fieldType) {
         if (value == null || fieldType == null) {
@@ -113,6 +118,19 @@ public class UndoService {
         if (value instanceof Date && ("DATE".equals(type) || "DATETIME".equals(type))) {
             String pattern = "DATE".equals(type) ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss";
             return new java.text.SimpleDateFormat(pattern).format((Date) value);
+        }
+        if (value instanceof java.time.LocalDateTime && "DATETIME".equals(type)) {
+            return ((java.time.LocalDateTime) value).format(
+                    java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", java.util.Locale.ROOT));
+        }
+        if (value instanceof java.time.LocalDate && ("DATE".equals(type) || "DATETIME".equals(type))) {
+            return value.toString();
+        }
+        if (value instanceof java.time.LocalTime && "TIME".equals(type)) {
+            // LocalTime.toString() 在整分时给的是 "12:00" —— 秒不是可有可无的装饰，
+            // 快照要和写路径认的形态一字不差。
+            return ((java.time.LocalTime) value).format(
+                    java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss", java.util.Locale.ROOT));
         }
         if (value instanceof String && ("DATE".equals(type) || "DATETIME".equals(type))) {
             String text = ((String) value).trim();
@@ -280,7 +298,9 @@ public class UndoService {
     private void applyInverted(EntityDefDTO entity, DataChangeEntity target,
                                String tenantCode, String appCode, String actor) {
         assertNotSuperseded(target);
-        Map<String, Object> before = read(target.getBeforeImage());
+        // 老快照 (修复之前写的) 里存的就是带 T 的 ISO 串，重放这一头也要归一次 ——
+        // 不然"修了写快照的代码"等于"只对新数据有效，历史日志里的删除永远撤不回来"。
+        Map<String, Object> before = persistable(entity, read(target.getBeforeImage()));
         String op = target.getOperation() == null ? "" : target.getOperation();
         if (DataChangeEntity.OP_CREATE.equals(op)) {
             // 撤销新建 = 软删这条记录
@@ -303,7 +323,7 @@ public class UndoService {
 
     private void applyForward(EntityDefDTO entity, DataChangeEntity target,
                               String tenantCode, String appCode, String actor) {
-        Map<String, Object> after = read(target.getAfterImage());
+        Map<String, Object> after = persistable(entity, read(target.getAfterImage()));
         String op = target.getOperation() == null ? "" : target.getOperation();
         if (DataChangeEntity.OP_CREATE.equals(op)) {
             if (after.isEmpty()) {

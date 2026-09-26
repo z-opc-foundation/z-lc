@@ -8,9 +8,9 @@
 #48 修的是"三份口径互不相符"：词表(后端注释 READ/WRITE/ADMIN vs 矩阵列头)、查重、
 作用范围。这类错法有个共同点 —— **页面照样画得出来，而且画出来的比正确更像正确**：
 一个实体的授权把「整个应用」那格点亮，看着完全合理，只有 `/permission/check` 知道答案
-是拒绝。所以这一支测的不是"有没有红"，而是"我声称钉住的那十条，是不是每条只钉自己那一句"。
+是拒绝。所以这一支测的不是"有没有红"，而是"我声称钉住的那十四条，是不是每条只钉自己那一句"。
 
-十二支注入都是这段代码最可能写错的样子（不是稻草人）：
+十八支注入都是这段代码最可能写错的样子（不是稻草人）：
 B1 格子退化成"出现过就算有"、B2 应用级行不再覆盖实体、B3 授予时不带当前档位、
 B4 回收的"已回收"抢在请求前面、B5 校验框顺手改掉整页筛选、B6 把筛选搬回后端、
 B7/B8/B9 词表从前端/后端顺序/后端内容三个方向漂移、B10 页面自己抄一份列头、
@@ -19,9 +19,14 @@ B11/B12 空态的两半各说错一次。B12 这一支换了两次写法才测�
 算出来），于是改成 `state !== 'error'` —— 一支永远打不红的注入不是测试在保护什么，
 是守卫自己骗过自己，见它下面那条注释。
 
+B13–B18 是 #50 那一半的新代码（矩阵行集 = 授权里的角色 ∪ 手动加进来的角色）：
+B13 行集退回筛过的行、B14 手动加的角色根本不并进矩阵（有输入框没入口）、B15 名字不 trim、
+B16 不查重、B17 换应用不清、B18 空名字也能提交。这一族里 B14 一支红三条是设计如此 ——
+"授出第一条"这件事在界面上只有一个入口，入口没了三条各钉一面的用例一起塌。
+
 B7/B8/B9 三支故意分别从 TS、Java 顺序、Java 内容三个面进来 —— 只钉一面时另一面会漂。
 
-判据分母 = 这两个文件自己的 10 条（PermissionsPage 8 + permissionVocabulary 2）。
+判据分母 = 这两个文件自己的 14 条（PermissionsPage 12 + permissionVocabulary 2）。
 按文件跑而不是全量：与 mutate_pivot_guards 同一理由 —— 全量跑会把一轮变成十几分钟，
 而**跑不完不等于通过，等于没测**。
 """
@@ -39,7 +44,7 @@ KEYS_TS = UI / "src/api/permission.ts"
 KEYS_JAVA = UI.parent / "z-lc-core/src/main/java/com/zifang/z/lc/core/permission/PermissionKeys.java"
 SUITES = ["src/views/admin/PermissionsPage.test.tsx", "src/api/permissionVocabulary.test.ts"]
 
-BASELINE_TOTAL = 10
+BASELINE_TOTAL = 14
 REPEATS = 2
 
 # 留档不能用 /tmp：同一台机器上别的会话会扫它（本项目已复现过两次"日志失踪"）。
@@ -121,11 +126,15 @@ COLLECTED = [
     '库里真的没有授权时说"还没有权限配置"，不套用「筛选后没有匹配」那句',
     "回收失败要报后端那句 400，不许报「已回收」",
     "校验框自己选实体，不该顺手改掉整页筛选",
+    "一条授权都没有的角色，也能从这一页授出第一条",
+    "同一个角色加两次只多一行（两行会给出同一格互相矛盾的答案）",
+    '按实体过滤不许把"只有别的实体有授权"的角色整行藏掉',
+    "换应用要把上一轮手动加进来的角色带走（它不属于这个应用）",
     "矩阵列头就是 PermissionKeys.ALL，一项不多一项不少，顺序也一致",
     "页面里不再有第二份抄出来的权限词",
 ]
 
-T1, T2, T3, T4, T5, T5b, T6, T7, V1, V2 = COLLECTED
+T1, T2, T3, T4, T5, T5b, T6, T7, T8, T9, T10, T11, V1, V2 = COLLECTED
 
 JAVA_ALL = "Arrays.asList(VIEW, CREATE, UPDATE, DELETE, EXPORT)"
 
@@ -136,7 +145,9 @@ RUNS = [
         [(PAGE,
           "      granted: mine.some((row) => (scope ? coversScope(row, scope) : isAppWide(row))),",
           "      granted: mine.length > 0,")],
-        [T1, T2],
+        # T10 是 #50 补的那一支（同一格在别实体的档位下该灭着并点名）：B1 摘的正是这个口径，
+        # 它连带红是同一个因的另一层，取证 `expected '已授予该实体单独授予' to be '授予另有1个实体单独授予'`。
+        [T1, T2, T10],
     ),
     (
         "B2 coversScope 丢掉应用级那一支（选了实体后，覆盖它的授权反而不点亮）",
@@ -145,7 +156,9 @@ RUNS = [
           "  !row.entityCode || row.entityCode === scope;",
           "const coversScope = (row: PermissionEntity, scope: string) =>\n"
           "  row.entityCode === scope;")],
-        [T2, T4],
+        # T10 里那句「清单按实体筛时应用级那一行也算覆盖」(listRowCount == 2) 与 T2/T4 同因，
+        # 取证 `expected 1 to be 2`。
+        [T2, T4, T10],
     ),
     (
         "B3 授予时不带当前档位（payload 永远授给整个应用，界面却写着（task））",
@@ -191,7 +204,9 @@ RUNS = [
         [(KEYS_TS,
           "export const PERMISSION_KEYS = ['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'EXPORT'] as const;",
           "export const PERMISSION_KEYS = ['VIEW', 'CREATE', 'UPDATE', 'DELETE'] as const;")],
-        [T3, V1],
+        # T8 点名了五个动词（新那一行五格全得能点），少一项它就先撞在"列头里没有 EXPORT"上 ——
+        # 与 T3 同一因的两层，取证 `Error: 矩阵列头里没有 EXPORT，实际: ...`。
+        [T3, T8, V1],
     ),
     (
         "B8 后端 ALL 换了顺序（列顺序是词表顺序，两边一漂就是两副面孔）",
@@ -208,9 +223,9 @@ RUNS = [
         [(PAGE,
           "              ...PERMISSION_KEYS.map((key) => ({",
           "              ...(['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'READ'] as PermissionKey[]).map((key) => ({")],
-        [T3, V2],
-        # 实测打红的第二条不是白名单: 手抄的那份没有 EXPORT，T3 要点 (SALES, EXPORT) 那一格，
-        # cell() 直接抛"矩阵列头里没有 EXPORT"。与 B7(前端词表少一项)同一因的另一层。
+        [T3, T8, V2],
+        # 实测打红的第三条不是白名单: 手抄的那份没有 EXPORT，T3 要点 (SALES, EXPORT) 那一格、
+        # T8 要逐格看新那一行的五格，两处都先撞在"列头里没有 EXPORT"上（取证同上）。
     ),
     (
         "B11 空态不做筛选感知（#48 修之前的原样：筛完 0 行就说这应用没配过权限）",
@@ -237,6 +252,54 @@ RUNS = [
         # done + 有行才 ready，done + 零行是 'empty'），所以那个合取项永远改不了结果。
         # 换成 `state !== 'error'` 才是人真会写错的样子（把"读成功"简化成"没坏"），
         # 它让 'empty'/'idle'/'loading' 三档都掉进筛选那一句，T5b 才有牙。
+    ),
+    # ---- #50：矩阵的行集。每一支新写的分支各进来一次注入 ----
+    (
+        "B13 矩阵行退回到只从筛过的行里推（#50 原样：选了实体就把别实体的角色整行藏掉）",
+        # 两支一起改，少一支就是**等价变异**：第一版只把 `allRows` 换成 `visible`，14 条全绿 ——
+        # 因为 useMemo 的依赖还写着 allRows，entityCode 变了 memo 根本不重算，那一行换没换都一样。
+        # （#50 之前的老代码是 `const roles = Array.from(new Set(visible...))`，每次渲染都重算，
+        # 所以"退回原样"这件事必须连依赖一起退，否则注入的是一把不存在的刀。）
+        [(PAGE,
+          "      new Set(allRows.map((row) => row.roleCode).filter(Boolean) as string[]),",
+          "      new Set(visible.map((row) => row.roleCode).filter(Boolean) as string[]),"),
+         (PAGE,
+          "  }, [allRows, addedRoles, roleCode]);",
+          "  }, [visible, addedRoles, roleCode]);")],
+        [T10],
+    ),
+    (
+        "B14 手动加进来的角色不进矩阵（有输入框、没有入口，第一条权限还是授不出去）",
+        [(PAGE,
+          "    const pending = addedRoles.filter((role) => !seen.includes(role));",
+          "    const pending: string[] = [];")],
+        [T8, T9, T11],
+    ),
+    (
+        "B15 角色名不 trim（库里会同时有 \"Manager\" 和 \" Manager \" 两个角色）",
+        [(PAGE,
+          "    const role = newRole.trim();\n    if (!role) return;",
+          "    const role = newRole;\n    if (!role) return;")],
+        [T8],
+    ),
+    (
+        "B16 「加入矩阵」不查重（同一角色两行，同一格给出两个互相矛盾的答案）",
+        [(PAGE,
+          "    setAddedRoles((prev) => (prev.includes(role) ? prev : [...prev, role]));",
+          "    setAddedRoles((prev) => [...prev, role]);")],
+        [T9],
+    ),
+    (
+        "B17 换应用不清掉手动加的角色（上个应用填的名字，在这个应用里还是个能点的格子）",
+        [(PAGE,
+          "        setAddedRoles([]);\n        setNewRole('');\n        setAppCode(value);",
+          "        setAppCode(value);")],
+        [T11],
+    ),
+    (
+        "B18 名字没填也能提交（矩阵里多出一行空角色，那一行五格全都能点）",
+        [(PAGE, "          disabled={!newRole.trim()}", "          disabled={false}")],
+        [T8],
     ),
 ]
 

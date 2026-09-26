@@ -54,6 +54,8 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper jsonMapper = JsonMapperFactory.getDefault();
+    /** 从元数据表问出来的 {字符集, 校对}；问不到就留 null，下次再问 (库可能还没建元数据表)。 */
+    private volatile String[] metaCharsetCache;
     @Autowired
     private LcAppEntityMapper appMapper;
     @Autowired
@@ -479,6 +481,17 @@ public class SchemaAdminBizService implements SchemaAdminService {
         if (!missingUser.isEmpty()) {
             return reconcileColumns(def, ddl, missingUser);
         }
+        // 列一列不缺 ≠ 这张表读得出来。校对和元数据层不一致时，MySQL 8 在第一个跨表字符串比较上
+        // 就当场 500 (列表页 JOIN 字典取 label)，而"建表成功"的报告是全绿的。刚建出来的表也问一遍:
+        // 那才是"上面钉的子句真生效了"的证据，不是 DDL 文本的自我安慰。
+        String[] meta = metadataCharsetCollation();
+        if (meta != null) {
+            String repair = collationRepairMessage(def.getTableName(), meta[0], meta[1],
+                    tableCollation(def.getTableName()));
+            if (repair != null) {
+                return item(def, ProvisionReport.FAILED, ddl, repair);
+            }
+        }
         return before.isEmpty()
                 ? item(def, ProvisionReport.CREATED, ddl, "已按这份定义建表")
                 : item(def, ProvisionReport.EXISTS_INTACT, ddl, "表本来就在，列一列不缺，跳过建表");
@@ -487,8 +500,9 @@ public class SchemaAdminBizService implements SchemaAdminService {
     /**
      * 把定义里有、表里还没有的那几列补上。逐列执行，坏的一列只红自己并把原因带回去。
      * <p>
-     * 补完**再回读一次**物理列: "ALTER 没报错"和"那一栏真在表里了"仍然不是同一件事
-     * (比如给一张有行的表加 NOT NULL 且无默认值，MySQL 会拒)。所以最终状态以回读为准。
+     * 补完**再回读一次**物理列: "ALTER 没报错"和"那一栏真在表里了"仍然不是同一件事，
+     * 所以最终状态以回读为准。回读还挡着另一头: 有些 DDL 库根本不报错、却把已有行改了
+     * （缺陷 #54 的实测: MySQL 8 接受给有行的表加 NOT NULL 无默认值的列，把那一栏填成空串）。
      */
     private ProvisionReport.Item reconcileColumns(EntityDefDTO def, String createDdl, List<String> missingUser) {
         EntityEntity squatter = otherLiveEntityOnSameTable(def);
@@ -516,12 +530,28 @@ public class SchemaAdminBizService implements SchemaAdminService {
         StringBuilder ddl = new StringBuilder(createDdl);
         List<String> added = new ArrayList<>();
         List<String> refused = new ArrayList<>();
+        Boolean hasRows = null;
         for (String code : missingUser) {
             FieldDefDTO f = byCode.get(code);
             if (f == null) {
                 // 期望列里点名了它，定义里却没有这一栏: 那是引擎自建列的口径, 上面已经拦过了。
                 refused.add(code + ": 定义里没有这一栏");
                 continue;
+            }
+            if (f.getRequired() != null && f.getRequired() && !hasDeclaredDefault(f)) {
+                if (hasRows == null) {
+                    hasRows = tableHasRows(def.getTableName());
+                }
+                if (hasRows) {
+                    // 这一支不碰 DDL：同一句话在两个库上的结局不一样，而坏的那一半是**静默**的。
+                    // 实测（250 上 mysql:8.0.26，@@sql_mode 含 STRICT_TRANS_TABLES）：给有行的表
+                    // ADD COLUMN 一个 NOT NULL 且无默认值的列 —— 库**接受**并把已有行填成空串；
+                    // dev 的 H2 则当场拒。所以"能不能补"不该由换库决定。
+                    refused.add(code + ": 必填、没配默认值，而表里已经有行 —— 补这一列要么把已有行"
+                            + "静默填成空串（MySQL 8 实测），要么被库拒掉（H2 实测），两种都不是"
+                            + "「这一栏必填」的本意。给它配一个默认值再补列");
+                    continue;
+                }
             }
             String one = buildAddColumnDdl(def.getTableName(), f);
             ddl.append("\n\n").append(one).append(';');
@@ -595,6 +625,32 @@ public class SchemaAdminBizService implements SchemaAdminService {
             log.warn("Failed to read physical columns of {}: {}", tableName, ex.getMessage());
         }
         return cols;
+    }
+
+    /**
+     * 表里到底有没有行 —— 补"必填且无默认值"那一栏之前必须先问这一个，因为"已有行"才是
+     * 那条 DDL 结果分叉的前提（空表两个库都会补上，谁也不静默改数据）。
+     * <p>
+     * 读不通、表名认不出都按**有行**处理：这一支宁可多拦一句让用户配默认值，也不许在
+     * 不知情的情况下改动已有数据。
+     */
+    private boolean tableHasRows(String tableName) {
+        String safe = ddlIdentifier(tableName == null ? "" : tableName);
+        if (safe == null) {
+            return true;
+        }
+        try {
+            return !jdbcTemplate.queryForList("select 1 from `" + safe + "` limit 1").isEmpty();
+        } catch (Exception ex) {
+            log.debug("Cannot tell whether {} has rows ({}), treating it as populated",
+                    safe, ex.getMessage());
+            return true;
+        }
+    }
+
+    /** 与 {@link #columnClause} 同一个口径: 只有真能落进 DEFAULT 子句的默认值才算"配了默认值"。 */
+    private static boolean hasDeclaredDefault(FieldDefDTO f) {
+        return f.getDefaultValue() != null && !f.getDefaultValue().isEmpty();
     }
 
     /**
@@ -719,10 +775,111 @@ public class SchemaAdminBizService implements SchemaAdminService {
         sb.append("  `create_time` DATETIME COMMENT '创建时间',\n");
         sb.append("  `update_time` DATETIME COMMENT '更新时间',\n");
         sb.append("  PRIMARY KEY (`id`)\n");
-        sb.append(") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='")
+        sb.append(") ENGINE=InnoDB ").append(tableCharsetClause()).append(" COMMENT='")
                 .append(def.getEntityName() != null ? def.getEntityName() : def.getEntityCode())
                 .append("'");
         return sb.toString();
+    }
+
+    /**
+     * 运行时表要和元数据层用同一套字符集/校对。
+     * <p>
+     * 只写 {@code DEFAULT CHARSET=utf8mb4} 是不够的: MySQL 8 下"给了 charset 不给 collation"
+     * 取的是**该 charset 的默认校对** (utf8mb4_0900_ai_ci)，而不是库默认。元数据表 z_lc_* 是照
+     * 建表语句建的、多半沿用库默认 (utf8mb4_general_ci)，于是运行时表和它在字符串比较上差一个
+     * 校对级别 —— 列表页 JOIN 字典取 label、按字典字段分组、交叉表，全都当场 500
+     * {@code Illegal mix of collations ... for operation '='}。250 上真 MySQL 8 实测：一轮 API
+     * 门禁 28 条红里 8 条是这个。
+     * <p>
+     * 所以去问元数据表实际用的那一套并钉上；问不到 (H2 / 无 information_schema 权限 / 库还没建
+     * 元数据表) 就退回原来的写法，与修复前行为一致。
+     */
+    private String tableCharsetClause() {
+        String[] meta = metadataCharsetCollation();
+        if (meta != null) {
+            return "DEFAULT CHARSET=" + meta[0] + " COLLATE=" + meta[1];
+        }
+        return "DEFAULT CHARSET=utf8mb4";
+    }
+
+    /**
+     * 校对不一致时的处置文案；两边一致或任何一边问不到时返回 null = **不判**。
+     * <p>
+     * "问不到就不判"是有意的：H2 根本没有校对这个概念，硬判会让 dev 环境的每一次 provision
+     * 都红，而那个红和产品无关。
+     */
+    static String collationRepairMessage(String tableName, String wantCharset, String want, String got) {
+        if (want == null || got == null || want.equals(got)) {
+            return null;
+        }
+        return "表 " + tableName + " 的校对是 " + got + "，元数据层用的是 " + want
+                + " —— 跨表比较会当场 500 (Illegal mix of collations)，这张表现在读不出来。"
+                + "修它: ALTER TABLE `" + tableName + "` CONVERT TO CHARACTER SET "
+                + wantCharset + " COLLATE " + want;
+    }
+
+    /** 元数据表用的 {字符集, 校对}；问不到返回 null。列名是查询返回的标签，一律先过标识符校验再进 DDL。 */
+    private String[] metadataCharsetCollation() {
+        String[] cached = metaCharsetCache;
+        if (cached != null) {
+            return cached;
+        }
+        try {
+            Map<String, Object> row = jdbcTemplate.queryForMap(
+                    "select character_set_name, collation_name from information_schema.columns"
+                            + " where table_schema = database() and table_name = 'z_lc_dict_item'"
+                            + " and column_name = 'item_code'");
+            String cs = ddlIdentifier(str(row.get("character_set_name")));
+            String coll = ddlIdentifier(str(row.get("collation_name")));
+            if (cs != null && coll != null) {
+                metaCharsetCache = new String[]{cs, coll};
+            }
+        } catch (Exception ex) {
+            log.debug("No metadata charset/collation to inherit ({}): {}",
+                    "z_lc_dict_item", ex.getMessage());
+        }
+        return metaCharsetCache;
+    }
+
+    /**
+     * 物理表实际用的校对；问不到返回 null (不做判定)。
+     * <p>
+     * 表级那一列在 MySQL 8 的 {@code information_schema.tables} 上叫 {@code TABLE_COLLATION}，
+     * {@code COLLATION_NAME} 是 {@code information_schema.columns} 的列名 —— 写成后者时这句在
+     * 真 MySQL 上每次必抛 1054，被下面的 catch 吞成"问不到"，整道校对闸因此一次都不咬（缺陷 #57，
+     * 250 实测：漂到 utf8mb4_0900_ai_ci 的表 provision 照样报 EXISTS_INTACT）。
+     * <p>
+     * 只有元数据层问得到参照（= 这个库确实有校对这个概念）时调用方才会走到这里，所以这里的失败
+     * 不是"H2 没有校对这个概念"那种合法的"问不到"，而是**这句 SQL 问坏了** —— 一律 warn，不再 debug。
+     */
+    private String tableCollation(String tableName) {
+        if (tableName == null || tableName.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            String coll = str(jdbcTemplate.queryForObject(
+                    "select table_collation from information_schema.tables"
+                            + " where table_schema = database() and table_name = ?",
+                    String.class, tableName));
+            return coll == null ? null : coll.toLowerCase(Locale.ROOT);
+        } catch (Exception ex) {
+            log.warn("Metadata layer has a collation but table {} cannot be asked ({}): {}",
+                    tableName, "information_schema.tables.table_collation", ex.toString());
+            return null;
+        }
+    }
+
+    private static String str(Object v) {
+        return v == null ? null : String.valueOf(v);
+    }
+
+    /** 只放行 [A-Za-z0-9_] 的标识符进 DDL 尾部子句，其余一律当"问不到"处理。 */
+    private static String ddlIdentifier(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String v = raw.trim();
+        return v.matches("[A-Za-z0-9_]+") ? v.toLowerCase(Locale.ROOT) : null;
     }
 
     /**

@@ -559,6 +559,66 @@ class LcHttpContractTest {
         assertEquals(original, orderName(1), "teardown should restore the baseline");
     }
 
+    /** 这一支自己的日志行: actor 用一个别处不会撞的名字, finally 里删干净。 */
+    private static final String LEGACY_ACTOR = "legacy_it";
+
+    /** 手工种一条"修复之前写下的"变更日志 (前像里是带 T 的 ISO 串), 返回它的 id。 */
+    private long insertLegacySnapshot(String beforeImage, String afterImage) {
+        java.sql.Timestamp now = new java.sql.Timestamp(System.currentTimeMillis());
+        int inserted = jdbc().update("INSERT INTO z_lc_data_change (tenant_code, app_code, entity_code,"
+                        + " record_id, operation, before_image, after_image, actor, create_time, update_time, deleted)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                TENANT, APP, ENTITY, 1L, "UPDATE", beforeImage, afterImage, LEGACY_ACTOR, now, now);
+        assertEquals(1, inserted, "夹具: 日志行要先种得进去");
+        Long id = jdbc().queryForObject("SELECT MAX(id) FROM z_lc_data_change WHERE actor = ? AND record_id = 1",
+                Long.class, LEGACY_ACTOR);
+        assertNotNull(id, "夹具: 种完要读得回那条日志的 id");
+        return id;
+    }
+
+    private String closedAtRaw() {
+        return jdbc().queryForObject("SELECT closed_at FROM lc_demo_order WHERE id = 1", String.class);
+    }
+
+    /**
+     * 缺陷 #51 的第二半: 修复之前那版代码在 MySQL 8 下写下的日志, 前像里存的是带 T 的 ISO 串
+     * (250 实测: {@code "last_visit":"1937-11-05T12:00:00"})。只改"新快照怎么写"等于宣布历史里
+     * 那些改动永远撤不回来 —— 所以读回这一头也要归一次, 而且这里判的是**物理行真的落了**。
+     */
+    @Test
+    @DisplayName("缺陷#51 回归：修复前写下的 ISO 日期前像，撤销仍要能落地")
+    void undoOfLegacyIsoDateTimeSnapshotLands() throws Exception {
+        String want = "1937-11-05 12:00:00";
+        String before = closedAtRaw();
+        // 前置自证: 目标值不能已经就是当前值, 否则"落了"可以是"本来就在那儿"。
+        assertNotEquals(want, before, "夹具: 种子行 1 的 closed_at 不能已经是目标值");
+
+        long changeId = insertLegacySnapshot("{\"closed_at\":\"1937-11-05T12:00:00\"}",
+                "{\"closed_at\":\"2031-01-01T08:09:10\"}");
+        try {
+            JsonNode undone = postAs(LEGACY_ACTOR, "/api/lc/undo/undo",
+                    "{\"appCode\":\"" + APP + "\",\"tenantCode\":\"" + TENANT + "\"}");
+            assertOk(undone, "undo 一条历史 ISO 快照");
+            assertTrue(undone.path("data").path("applied").asBoolean(),
+                    "撤销必须落地, 而不是回一句「Field requires date」: " + undone);
+            assertEquals("UPDATE", undone.path("data").path("operation").asText(),
+                    "命中我种的那一条 (而不是顺手撤了别人的): " + undone);
+            assertEquals(want, closedAtRaw(), "前像要写成物理列认的形态");
+
+            // redo 走的是同一份历史里的**后像**, 也是带 T 的串 —— 只修 undo 那一头等于半修。
+            JsonNode redone = postAs(LEGACY_ACTOR, "/api/lc/undo/redo",
+                    "{\"appCode\":\"" + APP + "\",\"tenantCode\":\"" + TENANT + "\"}");
+            assertOk(redone, "redo 同一条历史 ISO 快照");
+            assertTrue(redone.path("data").path("applied").asBoolean(),
+                    "重做必须落地: " + redone);
+            assertEquals("2031-01-01 08:09:10", closedAtRaw(), "后像也要归一");
+        } finally {
+            jdbc().update("DELETE FROM z_lc_data_change WHERE id = ?", changeId);
+            jdbc().update("UPDATE lc_demo_order SET closed_at = ? WHERE id = 1", before);
+        }
+        assertEquals(before, closedAtRaw(), "收尾要还原种子行");
+    }
+
     @Test
     @DisplayName("连续 undo 按 LIFO 逐条回退，撤销过的不会再被撤销")
     void undoWalksBackLifoAndStops() throws Exception {

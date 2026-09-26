@@ -46,6 +46,8 @@ export function PermissionsPage() {
   const entityOptions = entitiesSource.options;
   const [roleCode, setRoleCode] = useState('');
   const [entityCode, setEntityCode] = useState('');
+  const [newRole, setNewRole] = useState('');
+  const [addedRoles, setAddedRoles] = useState<string[]>([]);
   const [probeRole, setProbeRole] = useState('');
   const [probeEntity, setProbeEntity] = useState('');
   const [probePermission, setProbePermission] = useState<PermissionKey>('VIEW');
@@ -109,7 +111,13 @@ export function PermissionsPage() {
     {
       title: '作用范围',
       dataIndex: 'entityCode',
-      render: (value?: string | null) => (value ? <Tag>{value}</Tag> : <Text type="secondary">整个应用</Text>),
+      // `data-scope` 给浏览器层：整个应用 = 库里 `entity_code IS NULL`，这一格是那句
+      // SQL 三值逻辑唯一在界面上的出口，光看中文说不清它到底钉没钉住 NULL 那一档。
+      render: (value?: string | null) => (
+        <span data-testid="perm-scope" data-scope={value || 'APP_WIDE'}>
+          {value ? <Tag>{value}</Tag> : <Text type="secondary">整个应用</Text>}
+        </span>
+      ),
     },
     {
       title: '',
@@ -121,6 +129,7 @@ export function PermissionsPage() {
           type="link"
           danger
           disabled={!row.id}
+          data-testid={`perm-revoke-${row.id ?? 'none'}`}
           onClick={async () => {
             if (!row.id) return;
             try {
@@ -140,7 +149,28 @@ export function PermissionsPage() {
     },
   ];
 
-  const roles = Array.from(new Set(visible.map((row) => row.roleCode).filter(Boolean))) as string[];
+  /**
+   * 矩阵的行**不能**只从"已经有授权"的角色里来（那是 #50）：那样一个角色的第一条权限
+   * 永远没有入口可授，回收掉它最后一条还会把整行连同再授的入口一起抹掉。
+   * 行集 = 授权里出现过的角色 ∪ 手动加进来的角色，且按 `allRows` 而不是按筛过的行算 ——
+   * 与 `cellState` 同一个口径；否则选了实体会把"只有别的实体有授权"的角色整行藏掉，
+   * 而那正是「另有 N 个实体单独授予」这句话要说的角色。
+   */
+  const matrixRoles = useMemo(() => {
+    const seen = Array.from(
+      new Set(allRows.map((row) => row.roleCode).filter(Boolean) as string[]),
+    );
+    const pending = addedRoles.filter((role) => !seen.includes(role));
+    const filter = roleCode.trim();
+    return [...seen, ...pending].filter((role) => !filter || role.includes(filter));
+  }, [allRows, addedRoles, roleCode]);
+
+  const addMatrixRole = useCallback(() => {
+    const role = newRole.trim();
+    if (!role) return;
+    setAddedRoles((prev) => (prev.includes(role) ? prev : [...prev, role]));
+    setNewRole('');
+  }, [newRole]);
 
   const probe = useCallback(async () => {
     const role = probeRole.trim();
@@ -167,7 +197,13 @@ export function PermissionsPage() {
       title="权限"
       description="按「应用 / 实体 / 角色」授予操作权限。z-lc 自身不做拦截，鉴权由上游网关 z-ctc 统一负责，这里维护的是策略数据。"
       appCode={appCode}
-      onAppCode={setAppCode}
+      onAppCode={(value) => {
+        // 手动加进矩阵的角色只属于当前这个应用：换应用还留着，上一轮填的名字会变成
+        // 这一轮的一个"看起来能授"的角色行。
+        setAddedRoles([]);
+        setNewRole('');
+        setAppCode(value);
+      }}
       appOptions={options}
       appError={appError}
       onRefresh={() => {
@@ -176,16 +212,20 @@ export function PermissionsPage() {
       }}
     >
       <Space wrap style={{ marginBottom: 12 }} size={10}>
-        <Select
-          id="permission-scope-filter"
-          allowClear
-          style={{ minWidth: 210 }}
-          placeholder="按实体过滤（含应用级）"
-          value={entityCode || undefined}
-          options={entityOptions}
-          notFoundContent={entityNotFoundContent(entitiesSource)}
-          onChange={(value) => setEntityCode(value ?? '')}
-        />
+        {/* data-entity 是「换档生效」的读数面：过滤框自己印的那行字是 rc-select 内部状态，
+            value 传 undefined 时它压根不受控 —— 只证明"点中了某项"，证明不了"组件状态换了"。 */}
+        <span data-testid="perm-filter-scope" data-entity={entityCode}>
+          <Select
+            id="permission-scope-filter"
+            allowClear
+            style={{ minWidth: 210 }}
+            placeholder="按实体过滤（含应用级）"
+            value={entityCode || undefined}
+            options={entityOptions}
+            notFoundContent={entityNotFoundContent(entitiesSource)}
+            onChange={(value) => setEntityCode(value ?? '')}
+          />
+        </span>
         <Input
           style={{ width: 190 }}
           placeholder="按角色过滤"
@@ -193,16 +233,33 @@ export function PermissionsPage() {
           value={roleCode}
           onChange={(event) => setRoleCode(event.target.value)}
         />
+        <Input
+          id="permission-new-role"
+          style={{ width: 210 }}
+          placeholder="新角色：加进矩阵再授第一条"
+          allowClear
+          value={newRole}
+          onChange={(event) => setNewRole(event.target.value)}
+          onPressEnter={addMatrixRole}
+        />
+        <Button
+          id="permission-add-role"
+          icon={<PlusOutlined />}
+          disabled={!newRole.trim()}
+          onClick={addMatrixRole}
+        >
+          加入矩阵
+        </Button>
       </Space>
 
-      {entityOptions.length > 0 && roles.length > 0 ? (
+      {matrixRoles.length > 0 ? (
         <>
           <Table
             size="small"
             pagination={false}
             style={{ marginBottom: 6 }}
             rowKey="role"
-            dataSource={roles.map((role) => ({ role }))}
+            dataSource={matrixRoles.map((role) => ({ role }))}
             columns={[
               { title: '角色 \\ 权限', dataIndex: 'role', width: 170 },
               ...PERMISSION_KEYS.map((key) => ({
@@ -219,7 +276,14 @@ export function PermissionsPage() {
                       ? `另有 ${otherEntities} 个实体单独授予`
                       : null;
                   return (
-                    <Space size={2} direction="vertical">
+                    <Space
+                      size={2}
+                      direction="vertical"
+                      // 一格一个钩子：浏览器层要拿这一格的"授予/已授予"去对 `/permission/check`
+                      // 的答案，靠按钮文案在整页里搜是搜不出"哪一格"的。
+                      data-testid={`perm-cell-${record.role}-${key}`}
+                      data-granted={granted ? '1' : '0'}
+                    >
                       <Button
                         size="small"
                         type={granted ? 'primary' : 'default'}
@@ -241,7 +305,7 @@ export function PermissionsPage() {
             ]}
           />
           <Text type="secondary" style={{ fontSize: 12 }}>
-            格子按当前「按实体过滤」的档位授予：未选实体时授的是整个应用。已授予的格子不再重复授予，回收在下面那张表里点。
+            格子按当前「按实体过滤」的档位授予：未选实体时授的是整个应用。已授予的格子不再重复授予，回收在下面那张表里点。角色一条授权都没有时先「加入矩阵」，否则这一行根本不存在、第一条权限也就没有可点的格子。
           </Text>
         </>
       ) : null}

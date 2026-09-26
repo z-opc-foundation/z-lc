@@ -14,19 +14,24 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar --spring.profiles.acti
 三层测试，当前全是绿的：
 
 ```bash
-mvn -o -B clean install          # 4656 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1256+112+62；z-lc-web 那 62 个里 60 个是 LcHttpContractTest 的真 HTTP 集成测试）
+mvn -o -B clean install          # 4677 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1276+112+63；z-lc-web 那 63 个里 61 个是 LcHttpContractTest 的真 HTTP 集成测试）
 python3 _e2e/e2e_api_test.py     # 464/464 项断言，打真在跑的 server
 python3 _e2e/probe_stats.py      # 非数值统计与字典值域 warning 的即席探针（要 server 在跑）
-cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 27 文件/248 用例 + vite build（产物 index-CQtLNKSU.js）
-E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 184 项/轮（先 build，preview 见下文）
+cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 27 文件/252 用例 + vite build（产物 index-C4lf5SiW.js）
+E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 222 项/轮（先 build，preview 见下文）
+bash _e2e/deploy_250.sh gates    # 部署层四道闸，各自带负控，都要能红（见「部署演练怎么跑」一节）
 ```
 
-（以上是 2026-09-26 08:3x – 08:4x 这一窗**同轮**实跑的数，不是抄上一轮 —— 上一轮（06:4x – 06:5x）记的是 4646 / 434 / 238 / 184。
-这一窗的五道闸在同一次运行里串着跑（`mvn clean install` → 用刚构建的件重启 18090 → API → `npm run check` → build + 3 轮浏览器），
-退出码一起收在 `~/.cache/zlc48/gates/chain48.status`：`JAVA_EXIT=0 BOOT_EXIT=0 API_EXIT=0 CHECK_EXIT=0 BROWSER_EXIT=0`。
-⚠ 上一窗（06:4x – 06:5x）那条链**第一次跑的时候 `JAVA_EXIT=1`** —— 红的是 #43 那两条契约断言（它们的前提被 #47 推翻了），
-不是产品坏了；判"过期"和判"坏了"的分界只有注入能给，见 `_e2e/mutate_provision_contract_guard.py` 那一格。
-本窗这一条链一次跑绿，五个退出码没有第二个值。）
+（以上是 2026-09-26 16:4x – 16:5x 这一窗**同轮**实跑的数，不是抄上一轮 —— 上一轮（08:3x – 08:4x）记的是 4656 / 464 / 248 / 184。
+这一窗是把同一套东西**打到 250 上的真 MySQL 8 上**那一轮（部署演练），撞出 #51/#54/#55/#56/#57/#58 六件事，
+其中 #57 改了 java、#58 改了部署量具，所以每一层都重测了一遍；日志与退出码逐层落在 `~/.cache/zlc57/gates/`：
+`java57b.log`（`JAVA_EXIT=0`）、`api_h2_57b.log`（`API_EXIT=0`）、`check57b.log`（`CHECK_EXIT=0`）、
+`browser57b.log`（`BROWSER_EXIT=0`，三轮各自 222/0）、`deploy_all57b.log`（`ALL_EXIT=0`）、
+`gates57b.log`（`GATES_EXIT=0`，四道闸逐条具名负控红过又绿回来）、`api_mysql57b.log`（`API250_EXIT=0`）。
+⚠ 这一窗浏览器那一格**第一次跑是拒跑的**（`~/.cache/zlc49/gates/browser55.log` 里逐字写着
+`门禁拒绝开跑（测的必须是本轮构建的产物）：- 没从 http://localhost:5274/ 的 HTML 里读到 assets/index-*.js（preview 没起？）`）——
+产物指纹守卫拦下"没人起 preview 就去打 5274"，报的是 2 而不是 0。这一族里"跑不起来"和"跑过了"从来是两个读数，别混着记。
+⚠ 上一窗（08:3x – 08:4x）那条链一次跑绿，五个退出码没有第二个值；它的账仍在下文「交接状态」最前面第二格。）
 
 ⚠ **本窗浏览器那一格差点测的不是本窗的件**：`npm run preview:e2e` 起在 5274 时撞上"端口已被占用"，
 它自己退到 5275（`preview48.log` 里写着 `Port 5274 is in use, trying another one...`），
@@ -38,8 +43,8 @@ E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 184 项/轮（先 b
 （收这条链时 5274/5275 都空了：脚本末尾按名字 `pgrep -f 'vite preview --port 5274'` + `kill -9`，把 06:27 那一支一起带走了 ——
 这一族脚本按端口/进程名清理时**会连别人那一支的 preview 一起杀**，用之前先想清楚这一点。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**33 支，前端 17 + 后端 16**
-（这个数不是敲出来的：`ls _e2e/mutate_*.py | wc -l` = 16、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 17）：
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**35 支，后端 17 + 前端 18**
+（这个数不是敲出来的，09-26 16:5x 现敲：`ls _e2e/mutate_*.py | wc -l` = 17、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18）：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -58,6 +63,10 @@ python3 _e2e/mutate_provision_deployed_guard.py   # 同一件事打到发出去�
 python3 _e2e/mutate_provision_contract_guard.py   # #47 的 java 契约层：K1..K8 打在 LcHttpContractTest 那两支上（8 支注入跑一整轮 8×mvn 只要 ~2 分钟，所以每轮跑**整个类**钉分母）
 python3 _e2e/mutate_permission_service_guard.py    # 权限 #48 java 层：J1..J14（PermissionServiceTest + LcHttpContractTest，分母每轮钉 75 条，认领 25 条具名断言）
 python3 _e2e/mutate_permission_deployed_guard.py   # #48 打发出去的 fat jar：D1..D14，认领 `[15t]` 那 30 支探针里的 24 支（另 6 支是 ok() 夹具，不进判红账，理由写在该支开头）
+python3 _e2e/mutate_collation_guard.py             # 250 真库撞出的那一族 #51/#54/#57：M1..M13 + N1..N5（共 18 支，跑 SchemaAdminBizServiceTest + UndoServiceSnapshotFormatTest + LcHttpContractTest 那两支）
+cd z-lc-admin-ui && python3 e2e/mutate_provision_report_guard.py # #47 的 vitest 层 M1..M18（DesignerProvision.test.tsx 15 例）
+cd z-lc-admin-ui && python3 e2e/mutate_provision_browser_guard.py # #47 的**浏览器层** P1..P6（自带 build + preview，11d 那 24 条）
+cd z-lc-admin-ui && python3 e2e/mutate_permission_browser_guard.py # #49/#50 的**浏览器层** M1..M9（自带 build + preview，11e 那 39 条静态 check 的账是机器核的：认领 ∪ NOT_COVERED == 扫到的全集）
 cd z-lc-admin-ui && python3 e2e/mutate_degradation_guards.py     # 元数据降级口径 M1..M5
 cd z-lc-admin-ui && python3 e2e/mutate_admin_list_guards.py      # 管理页列表五态 A..H
 cd z-lc-admin-ui && python3 e2e/mutate_workspace_entity_guards.py# workspace 侧出口 A1..D1
@@ -80,17 +89,18 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 ⚠ **两支不能同时在飞**：它们都就地改写源文件，A 的"按字节还原"会把 B 正在判定的那份源码换掉。
 本轮实测踩到 —— 后台那支还没收线就前台再开一支，基线报出 1 条红
 （`字段表里不该预置引擎自建列: expected 3 to be 0`），那是**另一支的注入形状**，不是产品坏了。
-假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **28 支共用** `e2e/_mutlock.py`
-（**17 支前端全接**，后端接了 11 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
+假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **30 支共用** `e2e/_mutlock.py`
+（**18 支前端全接**，后端接了 **12** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
 `mutate_pipeline_wiring_guard.py`、`mutate_pipeline_config_guard.py`、`mutate_replay_guard.py`（本窗补上：它改的
 `SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件）、`mutate_provision_reconcile_guard.py`、
 `mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py`、`mutate_edit_path_deployed_guard.py`，
-以及本窗新增的两支 `mutate_permission_service_guard.py` / `mutate_permission_deployed_guard.py`
-（后者与前者的 D/J 编号虽不同战役，**改的是同一份 `PermissionService.java`**，不同锁就等于没有）
+`mutate_permission_service_guard.py` / `mutate_permission_deployed_guard.py`
+（后者与前者的 D/J 编号虽不同战役，**改的是同一份 `PermissionService.java`**，不同锁就等于没有），
+以及部署演练这一族新加的 `mutate_collation_guard.py`（它同样就地改 `SchemaAdminBizService.java` + `UndoService.java`）
 —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 17/11 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 17 与
-`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 11 数出来的，不是点的）；
-更早那 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
+这个 18/12 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 12 数出来的（09-26 16:5x 现敲），不是点的）；
+仍未接锁的 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
 
@@ -206,6 +216,13 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 | 46 | **运行时权威源是事件链，但折叠从不删字段**：一栏被移除时只墓碑化元数据、不发 field 级 DELETE 事件；`EventReplayService.replay` 收到整实体 DELETE 也只是 `computeIfAbsent` 立个空桩 | 墓碑是表的口径，不是运行时的：删掉的栏在折叠出来的定义里永远活着（多出来的 `extra_col` 直接把整个列表打成 400，而不是少一列），删掉的实体照样供记录、还凭空多一个空桩 | 一栏移除时 `emitFieldRemoved` 补一条 field 级 DELETE；replay 里整实体 DELETE（payload 无 `fieldCode`）把实体从折叠里摘掉、不再预立空桩。`_e2e/mutate_replay_guard.py` M1–M3 —— M3（任何 DELETE 都抹整实体）在 HTTP 流程里是**等价变异**，只有折叠层单测捉得住，这正是"DELETE 带不带 fieldCode"这套词汇表要单独钉一层的原因 |
 | 47 | **定义跑在物理表前面之后，没有任何一条路能把它修回来**：`provisionOne` 见表已存在就一律 `FAILED`，运行时每次读都是裸 500（`Column "t.xxx" not found`），而设计器那句「未建成」横幅谁都清不掉 | 这是 #43 修好之后剩下的那半边：闸挡住了抢表，却没回答"漂移了怎么办"。用户的自助路径本来是现成的 —— 设计器里点一次 provision —— 但那次点击永远得到同一句谎。现在 provision 比对定义与 JDBC 元数据，缺的列 `ALTER TABLE` 补上并**回读库**作证（第四态 `ALTERED`，只加不改不删，幂等）；库自己拒的（如有行的表加 NOT NULL 无默认值）才 `FAILED` 并点名缺哪几列；读侧认得出列名的 `BadSqlGrammarException` 转 400、点名那一栏并指向 provision，认不出照旧 500（把真·库故障包装成"去点一下 provision"比 500 更坏）；界面上四态各说各的话、批量汇总多出 `altered` 一格、补成功即清横幅 | 五层各有牙，各自逐支实测吻合：`mutate_provision_reconcile_guard.py` C1–C7（java 单测：占表判定那五个谓词）→ `mutate_provision_contract_guard.py` K1–K8（java 契约层：`LcHttpContractTest` 那两支，8 支注入认领 **11** 条具名红、分母每轮钉 55 条）→ `mutate_provision_report_guard.py` M1–M18（vitest，`DesignerProvision.test.tsx` **15** 例 —— 本轮 `npm run check` 现读到的数，不是记的）→ `mutate_provision_deployed_guard.py` D1–D13（发出去的 jar）→ `mutate_provision_browser_guard.py` P1–P6（真浏览器 `11d` 那 **24** 条（静态 `check(` 25 个，末支在 catch 分支里只在失败时打）：8 条各有牙、6 条按未覆盖记账），`11d` 这一节自己从 `FAIL 3` 收到 `FAIL 0`、全绿 3/3 轮 |
 | 48 | **权限这一族六个写入口/读出口各说一套**：① `grant` 的查重写 `eq("entity_code", entity.getEntityCode())`，而"整个应用"的授权那一列是 NULL —— SQL 里 `entity_code = NULL` **恒为 unknown**，一行也匹配不上；② `hasPermission` 只比 `entity_code = ?`，丢掉了「或应用级」；③ 三个列表查询加一个判定**一个字都不比 `tenant_code`**，而 `grant` 把 body 里的租户原样落库；④ `revoke` 是 `deleteById(id)`，删 0 行与删掉别人的行都无条件回"已回收"；⑤ 权限项没有任何词表，任何字符串都收；⑥ 前端矩阵按"筛过的行"算格子真值，而 `/list` 的 `roleCode` 优先级高于 `entityCode`，两个筛选一起给时实体那个被后端静默丢掉 | 六条都不崩、都不报错，只让**策略数据与判定互相说不清**：①恰恰是矩阵页默认那一支（不选实体点格子），每点一次多一行"查重成功"的重复行；②让矩阵里明明白白渲染成「整个应用」的那些行对任何一个实体都答"拒绝"（反过来，某个实体的单独授权在旧页面上会把「整个应用」那一格点亮）；③两半合起来等于没有租户这一列 —— 任何人都能把别的租户的授权写进这张表，然后在本租户的判定里读到它（`/check` 直接答 true）；⑤最隐蔽，因为**实测这套 dev H2（`MODE=MySQL`）的 `=` 分大小写**（D3 取证时 curl 读到 `permission: "view"` 与 `"VIEW"` 在库里并排两行）：同一个逻辑授权成了两行、各自都"查重成功"，而矩阵与网关只认大写那一行 —— 存下了、查不到、界面上却亮着 | `PermissionKeys` 成唯一词表（VIEW/CREATE/UPDATE/DELETE/EXPORT，`ALL` 的顺序**就是**矩阵的列序），写入口 trim + 大写归一、不在词表内 400 并点名，`trimmedToNull` 把空范围统一成 NULL、查重按 `IS NULL`；判定分两支（给了实体→该实体 `OR` 应用级；留空→只问应用级，不拿某个实体的授权冒充"整个应用"）；四个端点全部钉 `DEFAULT_TENANT`（与 `AppAdminController`/`DictAdminController` 同口径）且服务层每个读方法都收 `tenantCode`；`revoke` 返回受影响行数、0 行抛 `IllegalArgumentException`→400；前端矩阵与 `/check` 用同一个 `coversScope`/`isAppWide` 口径，格子真值对**整张表**算（只按 `appCode` 拉一次全量、筛选放客户端），回收失败不再吞成"已回收"，空态两句话分开（"被筛掉了" vs "这个应用压根没配过权限"）。**三层各有牙，各自本窗实测**：`_e2e/mutate_permission_service_guard.py` J1–J14（java 单测+契约层，分母每轮钉 **75** 条、认领 **25** 条具名断言）→ `z-lc-admin-ui/e2e/mutate_permission_matrix_guard.py` B1–B12（vitest 层，分母钉 **10** 条、零连带红）→ `_e2e/mutate_permission_deployed_guard.py` D1–D14（发出去的 fat jar，认领 `[15t]` 那 **30** 支探针里的 **24** 支，另 6 支是 `ok()` 夹具、按理由不进判红账）。首轮**六处对不上的账全部按实测改**（D3/D7/D12 三处预期 + 两处从没红过 + 补出 D14 才有猎物），没有一条断言被改软 |
+| 51 | **引擎自己建的表与元数据层不在同一套校对上**：`buildCreateTableDdl` 只写 `DEFAULT CHARSET=utf8mb4`，不给 `COLLATE` | MySQL 8 于是取该 charset 的**默认校对** `utf8mb4_0900_ai_ci`，而 15 张 `z_lc_*` 元数据表沿用库默认 `utf8mb4_general_ci`（实测 `information_schema.tables`）—— 跨表字符串比较当场 `Illegal mix of collations`。250 上第一轮真库门禁 **28 条红里 8 条是这个**。dev 的 H2 压根没有校对这一层，所以这四支缺陷**一支都不会在本地红** | 问出元数据层那一套并钉进建表语句；已错的那张表在 provision 报告里判 `FAILED` 并给出可直接执行的 `ALTER TABLE … CONVERT TO CHARACTER SET … COLLATE …`。`_e2e/mutate_collation_guard.py` **M1–M13**（13 支注入，M2/M3/M7 那三支"装配顺序/两个参数换序/把问不到缓存下来"编译器都管不着）+ 部署层闸 3（三段式负控：正向绿 → 注入旧版代码自己会写出的那句 DDL → 恢复绿）|
+| 53 | 接口层量具的 `atexit` 分母卫兵**注册在崩溃点之后**：脚本前半段就挂时，"这一轮到底跑了多少项"一句都不说 | 半途死的量具打得没打红看不出来，退出码之外没有第二个证据 | `_e2e/e2e_api_test.py` 把卫兵前移，空输入必 FATAL（不再打印"满分"）|
+| 54 | **给有行的表补"必填且无默认值"的列，结局由库决定**：`ADD COLUMN x VARCHAR(32) NOT NULL` 在 H2 当场拒，在 `mysql:8.0.26`（`@@sql_mode` 含 `STRICT_TRANS_TABLES`）却**接受**并把已有行那一栏静默填成 `''` | provision 报 `ALTERED`"成功"，而库里已经躺着一批违反"这一栏必填"的行 —— 这是"报告说得对而数据是坏的"那一类，界面上没有任何一处会显示 | 补列之前先问库里有没有行（`queryForList("select 1 from … limit 1")`），有行且没配默认值就一列都不许多发并带回可操作修法；问不到行数按"有行"fail-safe。注入 **N1–N5**（N2 专把 fail-safe 翻成 fail-open）；只有 MySQL 才红的那一半由 `deploy_250.sh api` 在真库上量，不由单测冒充 |
+| 55 | 部署脚本用 `pkill` + `sleep 3` 收旧进程，**不等端口**：旧 jar 还在服务 18090 时新 JVM 死于 "already in use"，而 `/health` 照样回 UP | "这次部署起来了"这件事当时没有任何一层能归因 —— health 探针读到的 UP 属于上一支进程 | `app.pid` 记账 + `port_pid()` 逐次把端口上的监听者与本次 pid 对齐才敢报 UP + 起进程后盯日志 fail-fast（实测：`旧进程已收干净（等了 29s, 端口 18090 空）`）。闸 2 的负控就是这个形状（把 LC 池指向 `z_lc_misdeploy`：API 写得进、读回也认账，只有读 MySQL 才判红）|
+| 56 | **闸 3 的负控里四把尺各自坏在量具上**（缩进敏感的 `grep '^ALTER'`、`tables` 上问 `collation_name`、`step_collate \|\| die` 的死代码、探针表判红后没被收掉） | 一道只会红在别处的闸，看起来像"咬住了" —— 而它一次都没咬过自己该咬的那一支。这一支缺陷是**测量它的那一轮**发现的 | `grep -E '^[[:space:]]*ALTER TABLE'`、`table_collation`、`( step_collate ) || die …`（`die` 走的是 `exit`，子 shell 才拦得住）、清场改挂 `trap … EXIT`（见 #58）。负控三段现在逐段验：起点必须绿、红必须具名报"闸 3"、判红集合里必须有探针那一行 |
+| 57 | **java 侧那道校对闸在真 MySQL 8 上是死代码**：`tableCollation()` 问的是 `information_schema.tables.collation_name`，而 MySQL 8 的 `tables` 视图里表级那一列叫 `TABLE_COLLATION`（`COLLATION_NAME` 是 `columns` 的列名） | 这一句每次都抛 `ERROR 1054 Unknown column`，被生产的 `catch` 吞成"问不到"，`collationRepairMessage` 因此不判 —— **漂到 `utf8mb4_0900_ai_ci` 的表 provision 照样报 `EXISTS_INTACT`**（闸 4 实测到的就是这个读数）。它坏得最安静：接口全绿、单测全绿、界面也全绿 | ① SQL 改 `table_collation`；② 那一侧的失败不再算合法的"问不到"，日志 `debug` → `warn`（能走到这里说明元数据层问得到参照，那就是这句问坏了）；③ **单测层的替身原来压根不看 SQL**，所以 `FakeJdbc.queryForObject` 改成按 250 实测的目录形状答话（问错列名就抛，等价于真库拒绝）—— 于是 M13 这一支从"注了也不红、只能记未覆盖"变成红在 `provisionShouldFailWhenTableCollationDiffersFromMetadataLayer` 这一条具名断言上。真库那一半由部署层**闸 4** 证（三段：新建的表就在参照校对上 → `CONVERT TO` 漂到 `utf8mb4_0900_ai_ci` 并验注入落地 → provision 必须 `FAILED` 且应答里带着指向正确校对的那句 → 搬回后 `EXISTS_INTACT`）|
+| 58 | **部署量具自己两把坏尺**：① 清场挂的是 `trap … RETURN`，而红路径走的是 `die`（= `exit`）；② 脚本经 ssh **stdin** 喂给远端，脚本内部的 `docker exec -i` 把 stdin 剩下的部分吃掉了 | ① 探针表与探针应用在判红后留脏（实测残留 `表=1 应用=2`），下一轮"起点不干净"会常红，且报的是"库里不一致"这种看着像别人账的错；② 三条查询的 heredoc 只印出第一条（本机三次复现，包括我手工清扫时第二遍循环读不到东西） | ① 清场改挂 `trap … EXIT`；② 除 `step_schema` 那处真要灌文件的地方以外一律去掉 `-i` 并补 `</dev/null`。两处都验到残留归零（`表=0 应用=0 实体=0`）。⚠ 这一支的机制我只写实测到的相关性，不写"为什么"的理论 |
 
 ## 三、前端现状（`z-lc-admin-ui/`）
 
@@ -1599,14 +1616,86 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
   后两轮动的是它周围的三层量具（API `[15j]`、浏览器 11c、两支注入自证），不是闸本身。
   别把"没改闸"读成"闸没在做"。
 
+### ✅ 部署演练怎么跑：第一次把 z-lc 打到**真 MySQL 8** 上（250），一次撞出六个缺陷（2026-09-26，#51/#54/#55/#56/#57/#58）
+
+**为什么要练这一条**：dev profile 吃 `jdbc:h2:mem:zlc`，进程一死库就没了 —— 于是"能在另一台机器上、
+对着真的 MySQL 部署起来并且自证连的是它"这件事从来没被实测过。四层门禁全绿证的都只是 H2。
+第一次真跑就撞出坑，每一个都**只在真 MySQL 8 / 真远程机上才会出现**；其中 #51/#54/#57 是产品的，
+#55 是部署脚本的，#56/#58 是**量具自己的** —— 后两类都要写进账，因为"闸红过"这件事本身也是被测的。
+
+    bash _e2e/deploy_250.sh all       # sync → db → schema → env → start → verify → collate → tunnel
+    bash _e2e/deploy_250.sh gates     # 闸1 + 闸2 + 闸3 + 闸4 各自"正向绿 → 注入红 → 恢复绿"跑三段
+    bash _e2e/deploy_250.sh gate2     # 单道闸也能单独跑（改了哪一道的判据只重跑那一道；整批 gates 会把
+                                      # app.env 换来换去并重启三次）
+    bash _e2e/deploy_250.sh collate   # 只问物理表实际校对（闸 3 的判据，不打应用）
+    bash _e2e/deploy_250.sh repair    # 把闸 3 给的 CONVERT TO 真的执行掉，然后立刻用同一把尺复测
+    bash _e2e/deploy_250.sh api       # 建隧道并让接口层门禁打远程：http://localhost:18099 → 250:18090
+
+形状上的四条约定（都被踩过才定下来的）：
+- **远端只吃 stdin**（`ssh 250 bash -s -- <step> < deploy_250_remote.sh`）：远端不落一份副本，否则下次改脚本
+  改的是本机这份、跑的是那份。参数走 step 后面，往远端塞变量用 `ZLC_EXTRA_ENV='K=V'`（值里别带空格）。
+  ⚠ 这条约定反过来咬了量具一口（#58）：**脚本内部不能再出现 `docker exec -i`** —— `-i` 会跟脚本抢同一份 stdin，
+  实测三条查询的 heredoc 只印出第一条（本机三次复现）。除 `step_schema` 那处真要灌文件的地方以外全部去掉 `-i`
+  并补 `</dev/null`。这一支只写实测到的相关性，不写"为什么"的理论。
+- **凭证只在 `250:~/.config/z-lc-deploy/{mysql.env,app.env}`（0600）**，仓库里一个字都不留。
+  ⚠ 但 `app.env` 的值会出现在 java 进程的 argv 里（`--spring.datasource...password=…`）—— 取证命令一律带
+  `sed 's/password=[^ ]*/password=<redacted>/'`，别把 `ps` 原文贴进日志。
+- **`all` 里刻意不放 `repair`**：`CONVERT TO` 是动已有表的 DDL，得运维自己按一次，不能藏在"部署"里顺手执行掉。
+- **81MB 的 jar 传完要做字节对账**（`sync` 打印 `jar 字节一致：<md5>`）：传坏了的症状是"行为古怪"，不是报错。
+
+四道闸与各自的负控（每一道都是"注入的缺陷形状能红"才算存在，见下面 #55/#56/#58 那三格——闸自己也坏过）：
+
+| 闸 | 判据 | 负控形状（实测注入） |
+|---|---|---|
+| 闸 1 `gate1` | 写 `app.env` 时逐行过 `%q` 校验：值不带引号写进去会被 shell 吃掉 | 同一份校验，`%q` 写的过、裸写的当场拒（退出码 1）；随后重新生成 app.env 并复检 |
+| 闸 2 `verify`/`gate2` | **先归因再判读写**：端口上的监听者必须 == `app.pid`；然后 API 写一条、读回，再直接查 `z_lc.z_lc_app`（主池）与 `z_lc.z_lc_event`（LC 池）各 `rows=1` | 把数据源临时指向 `z_lc_misdeploy`：API 照样"写成功"、health 照样 UP，而 `z_lc` 里 `rows=0` → 具名报「进程连的根本不是这个库」（退出码 1）；恢复后绿，并回收负控库 |
+| 闸 3 `collate`/`gate3` | 参照 = `information_schema.columns` 里多数派校对（实测 `z_lc.z_lc_dict_item.item_code` = `utf8mb4_general_ci`）；库里每一张表的每一个字符串列都必须在它上面，否则按表给出**可直接执行**的 `ALTER TABLE … CONVERT TO CHARACTER SET utf8mb4 COLLATE …` | 建一张只写 `DEFAULT CHARSET=utf8mb4`（不写 COLLATE）的探针表 —— 用的就是**旧版代码自己会写出来的那句 DDL**，所以这一支证的是"这道闸认得那个真实形状"，不是"我能造一张怪表"。三段式：起点绿 → 注入红（且红必须落在闸 3 的判据上、点名里必须有探针表）→ `trap` DROP 之后绿 |
+| 闸 4 `gate4` | **打应用而不是打库**：走真 HTTP 建应用 + 建实体（字段一栏不缺），provision 之后拿 `information_schema.tables.table_collation` 对表实际校对 —— 建出来的表必须在参照上（这是 #51 的修法在真库上兑现了），再把那张表 `CONVERT TO` 漂到 `utf8mb4_0900_ai_ci`（**utf8mb4 在 MySQL 8 的默认校对**，也就是修复前引擎自己会写出来的那个形状），provision 必须判 `FAILED` 且应答里带着指向正确校对的那句 `CONVERT TO`，搬回之后必须 `EXISTS_INTACT` | 注入的就是"表一栏不缺而校对漂了"这一支 —— 它正是**缺陷 #57 的原始读数**：修之前 provision 回的是 `EXISTS_INTACT`，闸 4 当场报 `!! 闸 4 咬不住`。三段之外还钉了一条"注入必须真的落地"（漂完当场回读 `table_collation`，没漂成功这一轮的结论不作数）。实体 id 是**从 MySQL 里读**的而不是从应答 JSON 里 sed 的（`createEntity` 回来的 DTO 第一个 `"id"` 是**字段**的 id，拿它去 provision 只会 `Entity not found: 117`）。清场挂 `trap … EXIT`（不是 `RETURN`，因为红路径走的是 `die` = `exit`），残留实测 `表=0 应用=0 实体=0` |
+
+⚠ **这一族的层界（写清楚，否则下一窗会当"全绿 = 都证过"读）**：#57 在 java 单测、vitest、接口 E2E **三层都结构上打不到**
+—— dev 的 H2 压根没有 `information_schema`，`metadataCharsetCollation()` 问不到参照，那一整块 `if` 不走。
+本窗把 `FakeJdbc.queryForObject` 改成按 250 实测的目录形状答话（问错列名就抛），M13 才有牙（43 例里恰好红那一条
+`provisionShouldFailWhenTableCollationDiffersFromMetadataLayer`）；但**"MySQL 8 的 tables 视图里那一列到底叫什么"
+这一半不在单测层**，它只由闸 4 在真库上证。替身能模仿真库，不能代替真库。
+
+`mutate_collation_guard.py`（**18 支**注入：M1–M12 打 #51 那一族、N1–N5 打 #54 那一族、M13 打 #57 那一支）的写法值得抄：
+注入用的是**旧版代码自己会写出来的那段字节**（`M1 建表子句退回只写 charset`、`M13 表级那一问退回 collation_name`），
+不是随手造的怪代码；每支跑完必比"产物指纹变了 / 还原后回到基线指纹"，否则那一轮的结论不作数。
+
+⚠ **`api` 那一轮在共享库上是会留东西的**：接口门禁每跑一次，`z_lc` 里就多一批 `e2e_*_<随机后缀>` 的实体表
+（本窗实测 `z_lc` 从 39 张涨到 **49** 张，逐名列出后确认新增的都是 `e2e_pq_*` / `e2e_pipe_*` / `e2e_fc*` 这几族探针表，
+`z_lc_*` 元数据 14 张一张没多）。这不是脏数据（每一张都是那一轮真打出来的表），但**别把"表数"当判据**——
+它只说明"这里跑过几轮"，闸 3 的判据是校对而不是表数。
+
 ---
 
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（最前面那张 08:3x–08:4x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+四层门禁当前状态（最前面那张 16:4x–16:5x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
 **不是当前数**。
 ⚠ 上一版这行写的是"10:4x 一轮实测"，而 19:5x 之后四层又各自重跑过 —— 表里每一行的时间戳才是证据，
 标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-26 14:2x – 16:5x 这一窗（部署演练：把 z-lc 打到 250 的真 MySQL 8 上，撞出 #51/#54/#55/#56/#57/#58；
+本窗动了 java 与部署量具，所以六层全部同轮重测）日志与退出码逐层落在 `~/.cache/zlc57/gates/`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**、**4677** 个用例 0 红 0 错 0 跳（surefire 模块汇总行现加 = 2701+525+**1276**+112+**63**；`JAVA_EXIT=0`）。08:3x 那一记的 4656 → 4677 的 **+21 现量到出处**：`git show HEAD:<文件>` 与盘上各数一次 `@Test` —— `SchemaAdminBizServiceTest` **30 → 43**（+13，#51/#54 那一族）、新文件 `UndoServiceSnapshotFormatTest` **0 → 7**、`LcHttpContractTest` **60 → 61**；两条尺对得上：模块级 z-lc-core +20 = 13+7、z-lc-web +1，加总正好 21。⚠ 这一格是本窗**第二次**跑：第一次（`~/.cache/zlc49/gates/java57.log`，16:28）是 #57 修完、`FakeJdbc` 还没改严之前的数，分母同样是 4677 —— 因为 #57 这一支**没加用例，改的是替身答话的规则**（写清楚，免得下一窗以为 43 条里有一条是新的）|
+| 接口 E2E（本机 H2） | `python3 _e2e/e2e_api_test.py` | **464/464**，`api_h2_57b.log` 里逐字有 `=== E2E RESULT: 464/464 passed ===`，`API_EXIT=0` 落在同一份日志末行；分母双向校验：`^  PASS ` 行数也 = **464**。打的是本窗 `clean install` 出来的那份件（pid 90731，`lsof` 现读端口 18090 的监听者就是它）|
+| 前端 | `cd z-lc-admin-ui && npm run check` | tsc 0 / `eslint --max-warnings 0` 无输出 / **vitest 252/252（27 个文件）** / build 绿，产物 `index-C4lf5SiW.js`，`CHECK_EXIT=0`。08:3x 那记的 248 → **252** 是本窗之前那两窗（#49/#50 的权限页前端）累积的未提交改动，本窗只重测不改数 |
+| 真浏览器 | `E2E_REPEATS=3 node e2e/browser-e2e.mjs` | **三轮各自 `PASS 222 / FAIL 0`**、`全绿轮次: 3/3`、`BROWSER_EXIT=0`，产物指纹 `index-C4lf5SiW.js`（本窗 `npm run check` 里 build 的那一份）。184 → 222 的 **+38 是名字集合量出来的**（把本轮与 08:3x 那轮 `browser48.log` 各自的 `PASS` 行标题取唯一集再求差：新增 **38** 条、消失 **0** 条，38 条逐条都落在权限矩阵（11e）那一节 —— 从"这个应用里确实有 task 那一栏可授"到"这一节自己种的授权全部回收干净"），不是拿 222−184 减出来的。⚠ **本窗第一次跑这一格是拒跑的**（`~/.cache/zlc49/gates/browser55.log` 逐字：`门禁拒绝开跑（测的必须是本轮构建的产物）：- 没从 http://localhost:5274/ 的 HTML 里读到 assets/index-*.js（preview 没起？）`）—— 那一轮的 222 一个都不存在，是**量具把"没人起 preview"报成 2 而不是 0** 才让这一格后来真的有结论；这一条留在账里，因为"跑过了"与"跑起来了"是两个读数 |
+| 部署（250 真 MySQL 8） | `bash _e2e/deploy_250.sh all` → `gates` | `ALL_EXIT=0`、`GATES_EXIT=0`。sync 回读 `jar 字节一致：c78f57facee27ab6423d60ac40406b90`（与本机 `md5 -q` 同一个值）、`schema 字节一致：ffaa1084…`；`库 z_lc 里的表数：49`（39 → 49 的账见「部署演练怎么跑」那一节末尾：是 `api` 那几轮各自留下的 `e2e_*_<后缀>` 实体表，`z_lc_*` 元数据 14 张一张没多）；旧进程收干净后才起新件（`旧进程已收干净（等了 0s, 端口 18090 空）`→ `pid=22579` 与端口监听者对上）。**四道闸同一次运行里逐条绿，且每一条都先具名红过一次**：闸 1（`%q` / 裸写）、闸 2（`z_lc_misdeploy` 负控，`z_lc` 里 `rows=0` 时报「进程连的根本不是这个库」）、闸 3（探针表三段式）、闸 4（`探针实体落库：id=36 表=e2e_g4_362476` → 漂到 `utf8mb4_0900_ai_ci` 判 `FAILED` 给 `CONVERT TO` → 搬回 `EXISTS_INTACT`）|
+| 接口 E2E（**真 MySQL 8**，隧道） | `bash _e2e/deploy_250.sh api` | **464/464**，`api_mysql57b.log` 里逐字有 `=== E2E RESULT: 464/464 passed ===`，`API250_EXIT=0`，`^  PASS ` 行数 = 464。这一格是本窗新加的第六层：同一份门禁脚本、同一个 464 分母，一次打 H2 一次打 MySQL 8 —— **#51/#54/#57 三支缺陷全都是"只在 MySQL 才红"的，所以这一层不是 H2 那一层的复读** |
+| 注入自证 | `_e2e/mutate_collation_guard.py`（**18 支**：M1–M13 + N1–N5） | 本窗把 M13（表级那一问退回 `collation_name`，= #57 修复前的原样）加进族里；**先手工单支验过**：注入后 `mvn test -pl z-lc-core -Dtest=SchemaAdminBizServiceTest` 报 `Tests run: 43, Failures: 1`，红的正是 `provisionShouldFailWhenTableCollationDiffersFromMetadataLayer` 那一条具名断言，还原后 md5 与开跑前逐字节相同（`RESTORE_OK md5=2fa93939ffc47fb03949afec1330a4cc`）。整族 18 支已在同一窗跑完（`~/.cache/zlc57/gates/coll18_run1.log`，`COLL_GUARD_EXIT=0`）：`RESULT: 缺陷#51+#54+#57 的 18 支注入逐支按预期点名，产物已还原到基线字节`；18/18 的「预期红 == 实测红」逐支等集（日志里 `!! 逃过` / `!! 预期之外` 各 0 次），两支文件还原行均打 `字节相同`，还原后复测 `构建 过 / 具名红=[]` |
+| 注入自证（浏览器层） | `cd z-lc-admin-ui && python3 e2e/mutate_permission_browser_guard.py`（**M1–M9** 整族，#49/#50 那一页） | `PERM_GUARD_EXIT=0`（`~/.cache/zlc57/gates/perm_full57.log`）。开局机器核账：`账平：11e 扫到 39 条 = 注入认领 21 条 + 未覆盖记账 18 条`；基线 `PASS 222 / FAIL 0`，九支**逐支 `OK … 预期 N 条全红，无一条连带红`**（4/1/1/3/5/9/1/4/1 条，红集各不相同；M4 那一支因为新角色进不了矩阵，整节后续 21 条压根没跑到，分母当场只剩 201 —— 这条写在日志的 `共 201 条` 里，不是我把它算绿的）；还原轮 `src 指纹` 与基线逐文件 md5 一致（脚本不用产物名当判据：本机 rollup 输出不逐字节可复现，同一棵树三次构建跑出两套 `index-*.js` 名字，见 `src_digest` 的 docstring）且 `99_restored: PASS 222 / FAIL 0` |
+
+⚠ **这一窗最值钱的一条是层界，不是绿**：`#57` 那一支在 java/vitest/接口三层**结构上打不到**（H2 没有 `information_schema`，
+那一整块 `if` 不走），修法也分两头 —— 单测层的替身改成按真库目录形状答话只是让"问错列名"不再隐形，
+"MySQL 8 的 `tables` 视图里那一列到底叫什么"只有 250 上的闸 4 说得清。**替身能模仿真库，不能代替真库**；
+反过来也一样：这一窗四道闸全绿 ≠ 那 464 条断言证过校对这件事（它们里只在真库上跑的那一层才第一次撞到 #51）。
+
+⚠ **提交状态（16:5x 现数，`git status --porcelain` 当场量的）**：见文末那一格。
 
 **09-26 08:3x – 08:4x 这一窗（#48 权限这一族收线：三层注入自证同轮跑齐）五道闸串行同轮实跑，
 五个退出码一起落在 `~/.cache/zlc48/gates/chain48.status`，日志各自在 `~/.cache/zlc48/gates/{java_full48,boot48,run_api48,npm_check48,browser48}.log`：**

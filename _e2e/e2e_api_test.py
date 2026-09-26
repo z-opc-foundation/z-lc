@@ -13,12 +13,40 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import atexit
 
 BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:18090").rstrip("/")
 TENANT = "default"
 APP = "e2e_crm_" + uuid.uuid4().hex[:6]
 
 PASS, FAIL = [], []
+
+_done_flag = {"end": False, "printed": False}
+
+
+def _report():
+    """分母必须打到最后一行，**包括跑断了的那次**。
+
+    注册点必须在文件**开头**：上一版把这段写在 `[16] teardown` 之后，而 250 上实测那次
+    断在 `[15h]`（列表接口 500 → `total` 是 None → `total_before + 5` 抛 TypeError），
+    atexit 那两行根本没被执行到 —— 一个"半途死也要报分母"的卫兵，死在它要抓的那次运行之前，
+    于是那一轮仍然只剩一个 exit code。先注册，再跑。
+    """
+    if _done_flag["printed"]:
+        return
+    _done_flag["printed"] = True
+    n = len(PASS) + len(FAIL)
+    print(f"\n=== E2E RESULT: {len(PASS)}/{n} passed ===")
+    if FAIL:
+        print("FAILED:")
+        for f in FAIL:
+            print("   - " + f)
+    if not _done_flag["end"]:
+        print(f"!! 这一轮**没跑到结尾**（断在 [{n}] 条之后）—— 上面的分母是残缺的，"
+              "别当成'只有这些红'；先看上面的 traceback")
+
+
+atexit.register(_report)
 
 
 def D(j):
@@ -919,6 +947,15 @@ def bd_ids():
     return sorted(int(r["id"]) for r in (d.get("records") or [])), d.get("total")
 
 
+def total_shifted(base, delta, got):
+    """`got == base + delta`，但任何一侧没读出来就记成一条具名红。
+
+    列表接口自己 500 时 `total` 是 None（250 上真 MySQL 那一轮就是这样）：直接做算术会抛
+    TypeError，把这一节后面的几百条检查一起带走 —— 少一个数不该换算成"没测"。
+    """
+    return base is not None and got is not None and got == base + delta
+
+
 def bd_new(tag):
     j, _, _ = call("POST", "/api/lc/runtime/create",
                    dict(BD_SCOPE, fieldValues={"customer_name": f"批量删除{tag}", "age": 33, "level": "A"}),
@@ -945,7 +982,10 @@ made = [bd_new(n) for n in ("甲", "乙", "丙", "丁", "戊")]
 made = [m for m in made if m]
 if check("为批量删除准备了 5 条数据", len(made) == 5, made):
     ids_now, total_now = bd_ids()
-    check("准备阶段行数 +5", total_now == total_before + 5, (total_before, total_now))
+    # total 是 None 意味着列表接口自己就失败了 —— 那要记成一条具名红，而不是让 `+ 5` 抛
+    # TypeError 把后面几百条检查一起带走（250 上真就是这样断在 [15h] 的）。
+    check("准备阶段行数 +5", total_shifted(total_before, 5, total_now),
+          f"(读不出 total 时这里会显出 None): {(total_before, total_now)}")
 
     # 1) 混进一条不存在的 id：整批不动，而且要点名是哪一条
     ghost = max(ids_now or [0]) + 999999
@@ -968,7 +1008,7 @@ if check("为批量删除准备了 5 条数据", len(made) == 5, made):
     check("回包文案与计数一致", "已删除 2 条" == str(gd.get("message")), gd.get("message"))
     ids_after_good, total_after_good = bd_ids()
     check("库里确实少了这两条", set([made[0], made[1]]).isdisjoint(ids_after_good)
-          and total_after_good == total_now - 2, (total_now, total_after_good))
+          and total_shifted(total_now, -2, total_after_good), (total_now, total_after_good))
     got = call("POST", "/api/lc/runtime/get", dict(BD_SCOPE, id=made[0]),
                params={"entityCode": "customer"})[0]
     check("删掉的 id 再也读不到（软删对读不可见）", not D(got).get("id"), got)
@@ -991,7 +1031,9 @@ if check("为批量删除准备了 5 条数据", len(made) == 5, made):
     check("拒的时候给的是可操作提示（分批）", "分批" in str((oversize or {}).get("message")),
           str(oversize)[:160])
     ids_rejected, total_rejected = bd_ids()
-    check("被拒的请求一行都没删", ids_rejected == base_ids and total_rejected == base_total,
+    # ⚠ 这里不能用 `total_rejected == base_total`：两次都读不出时是 `None == None`，一条"没删掉任何东西"
+    #   的红检查会绿成"没删掉任何东西"的**证据**。
+    check("被拒的请求一行都没删", ids_rejected == base_ids and total_shifted(base_total, 0, total_rejected),
           (base_total, total_rejected))
 
     # 5) 撤销栈是逐条登记的：3 条删除要 3 次 undo，每次只回来 1 行
@@ -1002,19 +1044,20 @@ if check("为批量删除准备了 5 条数据", len(made) == 5, made):
     ok("撤销批量删除（第 1 次）", u1)
     check("撤销的是 DELETE", D(u1).get("operation") == "DELETE", u1)
     t1 = bd_ids()[1]
-    check("一次 undo 只回来一行", t1 == base_total + 1, (base_total, t1))
+    check("一次 undo 只回来一行", total_shifted(base_total, 1, t1), (base_total, t1))
     u2 = bd_undo("bd_api")
     ok("撤销批量删除（第 2 次）", u2)
     # 空栈的 undo 也是 HTTP 200 + success:true，只是 applied:false —— 光看信封看不出来撤销真发生过
     check("第 2 次撤销的确实是一条 DELETE", D(u2).get("operation") == "DELETE", u2)
     t2 = bd_ids()[1]
-    check("第二次 undo 再回来一行", t2 == base_total + 2, (base_total, t2))
+    check("第二次 undo 再回来一行", total_shifted(base_total, 2, t2), (base_total, t2))
     u3 = bd_undo("bd_api")
     ok("撤销批量删除（第 3 次）", u3)
     check("第 3 次撤销的也确实是一条 DELETE", D(u3).get("operation") == "DELETE", u3)
     ids_final, total_final = bd_ids()
     check("三次撤销之后 5 条数据一条不少地回来了",
-          set(made).issubset(set(ids_final)) and total_final == total_now, (total_now, total_final))
+          set(made).issubset(set(ids_final)) and total_shifted(total_now, 0, total_final),
+          (total_now, total_final))
     # 别人撤不动我的栈（撤销栈按 actor 分）
     stranger = bd_undo("bd_stranger")
     check("别人的栈里没有这批删除", D(stranger).get("applied") is False, stranger)
@@ -1596,7 +1639,9 @@ reuse_msg = str(pr.get("message") or "")
 check("成功文案说的是这次真的补了列，不许退回「列一列不缺」",
       "补了 1 列" in reuse_msg and "列一列不缺" not in reuse_msg, reuse_msg[:220])
 
-# FAILED 这个形状没被 #47 抹掉：库自己不肯执行的 DDL 就是补不上，报告必须说"没补上"并带上原因。
+# FAILED 这个形状没被 #47 抹掉，但缺陷 #54 之后它的来源换了：不再是"库不肯执行"，而是"引擎先问过库
+# 有没有行，有行就不发这条 DDL"。为什么不能等库答：250 上实测 mysql:8.0.26（含 STRICT_TRANS_TABLES）
+# 对这条语句**接受**并把已有行填成空串，而 dev 的 H2 当场拒 —— 等库答等于让换库改语义。
 BAD_TABLE = "e2e_pq_row_" + SUF
 j = pq_entity("pq_bad", BAD_TABLE, ["seed"])
 bad_id = D(j).get("id")
@@ -1616,9 +1661,9 @@ check("库自己拒的 DDL 不许说成 ALTERED：补不上就是 FAILED",
 check("FAILED 点名没补上的那一栏",
       "needs_value" in [str(c) for c in (pr.get("missingColumns") or [])],
       str(pr.get("missingColumns"))[:160])
-check("FAILED 带上库给的原因（H2 实测 NULL not allowed），但不带 DDL 文本",
-      "NULL" in msg and "needs_value" in msg
-      and "ALTER TABLE" not in msg.upper() and "CREATE TABLE" not in msg.upper(), msg[:260])
+check("FAILED 带的是平台自己的可操作原因，不是库的错误文本（250 实测: MySQL 8 对这条 DDL 根本不报错）",
+      "needs_value" in msg and "默认值" in msg and "已经有行" in msg
+      and "ALTER TABLE" not in msg.upper() and "CREATE TABLE" not in msg.upper(), msg[:280])
 check("库里确实没有那一列（FAILED 不是报告撒的谎）",
       "needs_value" not in (physical_cols(BAD_TABLE) or []), physical_cols(BAD_TABLE))
 # 漂移期间的读侧（"定义跑在表前面时列表不再是一个裸 500"）在下面的 [15s] 缺陷 #47 专节里钉 ——
@@ -2043,10 +2088,6 @@ check("dict item delete responds", isinstance(j, dict), str(j)[:120])
 j, _, _ = call("POST", "/api/lc/app/archive", {"appCode": APP})
 ok("POST /app/archive", j)
 
-n = len(PASS) + len(FAIL)
-print(f"\n=== E2E RESULT: {len(PASS)}/{n} passed ===")
-if FAIL:
-    print("FAILED:")
-    for f in FAIL:
-        print("   - " + f)
+_done_flag["end"] = True   # 先立"到岸了"，再打印 —— 顺序反过来每一轮都会被判成"跑断了"
+_report()
 sys.exit(1 if FAIL else 0)

@@ -72,7 +72,10 @@ beforeEach(() => {
       calls.push({ url, body: typeof init?.body === 'string' ? init.body : null });
       const mode = (key: string): Mode => modes[key] ?? 'ok';
       if (url.includes('/app/list')) {
-        return respond(envelope([{ appCode: APP, appName: 'CRM', tenantCode: 'default' }]));
+        return respond(envelope([
+          { appCode: APP, appName: 'CRM', tenantCode: 'default' },
+          { appCode: 'erp', appName: 'ERP', tenantCode: 'default' },
+        ]));
       }
       if (url.includes('/meta/bundle')) {
         return respond(
@@ -219,6 +222,42 @@ function listRowCount(): number {
   return listTable().querySelectorAll('tbody tr[data-row-key]').length;
 }
 
+/** 矩阵现在的行 = 授权里出现过的角色 ∪ 手动「加入矩阵」的角色（#50）。 */
+function matrixRoleRows(): string[] {
+  return Array.from(matrixTable().querySelectorAll('tbody tr[data-row-key]')).map(
+    (tr) => tr.getAttribute('data-row-key') ?? '',
+  );
+}
+
+/** 填角色名 → 点「加入矩阵」。整段用真 DOM 事件走，不碰组件内部状态。 */
+async function addMatrixRole(name: string) {
+  const input = document.getElementById('permission-new-role');
+  if (!input) throw new Error('页面上没有「新角色」输入框，新角色的第一条权限没有入口');
+  fireEvent.change(input, { target: { value: name } });
+  const button = document.getElementById('permission-add-role') as HTMLButtonElement | null;
+  if (!button) throw new Error('没有「加入矩阵」按钮');
+  if (button.disabled) throw new Error(`填了「${name}」之后「加入矩阵」还是禁用的`);
+  fireEvent.click(button);
+  await waitFor(() => expect(matrixRoleRows()).toContain(name.trim()));
+}
+
+/** 顶部那个「应用」下拉：按它当前显示的应用名定位，不靠"第几个 .ant-select"。 */
+async function switchApp(fromLabel: string, toLabel: string) {
+  const select = Array.from(document.querySelectorAll('.ant-select')).find((node) =>
+    (node.querySelector('.ant-select-selection-item')?.getAttribute('title') ?? '') === fromLabel);
+  if (!select) throw new Error(`没有当前显示「${fromLabel}」的应用下拉框`);
+  fireEvent.mouseDown((select.querySelector('.ant-select-selector') ?? select) as Element);
+  const option = await waitFor(() => {
+    const nodes = Array.from(
+      document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option'),
+    );
+    const found = nodes.find((node) => (node.getAttribute('title') ?? node.textContent ?? '') === toLabel);
+    if (!found) throw new Error(`应用下拉里没有「${toLabel}」，实际: ${nodes.map((node) => node.textContent).join(' / ')}`);
+    return found;
+  });
+  fireEvent.click(option as HTMLElement);
+}
+
 describe('权限矩阵与 /check 同一个口径', () => {
   it('未选实体时，某个实体的单独授权不许点亮「整个应用」那一格', async () => {
     await mounted();
@@ -338,5 +377,66 @@ describe('权限矩阵与 /check 同一个口径', () => {
     await waitFor(() => expect(requestsFor('/permission/check').length).toBeGreaterThan(1));
     const wide = requestsFor('/permission/check').at(-1) ?? '';
     expect(wide, '留空还在带 entityCode，问的就不是整个应用').not.toContain('entityCode');
+  });
+
+  /* ---- #50：矩阵的行以前是从"已经有授权"的角色里推出来的 ---- */
+  it('一条授权都没有的角色，也能从这一页授出第一条', async () => {
+    await mounted();
+    expect(matrixRoleRows()).toEqual(['OWNER', 'SALES']);
+    const blank = document.getElementById('permission-add-role') as HTMLButtonElement;
+    expect(blank.disabled, '角色名还没填就能点，会往矩阵里塞一行空角色').toBe(true);
+
+    await addMatrixRole('  Manager  ');
+    expect(matrixRoleRows()).toEqual(['OWNER', 'SALES', 'Manager']);
+    // 新那一行五格全得是"能点的授予"：只要有一格是 disabled，入口就是画的。
+    for (const key of ['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'EXPORT']) {
+      expect(cellText('Manager', key), `${key} 那一格不该一上来就亮`).toBe('授予');
+      expect((cell('Manager', key).querySelector('button') as HTMLButtonElement).disabled).toBe(false);
+    }
+    expect(requestsFor('/permission/grant'), '光是把角色加进矩阵就该发请求？').toHaveLength(0);
+
+    fireEvent.click(cell('Manager', 'VIEW').querySelector('button') as Element);
+    await waitFor(() => expect(requestsFor('/permission/grant')).toHaveLength(1));
+    expect(grantBodies()[0], '名字两端空白没 trim，库里会同时有 "Manager" 和 " Manager" 两个角色').toMatchObject({
+      roleCode: 'Manager',
+      permission: 'VIEW',
+      appCode: APP,
+    });
+    expect(grantBodies()[0]).not.toHaveProperty('entityCode');
+    expect((await toasts()).join(' / ')).toContain('已授予Manager·VIEW（整个应用）');
+  });
+
+  it('同一个角色加两次只多一行（两行会给出同一格互相矛盾的答案）', async () => {
+    await mounted();
+    await addMatrixRole('Manager');
+    await addMatrixRole('Manager');
+    expect(matrixRoleRows().filter((role) => role === 'Manager')).toHaveLength(1);
+    // 已经出现在授权里的角色也不许多一行
+    await addMatrixRole('OWNER');
+    expect(matrixRoleRows().filter((role) => role === 'OWNER')).toHaveLength(1);
+  });
+
+  it('按实体过滤不许把"只有别的实体有授权"的角色整行藏掉', async () => {
+    await mounted();
+    await pick('permission-scope-filter', '商机');
+    // SALES 只有 task 上的 UPDATE：旧口径下矩阵是从筛过的行推角色的，这一整行会消失，
+    // 「另有 N 个实体单独授予」那句话就永远没有出现的对象。
+    await waitFor(() => expect(matrixRoleRows()).toContain('SALES'));
+    expect(cellText('SALES', 'UPDATE')).toBe('授予另有1个实体单独授予');
+    // 清单那张表照旧按实体筛（应用级也算覆盖）：矩阵不缩行、清单缩行，两者各有各的用处
+    expect(listRowCount()).toBe(2);
+  });
+
+  it('换应用要把上一轮手动加进来的角色带走（它不属于这个应用）', async () => {
+    await mounted();
+    await addMatrixRole('Manager');
+    expect(matrixRoleRows()).toContain('Manager');
+
+    await switchApp('CRM', 'ERP');
+    await waitFor(() => expect(matrixRoleRows()).not.toContain('Manager'));
+    const input = document.getElementById('permission-new-role') as HTMLInputElement;
+    expect(input.value, '输入框里还留着上个应用的角色名，切回来手一抖就授错应用').toBe('');
+    // 授权里推出来的角色行不受影响 —— 它们是真的属于当前这个应用的读结果
+    expect(matrixRoleRows()).toEqual(['OWNER', 'SALES']);
   });
 });

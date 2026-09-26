@@ -2032,6 +2032,408 @@ async function runOnce(runNum, appCode) {
       await shot(page, `r${runNum}-08d-provision-FAIL`);
     }
 
+    /* ---- 11e. 权限矩阵：界面画的每一格，都要和 /permission/check 答的一样（#49）---- */
+    // #48 之前这一页在真浏览器层是**零断言**：§11 那句 `body.innerText.includes('权限')`
+    // 只要页面任何一处出现过"权限"两个字就绿（表头、侧栏、页面标题都算），正是缺陷 #29
+    // 定罪的那个形状。jsdom 那 8 例钉的是"给定这份行清单，格子该亮哪一盏"，而它看不见
+    // 真后端到底答允许还是拒绝 —— 两边各说一套时只有这一节能发现。
+    try {
+      const H = { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' };
+      // 用本轮 seed 出来的那个应用，而不是另建一个空应用：矩阵那张表在 `entityOptions` 为空时
+      // **整张不渲染**（第一版就是另建了探针应用，于是 15s 等不到任何格子 —— 那一版测的其实是
+      // "空应用的页面长什么样"）。授权要挂在真有实体的应用上，才问得出"某个实体的授权 vs 整个应用"。
+      const permApp = appCode;
+      const grantApi = async (role, permission, entity) => fetch(`${API}/api/lc/permission/grant`, {
+        method: 'POST', headers: H,
+        body: JSON.stringify({ tenantCode: 'default', appCode: permApp, roleCode: role,
+                               permission, entityCode: entity ?? null }),
+      }).then((r) => r.json());
+      const checkApi = async (role, permission, entity) => fetch(
+        `${API}/api/lc/permission/check?${new URLSearchParams({
+          tenantCode: 'default', appCode: permApp, roleCode: role, permission,
+          ...(entity ? { entityCode: entity } : {}),
+        })}`, { headers: H }).then((r) => r.json()).then((j) => j.data).catch(() => null);
+      const listApi = async () => fetch(
+        `${API}/api/lc/permission/list?appCode=${permApp}&tenantCode=default`, { headers: H })
+        .then((r) => r.json()).then((j) => (Array.isArray(j.data) ? j.data : [])).catch(() => []);
+
+      // 前提：这一节要问"某个实体的授权 vs 整个应用"，所以应用里得真有一个实体；
+      // 空清单会让矩阵根本不出现，那一红指不回任何产品缺陷。
+      const seededBefore = await listApi();
+      check('这个应用里确实有 task 那一栏可授（矩阵要按实体分档，空实体会整张不渲染）',
+        (await (await fetch(`${API}/api/lc/admin/app/entity/list?appCode=${permApp}&tenantCode=default`,
+          { headers: H }).then((r) => r.json()).catch(() => ({}))).data || [])
+        .some((e) => e.entityCode === 'task'), `app=${permApp}`);
+      check('开跑之前这个应用的授权清单是空的（不清零就没法说"下面那两行是我种的"）',
+        seededBefore.length === 0, JSON.stringify(seededBefore).slice(0, 200));
+
+      // 前置写入要自己断言：这两次 grant 若有一支没落地，下面的"格子对得上"就是空跑。
+      const gWide = await grantApi('Auditor', 'VIEW', null);
+      const gEntity = await grantApi('Clerk', 'DELETE', 'task');
+      check('种下两条授权：一条整个应用（entity_code 为 NULL）、一条只在 task 上',
+        gWide.success === true && gEntity.success === true,
+        JSON.stringify([gWide.message, gEntity.message]).slice(0, 180));
+      const seeded = await listApi();
+      const wideRow = seeded.find((r) => r.roleCode === 'Auditor');
+      const entityRow = seeded.find((r) => r.roleCode === 'Clerk');
+      check('库里那两行确实是那个形状（应用级那行的 entityCode 真是 NULL，不是空串也不是 "null"）',
+        seeded.length === 2 && wideRow && wideRow.entityCode == null
+        && entityRow && entityRow.entityCode === 'task',
+        JSON.stringify(seeded.map((r) => [r.roleCode, r.permission, r.entityCode])));
+      // 后端自己那两问 —— 下面要求**界面的格子**与这里逐格相同，而不是与"我以为的样子"相同。
+      const truthWideView = await checkApi('Auditor', 'VIEW', undefined);
+      const truthWideTask = await checkApi('Auditor', 'VIEW', 'task');
+      const truthClerkApp = await checkApi('Clerk', 'DELETE', undefined);
+      const truthClerkTask = await checkApi('Clerk', 'DELETE', 'task');
+      const truthClerkOther = await checkApi('Clerk', 'DELETE', 'customer');
+      const truthNobody = await checkApi('Nobody', 'VIEW', undefined);
+      check('后端这一轮确实答的是一真一真一假一真一假一假（对照集若全是 null，下面的对齐就是空转）',
+        truthWideView === true && truthWideTask === true && truthClerkApp === false
+        && truthClerkTask === true && truthClerkOther === false && truthNobody === false,
+        JSON.stringify({ truthWideView, truthWideTask, truthClerkApp, truthClerkTask,
+                         truthClerkOther, truthNobody }));
+
+      /* (a) 矩阵的列必须就是后端那份词表，且格子逐格对得上 /check */
+      // 读矩阵一律按"那一张表"读，而不是全文档找 testid：授权清单那张表也带 data-row-key
+      // （行 key 就是库里的 id），全文档读会把两张表的行混成一份。
+      const readMatrix = () => page.evaluate(() => {
+        const table = Array.from(document.querySelectorAll('.ant-table')).find((node) => {
+          const head = node.querySelector('thead')?.textContent ?? '';
+          return head.includes('VIEW') && head.includes('EXPORT');
+        });
+        if (!table) return { rowKeys: [], cells: {}, error: 'no-matrix-table' };
+        const rowKeys = [];
+        const cells = {};
+        table.querySelectorAll('tbody tr[data-row-key]').forEach((tr) => {
+          const role = tr.getAttribute('data-row-key') ?? '';
+          rowKeys.push(role);
+          cells[role] = {};
+          ['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'EXPORT'].forEach((key) => {
+            const box = tr.querySelector(`[data-testid="perm-cell-${role}-${key}"]`);
+            if (!box) return;
+            const btn = box.querySelector('button');
+            cells[role][key] = {
+              granted: box.getAttribute('data-granted') === '1',
+              // 按钮还点不点得动，和"格子亮不亮"是两件事：#50 的错法正是有一行却一格都不能点。
+              disabled: btn ? btn.disabled === true : null,
+              text: (box.textContent ?? '').replace(/\s+/g, ''),
+            };
+          });
+        });
+        return { rowKeys, cells };
+      });
+      const roleBox = page.locator('#permission-new-role');
+      const addBtn = page.locator('#permission-add-role');
+      await page.goto(`${BASE}/admin/permissions?appCode=${permApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.locator('[data-testid^="perm-cell-Auditor-"]').first()
+        .waitFor({ state: 'attached', timeout: 15000 });
+
+      // 一次读完整个矩阵（不是一格一次 goto + 等），行按 data-row-key、列按表头文本来定位，
+      // 所以任何一次行序/列序变化都会红"对不上"而不是悄悄读到隔壁那格。
+      const matrix = await page.evaluate(() => {
+        const table = document.querySelector('[data-testid^="perm-cell-Auditor-"]')
+          ?.closest('.ant-table');
+        if (!table) return { headers: [], cells: {}, error: 'no-matrix-table' };
+        const headers = Array.from(table.querySelectorAll('.ant-table-thead th'))
+          .map((th) => th.textContent?.trim() ?? '').filter(Boolean).slice(1);
+        const cells = {};
+        table.querySelectorAll('tbody tr[data-row-key]').forEach((tr) => {
+          const role = tr.getAttribute('data-row-key');
+          cells[role] = {};
+          headers.forEach((key) => {
+            const box = tr.querySelector(`[data-testid="perm-cell-${role}-${key}"]`);
+            if (!box) return;
+            cells[role][key] = {
+              granted: box.getAttribute('data-granted') === '1',
+              // 全去空白而不是折叠成单空格: antd 给**恰好两个汉字**的按钮中间插一个空格
+              // （'授予' 渲染成 '授 予'，'已授予' 三个字的反而不插），留一个空格会让 startsWith 假红。
+              text: (box.textContent ?? '').replace(/\s+/g, ''),
+            };
+          });
+        });
+        return { headers, cells };
+      });
+      check('矩阵的列就是后端那份动词表，且顺序一致（列序是 PermissionKeys 的序，不是 Object.keys 的运气）',
+        JSON.stringify(matrix.headers) === JSON.stringify(['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'EXPORT']),
+        JSON.stringify(matrix.headers));
+      check('矩阵的行按角色身份定位，两行都在（读不到行就是"整张表空着也绿"的那个形状）',
+        Object.keys(matrix.cells).sort().join(',') === 'Auditor,Clerk',
+        JSON.stringify(Object.keys(matrix.cells)));
+      const cellOf = (role, key) => matrix.cells?.[role]?.[key];
+      const mismatches = [];
+      for (const [role, key, want] of [
+        ['Auditor', 'VIEW', truthWideView], ['Auditor', 'CREATE', false],
+        ['Clerk', 'DELETE', truthClerkApp], ['Clerk', 'VIEW', false],
+      ]) {
+        const cell = cellOf(role, key);
+        if (!cell) { mismatches.push(`${role}/${key}: <格子里没有 testid>`); continue; }
+        if (cell.granted !== want) mismatches.push(`${role}/${key}: 界面=${cell.granted} /check=${want}`);
+      }
+      check('未选实体那一档：界面点亮的那几格 == /permission/check 答允许的那几格（一格不符就点名）',
+        mismatches.length === 0, JSON.stringify(mismatches).slice(0, 240));
+      // 「授予」/「已授予」是这一格唯一的动作出口：它必须跟真值走，否则用户对着一个已授过的
+      // 格子再点一次（#48 的查重在旧代码里就是因此每次都新增一行）。
+      check('已授予的格子按钮是「已授予」且点亮状态与它一致（按钮与状态各说一套 = 再点一次会重复授）',
+        cellOf('Auditor', 'VIEW')?.text.startsWith('已授予')
+        && cellOf('Clerk', 'VIEW')?.text.startsWith('授予')
+        && cellOf('Auditor', 'VIEW')?.granted === true
+        && cellOf('Clerk', 'VIEW')?.granted === false,
+        JSON.stringify([cellOf('Auditor', 'VIEW')?.text, cellOf('Clerk', 'VIEW')?.text]));
+
+      /* (b) 一个实体的授权不许点亮「整个应用」那一格，但要点名它存在 */
+      const clerkDelete = cellOf('Clerk', 'DELETE');
+      check('task 上的单实体授权不把「整个应用」那格点亮（真后端那里答的也是拒绝）',
+        clerkDelete?.granted === false, JSON.stringify(clerkDelete));
+      const bodyAppWide = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+      check('那一格同时说清「另有 1 个实体单独授予」（不点亮又不说，用户会以为这条授权丢了）',
+        /另有\s*1\s*个实体单独授予/.test(bodyAppWide), bodyAppWide.slice(0, 260));
+      check('应用级那一格说出它的来源是「来自整个应用」（与单实体授予是两种口径，混说就没法核对）',
+        /来自整个应用/.test(bodyAppWide), bodyAppWide.slice(0, 260));
+
+      /* (b2) #50：一条授权都没有的角色，这一页要能授出它的第一条 */
+      // 这一小节是 §11e 第一版**跑出来**的缺陷：矩阵的行以前是从"已经有授权"的角色里推的，
+      // 于是新角色压根没有行、也就没有格子，第一条权限在这个界面上永远授不出去。
+      await roleBox.waitFor({ state: 'visible', timeout: 15000 });
+      check('「加入矩阵」在角色名还没填的时候是 disabled（点得动就会往矩阵里塞一行空角色）',
+        await addBtn.isDisabled(), `disabled=${await addBtn.isDisabled()}`);
+      // 名字里带 appCode（它本身就是本轮唯一的 stamp）：跨轮撞名的话，上一轮残留的那一行
+      // 会让"这是一个从来没有授权的角色"这个前提直接失效。
+      const freshRole = `UiFresh${appCode}`;
+      await roleBox.fill(`  ${freshRole}  `);
+      check('填了名字（还带着两端空格）就能提交', !(await addBtn.isDisabled()));
+      await addBtn.click();
+      // 空格不清掉的话，库里会同时有 "Manager" 和 " Manager " 两个角色，界面上也是两行。
+      await page.waitForTimeout(600);
+      const withFresh = await readMatrix();
+      check('新角色进了矩阵，且行身份是 trim 过的名字（带空格的那一行和它不是同一个角色）',
+        withFresh.rowKeys.includes(freshRole) && !withFresh.rowKeys.some((r) => r !== r.trim()),
+        JSON.stringify(withFresh.rowKeys));
+      const freshCells = withFresh.cells[freshRole] ?? {};
+      check('新那一行五格全是"能点的授予" —— 有行却一格都点不动，入口就是画的',
+        ['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'EXPORT'].every((k) =>
+          freshCells[k]?.granted === false && freshCells[k]?.disabled === false
+          && freshCells[k]?.text.startsWith('授予')),
+        JSON.stringify(freshCells));
+      await page.locator(`[data-testid="perm-cell-${freshRole}-VIEW"] button`).first().click();
+      await page.waitForTimeout(1500);
+      const freshAfter = await (async () => ({
+        cells: (await readMatrix()).cells[freshRole] ?? {},
+        dbRows: await listApi(),
+        allowed: await checkApi(freshRole, 'VIEW', undefined),
+      }))();
+      const freshRow = freshAfter.dbRows.find((r) => r.roleCode === freshRole);
+      check('点下去真的授出去了：库里有这个角色的一行、且是应用级（entityCode 为 NULL）',
+        freshAfter.dbRows.length === 3 && freshRow && freshRow.entityCode == null
+        && freshRow.permission === 'VIEW',
+        JSON.stringify(freshAfter.dbRows.map((r) => [r.roleCode, r.permission, r.entityCode])));
+      check('新角色的那一格从此与 /check 同答（界面亮 = 后端允许，两边任一处不跟都是红）',
+        freshAfter.allowed === true && freshAfter.cells.VIEW?.granted === true
+        && freshAfter.cells.VIEW?.text.startsWith('已授予')
+        && freshAfter.cells.CREATE?.granted === false,
+        JSON.stringify([freshAfter.allowed, freshAfter.cells]));
+      await roleBox.fill(freshRole);
+      await addBtn.click();
+      await page.waitForTimeout(400);
+      const dupKeys = (await readMatrix()).rowKeys;
+      check('同一个角色不许多加一行（两行会给出同一格互相矛盾的答案）',
+        dupKeys.filter((r) => r === freshRole).length === 1, JSON.stringify(dupKeys));
+      // 这一小节自己授的这条要自己收干净，而且**用界面的回收按钮**收 —— 上面那一格是界面授的，
+      // 只有下面这次回收能证明"授出去的东西在这页收得回来"。收完 DB 回到两行，
+      // 后面 (c)(d)(e) 的行数账才不用跟着改。
+      await page.locator(`[data-testid="perm-revoke-${freshRow.id}"]`).first()
+        .waitFor({ state: 'visible', timeout: 15000 });
+      await page.locator(`[data-testid="perm-revoke-${freshRow.id}"]`).first().click();
+      await page.waitForTimeout(1500);
+      const freshGone = await (async () => ({
+        dbRows: await listApi(),
+        allowed: await checkApi(freshRole, 'VIEW', undefined),
+        stillThere: !!(await readMatrix()).cells[freshRole]?.VIEW?.granted,
+      }))();
+      check('界面授的那一条，界面也收得回来：库回到种下的那两条、格子灭了、/check 对这个新角色答拒绝',
+        freshGone.allowed === false && freshGone.stillThere === false
+        && freshGone.dbRows.length === 2
+        && !freshGone.dbRows.some((r) => r.roleCode === freshRole),
+        JSON.stringify(freshGone.dbRows.map((r) => [r.roleCode, r.permission, r.entityCode])));
+
+      /* (c) 切到「按实体过滤 = task」：这一档的真值口径整个换了一遍，格子必须跟着换 */
+      // 走 `.ant-select-selector` 展开下拉框 —— 那是本文件里 §11a 已经跑通过的路子；`id` 在 antd 5
+      // 落在内层 <input> 上，不是那个可点的容器。换档必须真发生：下面紧跟着一条"只有一个下拉框开着"，
+      // 换档失败时那一格会红而不是悄悄沿用上一档的格子。
+      await page.locator('.ant-select:has(#permission-scope-filter) .ant-select-selector').click();
+      const openedBoxes = page.locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+      for (let i = 0; i < 80 && (await openedBoxes.count()) !== 1; i += 1) await page.waitForTimeout(100);
+      check('换档前只有一个下拉框开着（两个同时开着，这一次读数会把两份选择项混成一份）',
+        (await openedBoxes.count()) === 1, `count=${await openedBoxes.count()}`);
+      // 选择项上印的是**实体名**（`useEntityOptions` 用 `entityName || entityCode`），不是编码 ——
+      // 第一版按 /^task/ 找选项，等了 10s 什么也没等到。所以先问 API 那个编码叫什么名字，
+      // 再按名字点；名字对不上就是红的，而不是悄悄点到隔壁那一项。
+      const entityRows = await fetch(
+        `${API}/api/lc/admin/app/entity/list?appCode=${permApp}&tenantCode=default`, { headers: H })
+        .then((r) => r.json()).then((j) => (Array.isArray(j.data) ? j.data : [])).catch(() => []);
+      const taskName = (entityRows.find((e) => e.entityCode === 'task') || {}).entityName || 'task';
+      const optionLabels = (await openedBoxes.first().locator('.ant-select-item-option')
+        .allInnerTexts()).map((t) => t.trim());
+      check('换档的选择项里点名了那个实体（找不到名字就该红，而不是按位置猜一项）',
+        optionLabels.includes(taskName), JSON.stringify(optionLabels));
+      const taskOption = openedBoxes.first().locator('.ant-select-item-option')
+        .filter({ hasText: taskName }).first();
+      await taskOption.waitFor({ state: 'visible', timeout: 10000 });
+      await taskOption.click();
+      // 换档要**在组件状态里**生效，不能只看过滤框上那行字：`value={entityCode || undefined}` 在
+      // 空值时传的是 undefined，antd 据此把 Select 当非受控 —— 点中某项就改显示，与状态换没换无关。
+      // 上一版只读显示，M8（onChange 不吃 value）正是穿着"显示已经换了"跑过去的（3 条连带红抓到了
+      // 格子，这一条却报绿）。显示与状态在同一次读数里取，两半都不许单独算过。
+      const scopeBox = page.locator('.ant-select:has(#permission-scope-filter)');
+      const shownName = async () => (await scopeBox.locator('.ant-select-selection-item')
+        .first().innerText().catch(() => '')).replace(/\s+/g, '');
+      const scopeState = async () => (await page.locator('[data-testid="perm-filter-scope"]')
+        .first().getAttribute('data-entity').catch(() => null)) ?? '';
+      for (let i = 0; i < 100 && (await scopeState()) !== 'task'; i += 1) await page.waitForTimeout(100);
+      const tookScope = { state: await scopeState(), shown: await shownName() };
+      check('换档真的生效了：组件状态和过滤框上印的都是那个实体（只换显示不换状态，后面读的就是上一档的格子）',
+        tookScope.state === 'task' && tookScope.shown === taskName,
+        `状态=${tookScope.state} 显示=${tookScope.shown} 期望=task/${taskName}`);
+      await page.locator('[data-testid="perm-cell-Clerk-DELETE"]').first()
+        .waitFor({ state: 'attached', timeout: 15000 });
+      const truthTaskView = await checkApi('Auditor', 'VIEW', 'task');
+      const taskMatrix = await page.evaluate(() => {
+        const out = {};
+        document.querySelectorAll('tbody tr[data-row-key]').forEach((tr) => {
+          const role = tr.getAttribute('data-row-key');
+          if (!['Auditor', 'Clerk'].includes(role)) return;
+          out[role] = {};
+          ['VIEW', 'CREATE', 'UPDATE', 'DELETE', 'EXPORT'].forEach((key) => {
+            const box = document.querySelector(`[data-testid="perm-cell-${role}-${key}"]`);
+            if (box) out[role][key] = box.getAttribute('data-granted') === '1';
+          });
+        });
+        return out;
+      });
+      const taskMismatch = [];
+      for (const [role, key, want] of [
+        ['Auditor', 'VIEW', truthTaskView], ['Auditor', 'EXPORT', false],
+        ['Clerk', 'DELETE', true], ['Clerk', 'VIEW', false],
+      ]) {
+        const got = taskMatrix?.[role]?.[key];
+        if (got !== want) taskMismatch.push(`${role}/${key}: 界面=${got} /check=${want}`);
+      }
+      check('选 task 之后：应用级授权覆盖它（Auditor/VIEW 亮），而 task 的那条只点亮 DELETE',
+        taskMismatch.length === 0, JSON.stringify(taskMismatch).slice(0, 240));
+
+      check('格子是真值口径变化的受害者而不是文案的复读（同一格在两档下状态不同，说明它读的是行清单不是提示）',
+        clerkDelete?.granted === false && taskMatrix?.Clerk?.DELETE === true,
+        JSON.stringify({ appWide: clerkDelete?.granted, onTask: taskMatrix?.Clerk?.DELETE }));
+      const scopedBody = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+      check('task 这一档里那条单实体授权说「该实体单独授予」（与「来自整个应用」是两句话）',
+        /该实体单独授予/.test(scopedBody) && !/另有\s*\d+\s*个实体单独授予/.test(scopedBody),
+        scopedBody.slice(0, 260));
+
+      /* (d) 下面那张清单：作用范围那一格必须把库里的 NULL 说成「整个应用」，且带出身份 */
+      const scopeCells = await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('tr[data-row-key]'));
+        return rows.map((tr) => {
+          const box = tr.querySelector('[data-testid="perm-scope"]');
+          return {
+            key: tr.getAttribute('data-row-key'),
+            scope: box?.getAttribute('data-scope') ?? null,
+            text: (box?.textContent ?? '').replace(/\s+/g, ''),
+          };
+        }).filter((r) => r.scope !== null);
+      });
+      const wideCell = scopeCells.find((r) => r.key === String(wideRow?.id));
+      const entityCell = scopeCells.find((r) => r.key === String(entityRow?.id));
+      check('清单里两行都在，且行身份就是库里那两个 id（只数个数不比对 id 的话，按角色当 key 也照样绿）',
+        scopeCells.map((r) => r.key).sort().join(',')
+        === [String(wideRow?.id), String(entityRow?.id)].sort().join(','),
+        JSON.stringify({ rendered: scopeCells.map((r) => r.key),
+                         ids: [String(wideRow?.id), String(entityRow?.id)] }));
+      check('应用级那一行的作用范围格渲染成「整个应用」，且 data-scope 钉的是 APP_WIDE（NULL 那一档）',
+        wideCell?.text === '整个应用' && wideCell?.scope === 'APP_WIDE', JSON.stringify(wideCell));
+      check('task 那一行点名 task，不被上面那句「整个应用」吞掉',
+        entityCell?.text === 'task' && entityCell?.scope === 'task', JSON.stringify(entityCell));
+
+      /* (e) 真点回收：DOM 少一行、库里少一条、/check 改口 —— 三样落在同一次读取里 */
+      const revokeBtn = page.locator(`[data-testid="perm-revoke-${wideRow.id}"]`);
+      await revokeBtn.waitFor({ state: 'visible', timeout: 15000 });
+      await revokeBtn.click();
+      // toast 要在等重渲染**之前**抓：antd 的 message 3 秒就消失，先去读 DOM 再来读它，
+      // 读到的会是空串 —— 而"没有失败字样"对着空串也打绿灯，那条断言就成了假的。
+      await page.locator('.ant-message-notice-content').first()
+        .waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+      const toastNow = (await page.locator('.ant-message').innerText().catch(() => ''))
+        .replace(/\s+/g, ' ').trim();
+      await page.waitForTimeout(1500);
+      const afterRevoke = await (async () => {
+        const domIds = await page.evaluate(() => Array.from(
+          document.querySelectorAll('[data-testid^="perm-revoke-"]'))
+          .map((el) => el.getAttribute('data-testid').replace('perm-revoke-', '')));
+        const dbRows = await listApi();
+        const stillAllowed = await checkApi('Auditor', 'VIEW', undefined);
+        return { domIds, dbRows, stillAllowed };
+      })();
+      check('回收之后那一行从清单里真的消失（不是只弹了一句"已回收"）',
+        !afterRevoke.domIds.includes(String(wideRow.id))
+        && afterRevoke.domIds.includes(String(entityRow.id)),
+        JSON.stringify(afterRevoke.domIds));
+      check('库里也确实少了那一条，剩下的是 task 那一行（界面少了而库没少 = 谎报成功）',
+        afterRevoke.dbRows.length === 1 && afterRevoke.dbRows[0].id === entityRow.id,
+        JSON.stringify(afterRevoke.dbRows.map((r) => [r.id, r.roleCode, r.entityCode])));
+      check('回收之后 /check 改口答拒绝（矩阵那格之前亮着，判定的权威源必须跟着变）',
+        afterRevoke.stillAllowed === false, String(afterRevoke.stillAllowed));
+      check('回收那一下界面说的是「已回收」，且没有一句失败文案（只断言"没报错"对着空 toast 也会打绿灯）',
+        toastNow.includes('已回收') && !toastNow.includes('失败'), toastNow.slice(0, 200));
+      // #50：Auditor 最后一条授权被回收后，那一行会从矩阵里下去（矩阵的行是"授权里出现过的角色"
+      // 推出来的）。行没了不要紧，要紧的是**这一页还留没留再授的入口** —— 「加入矩阵」就是那个入口：
+      // 把角色加回来，那一格必须是可点的「授予」。第一版在这里读到的是 gridAfter === null，
+      // 也就是"回收掉一个角色的第一条、也是唯一一条授权之后，这个界面上再也没有能授它的地方"。
+      const afterRevokeMatrix = await readMatrix();
+      check('回收掉唯一一条授权后那一行不再冒充"还授着"（矩阵里读不到 Auditor 这一行）',
+        !afterRevokeMatrix.rowKeys.includes('Auditor'),
+        JSON.stringify(afterRevokeMatrix.rowKeys));
+      await roleBox.fill('Auditor');
+      await addBtn.click();
+      await page.waitForTimeout(800);
+      const backAgain = (await readMatrix()).cells.Auditor?.VIEW;
+      check('但这一页给得出再授的入口：把 Auditor 加回矩阵，那一格是「授予」并且点得动',
+        backAgain?.granted === false && backAgain?.disabled === false
+        && backAgain?.text.startsWith('授予'), JSON.stringify(backAgain));
+
+      /* (f) 读失败不许画成「库里没有」：掐掉 /permission/list 之后看它怎么说 */
+      await page.route('**/api/lc/permission/list*', (route) => route.abort('failed'));
+      await page.goto(`${BASE}/admin/permissions?appCode=${permApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1800);
+      const brokenBody = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+      check('读失败时页面报的是读不到，而不是「还没有权限配置」（前者让人去修接口）',
+        /没有读到|接口失败|加载失败|请求失败/.test(brokenBody) && !/还没有权限配置/.test(brokenBody),
+        brokenBody.slice(0, 300));
+      check('读失败也不许留下"格子全没授过"的假矩阵（那种页面点一下就是真的写一次授权）',
+        !/已授予/.test(brokenBody) && !/另有\s*\d+\s*个实体单独授予/.test(brokenBody),
+        `cells=${(brokenBody.match(/已授予/g) ?? []).length}`);
+      await page.unroute('**/api/lc/permission/list*');
+
+      // 收尾：把这一节种过的（以及自己又授了一遍的）全部清掉。**不能** archive permApp ——
+      // 它现在就是本轮 seed 的那个应用，后面 §12 导入、§13 那几节还要用它。
+      // 上一版这里只收了 Auditor 那一条，Clerk/task 留在库里 → 下一轮"两行前提"直接红，
+      // 而红的那条检查说的是别人的账（这一条就是被自己那条"回收干净"抓出来的）。
+      const leftover = await listApi();
+      for (const row of leftover) {
+        await fetch(`${API}/api/lc/permission/revoke`, {
+          method: 'POST', headers: H, body: JSON.stringify({ id: row.id }),
+        }).catch(() => null);
+      }
+      const left = await listApi();
+      check('这一节自己种的授权全部回收干净（留着会让下一轮的两行前提红，而且没人知道是谁留的）',
+        left.length === 0,
+        JSON.stringify({ wanted: leftover.length, left: left.map((r) => [r.roleCode, r.permission]) }).slice(0, 200));
+      await shot(page, `r${runNum}-08e-permissions`);
+    } catch (e) {
+      await page.unroute('**/api/lc/permission/list*').catch(() => {});
+      check('权限矩阵与 /check 对齐（#49 浏览器层）', false, e?.message);
+      await shot(page, `r${runNum}-08e-permissions-FAIL`);
+    }
+
     /* ---- 12. 批量导入：界面说的行数必须等于库里多出来的行数 ---- */
     try {
       await page.goto(`${BASE}/${appCode}/task/LIST`, { waitUntil: 'networkidle', timeout: 20000 });
@@ -2394,6 +2796,9 @@ async function main() {
 }
 
 main().catch((err) => {
+  // 崩了不是"有断言红"。红是 1（有一批具名 FAIL 可以记账），2 是"这一轮没有结论" ——
+  // 上一版留 1，注入守卫把 M8/M9 那三轮"压根没跑到页面"读成了"注入没红"，
+  // 差点点出一条根本不存在的等价变异。
   console.error(err);
-  process.exit(1);
+  process.exit(2);
 });
