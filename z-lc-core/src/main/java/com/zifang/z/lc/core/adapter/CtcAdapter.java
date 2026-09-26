@@ -104,6 +104,31 @@ public class CtcAdapter implements Adapter {
         return HttpExecutor.getDefault().execute(def);
     }
 
+    /**
+     * 判"远端到底答没答应"。
+     * <p>
+     * 不能只看 {@link HttpExecutionResult#isSuccess()}：那一格只表示"这一趟没有传输层错误"，
+     * 库自己在 {@code HttpExecutionResult:47} 写明了 ⇒
+     * "因此 success 始终为 true，5xx 不会让 isSuccess()=false"。
+     * 于是 404/500 会从这一族所有调用方脚下溜过去：{@code ping()} 直接报 UP（健康检查缺陷 #52
+     * 的同一形状），读 body 的那几处则把一个网关错误页当成"远端说成功"继续解析。
+     * <p>
+     * 现状（如实记，别当成已经修完）：本批只把 {@link WfAdapter} 这一条链路接进来了。
+     * 同一个错误形状还剩 10 处（行号会漂，重取用
+     * {@code grep -n "res.isSuccess()" z-lc-core/src/main/java/com/zifang/z/lc/core/adapter/*.java}，
+     * 09-26 23:1x 实测 10 处）：{@code CtcAdapter} 的 fetchContext/ping、{@code MetaAdapter} 两处、
+     * {@code ScriptAdapter} 一处、{@code MistAdapter} 两处、{@code OssAdapter} 三处，
+     * 各自要配自己的测试，单列为缺陷 #62（见
+     * {@code _doc/003_待办事项/feature002_http_status_not_checked/TASK.md}）。
+     */
+    static boolean httpAccepted(HttpExecutionResult res) {
+        if (res == null || !res.isSuccess()) {
+            return false;
+        }
+        int status = res.getStatus();
+        return status >= 200 && status < 300;
+    }
+
     @Override
     public String name() {
         return NAME;

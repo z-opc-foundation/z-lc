@@ -1,8 +1,9 @@
 package com.zifang.z.lc.core.adapter;
 
-import com.zifang.util.core.meta.Result;
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.json.JsonUtil;
+import com.zifang.util.json.exception.JsonTypeException;
+import com.zifang.util.json.model.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
@@ -94,32 +95,54 @@ public class WfAdapter implements Adapter {
         }
 
         HttpExecutionResult res = CtcAdapter.doPostJson(startUrl(), headers, JsonUtil.toJson(body));
-        if (!res.isSuccess()) {
+        if (!CtcAdapter.httpAccepted(res)) {
             return ProcessStart.failed("POST " + START_PATH + " http=" + res.getStatus()
                     + " err=" + (res.getError() == null ? "unknown" : res.getError()));
         }
-        Result<?> r;
+        // 信封只能逐格读，不能用 JsonUtil.fromJson(body, Result.class)：Result 的默认构造是 private，
+        // 而这份 JSON 引擎建对象走 clazz.getDeclaredConstructor().newInstance()（没 setAccessible），
+        // 实测 forJson(..., Result.class) 恒抛 IllegalAccessException、TypeReference<Result<...>> 恒抛
+        // ClassCastException（ParameterizedTypeImpl 不能转 Class）。也就是说 z-wf 就算真的把流程起起来了，
+        // 旧写法也只会回"应答不是可解析的 Result" —— 这是缺陷 #61 这条链上第四处对不上。
+        JsonObject envelope;
         try {
-            r = JsonUtil.fromJson(res.getBody(), Result.class);
+            envelope = JsonUtil.parseObject(res.getBody());
         } catch (Exception ex) {
-            return ProcessStart.failed("z-wf 的应答不是可解析的 Result: " + ex.getMessage());
+            return ProcessStart.failed("z-wf 的应答不是可解析的 JSON 对象: " + ex.getMessage());
         }
-        if (r == null) {
-            return ProcessStart.failed("z-wf 回了空应答体");
+        Boolean success = envelope.getBoolean("success");
+        if (success == null) {
+            return ProcessStart.failed("z-wf 的应答里没有布尔型的 success 这一格，不能当成发起成功: "
+                    + abbreviate(res.getBody()));
         }
-        if (!r.isSuccess()) {
-            return ProcessStart.failed("z-wf 拒绝发起: " + r.getMessage());
+        if (!success.booleanValue()) {
+            return ProcessStart.failed("z-wf 拒绝发起: " + envelope.getString("message"));
         }
-        Object data = r.getData();
-        if (!(data instanceof Map)) {
-            return ProcessStart.failed("z-wf 成功但没有 data.processInstanceId（data="
-                    + (data == null ? "null" : data.getClass().getSimpleName()) + "）");
+        if (!envelope.containsKey("data")) {
+            return ProcessStart.failed("z-wf 说成功但 data 整格都不在");
         }
-        Object instanceId = ((Map<?, ?>) data).get("processInstanceId");
-        if (instanceId == null || instanceId.toString().trim().isEmpty()) {
-            return ProcessStart.failed("z-wf 的 data 里没有 processInstanceId");
+        JsonObject data;
+        try {
+            data = envelope.getJsonObject("data");
+        } catch (JsonTypeException ex) {
+            // data 是 null / 字符串之类时引擎抛这个，消息里得带上实际形状，否则排查只能猜。
+            return ProcessStart.failed("z-wf 的 data 不是一个对象（实际值="
+                    + abbreviate(String.valueOf(envelope.get("data"))) + "），拿不到 processInstanceId");
         }
-        return ProcessStart.started(instanceId.toString());
+        String instanceId = data.getString("processInstanceId");
+        if (instanceId == null || instanceId.trim().isEmpty()) {
+            return ProcessStart.failed("z-wf 的 data 里没有 processInstanceId（data 里有 "
+                    + data.size() + " 格）");
+        }
+        return ProcessStart.started(instanceId.trim());
+    }
+
+    /** 报错消息里带原文可以，但不能把一整包 HTML/栈原样贴回去。 */
+    private static String abbreviate(String value) {
+        if (value == null) {
+            return "null";
+        }
+        return value.length() <= 200 ? value : value.substring(0, 200) + "…";
     }
 
     /** 一次发起的结果：要么带着 z-wf 的实例 id，要么带着为什么没有。 */

@@ -182,6 +182,27 @@ public class WfAdapterTest {
         }
     }
 
+    /**
+     * 状态码非 2xx 时，哪怕应答体长得就是一份成功信封也不算发起成功。
+     * <p>
+     * 这条断言的猎物不在 body 上而在 http 状态上：z-util-http 的
+     * {@code HttpExecutionResult:47} 写明"success 始终为 true，5xx 不会让 isSuccess()=false"，
+     * 所以只判 {@code isSuccess()} 的写法（本类 #61 修复前的样子）会把 500 当成"远端受理了"，
+     * 然后因为读不到 data 而报出一个把引擎撇干净的假原因。
+     */
+    @Test
+    public void non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope() throws Exception {
+        try (WfStubServer stub = new WfStubServer(new WfStubServer.Script()
+                .status(500)
+                .body("{\"success\":true,\"code\":200,\"data\":{\"processInstanceId\":\"ghost-1\"}}"))) {
+            inject(adapter, "baseUrl", stub.baseUrl());
+            WfAdapter.ProcessStart start = adapter.startProcess("expense", "biz-4b", null, null, null);
+
+            assertFalse("500 就是没受理，body 里写什么都不算: " + start.getInstanceId(), start.isStarted());
+            assertTrue("要说清是 http 500: " + start.getFailure(), start.getFailure().contains("500"));
+        }
+    }
+
     @Test
     public void unparsableBodyIsAFailure() throws Exception {
         try (WfStubServer stub = new WfStubServer(new WfStubServer.Script().body("<html>网关错误</html>"))) {
@@ -189,8 +210,25 @@ public class WfAdapterTest {
             WfAdapter.ProcessStart start = adapter.startProcess("expense", "biz-5", null, null, null);
 
             assertFalse(start.getFailure(), start.isStarted());
-            assertTrue("200 但回来的不是 Result 也要判失败: " + start.getFailure(),
-                    start.getFailure().contains("Result"));
+            assertTrue("200 但回来的不是 JSON 对象也要判失败: " + start.getFailure(),
+                    start.getFailure().contains("JSON"));
+        }
+    }
+
+    /**
+     * 空 body 是上面那一支的**另一条**路径（不是"解析失败"而是"解析出个空对象"）：
+     * {@code JsonUtil.parseObject("")} 实测返回空 {@code JsonObject} 而不抛，
+     * 所以旧写法那句"回了空应答体"永远不响。这里钉住"仍然判失败、仍然给得出原因"。
+     */
+    @Test
+    public void emptyBodyIsAFailureWithItsOwnReason() throws Exception {
+        try (WfStubServer stub = new WfStubServer(new WfStubServer.Script().body(""))) {
+            inject(adapter, "baseUrl", stub.baseUrl());
+            WfAdapter.ProcessStart start = adapter.startProcess("expense", "biz-5b", null, null, null);
+
+            assertFalse(start.getFailure(), start.isStarted());
+            assertNotNull("失败要有一句话可以说: " + start.getFailure(), start.getFailure());
+            assertTrue("要指出缺的是哪一格: " + start.getFailure(), start.getFailure().contains("success"));
         }
     }
 
