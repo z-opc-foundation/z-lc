@@ -3,6 +3,7 @@ package com.zifang.z.lc.core.adapter;
 import com.zifang.util.core.meta.Result;
 import com.zifang.util.http.base.define.RequestMethod;
 import com.zifang.util.http.base.pojo.HttpRequestDefinition;
+import com.zifang.util.http.base.pojo.HttpRequestHeader;
 import com.zifang.util.http.base.pojo.HttpRequestLine;
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.http.client.HttpExecutor;
@@ -81,13 +82,20 @@ public class CtcAdapter implements Adapter {
         line.setUrl(url);
         HttpRequestDefinition def = new HttpRequestDefinition();
         def.setHttpRequestLine(line);
+        // 请求头对象必须由这里 new 出来：HttpRequestDefinition 是个裸 POJO，
+        // getHttpRequestHeader() 在没有 set 过时返回 null（z-util-http 1.0.12 实测）。早先直接
+        // def.getHttpRequestHeader().put(...) ⇒ 任何带头的调用（doPostJson 恒带 Content-Type、
+        // fetchContext 恒带 Authorization）都在这一行 NPE —— 出站链路一次都没真的通过，
+        // 而 ping() 把 NPE 咽成"ctc 不可达"，看起来就像对端挂了。
+        HttpRequestHeader header = new HttpRequestHeader();
         if (headers != null) {
             for (Map.Entry<String, String> e : headers.entrySet()) {
                 if (e.getKey() != null && e.getValue() != null) {
-                    def.getHttpRequestHeader().put(e.getKey(), e.getValue());
+                    header.put(e.getKey(), e.getValue());
                 }
             }
         }
+        def.setHttpRequestHeader(header);
         if (body != null && !body.isEmpty()) {
             com.zifang.util.http.base.pojo.HttpRequestBody reqBody = new com.zifang.util.http.base.pojo.HttpRequestBody();
             reqBody.setBody(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));

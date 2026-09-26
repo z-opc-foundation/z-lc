@@ -66,6 +66,10 @@ public class RuntimeCrudController {
     @Autowired
     private com.zifang.z.lc.core.deleter.RuntimeBatchDeleteService batchDeleteService;
 
+    /** 写后触发流程绑定（缺陷 #61）。它承诺不抛，见 {@code WorkflowTriggerDispatcher} 的类注释。 */
+    @Autowired
+    private com.zifang.z.lc.core.workflow.WorkflowTriggerDispatcher workflowTriggerDispatcher;
+
     /**
      * 将任意对象安全转换为 Long, 失败时返回 null.
      *
@@ -179,6 +183,14 @@ public class RuntimeCrudController {
         undoService.record(body.getTenantCode(), body.getAppCode(), def, id,
                 com.zifang.z.lc.core.undo.entity.DataChangeEntity.OP_CREATE,
                 null, body.getFieldValues(), com.zifang.z.lc.web.support.ActorResolver.resolve(null));
+        // 写后触发流程绑定（缺陷 #61：这条链此前是"绑定存下来、运行期一个字都不执行"）。
+        // 只覆盖逐条新建：批量导入与 undo 的重做不发单，理由与证据面见 _e2e/README 的「流程绑定」一节。
+        int fired = workflowTriggerDispatcher.afterCreate(body.getTenantCode(), body.getAppCode(),
+                def.getEntityCode(), id, body.getFieldValues(), actor);
+        if (fired > 0) {
+            log.info("记录 {}#{} 写后登记了 {} 条流程绑定，结局逐条见 z_lc_workflow_fire",
+                    def.getEntityCode(), id, fired);
+        }
         return Result.success(id);
     }
 

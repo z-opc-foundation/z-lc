@@ -245,3 +245,24 @@ CREATE TABLE IF NOT EXISTS z_lc_data_change (
   `deleted`      TINYINT     DEFAULT 0,
   PRIMARY KEY (`id`)
 );
+
+-- 流程绑定的发起结局账 (缺陷 #61). 一条记录写成功后每次「去发起流程」都在这里留一行:
+-- STARTED 带 z-wf 的实例 id, FAILED 带为什么 (引擎不可达/拒绝/超时/并发额度用尽)。
+-- 没有这张表的话, "绑定已保存" 与 "单真的提了" 之间没有任何可回读的证据。
+CREATE TABLE IF NOT EXISTS z_lc_workflow_fire (
+  `id`                     BIGINT      NOT NULL AUTO_INCREMENT,
+  `tenant_code`            VARCHAR(64) NOT NULL,
+  `app_code`               VARCHAR(64) NOT NULL,
+  `entity_code`            VARCHAR(64) NOT NULL,
+  `record_id`              BIGINT      NOT NULL,
+  `binding_id`             BIGINT,
+  `trigger_event`          VARCHAR(32),
+  `process_definition_key` VARCHAR(128),
+  `status`                 VARCHAR(16) NOT NULL,
+  `instance_id`            VARCHAR(128),
+  `detail`                 VARCHAR(512),
+  `create_time`            DATETIME,
+  `update_time`            DATETIME,
+  `deleted`                TINYINT     DEFAULT 0,
+  PRIMARY KEY (`id`)
+);
