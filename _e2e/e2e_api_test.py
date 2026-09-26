@@ -336,10 +336,10 @@ if pipe_cfg_id:
 
 j, _, _ = call("POST", "/api/lc/permission/grant",
                {"appCode": APP, "entityCode": "customer", "roleCode": "editor",
-                "permission": "READ", "tenantCode": TENANT})
+                "permission": "VIEW", "tenantCode": TENANT})
 ok("POST /permission/grant", j)
 j, _, _ = call("GET", "/api/lc/permission/check",
-               params={"appCode": APP, "entityCode": "customer", "roleCode": "editor", "permission": "READ"})
+               params={"appCode": APP, "entityCode": "customer", "roleCode": "editor", "permission": "VIEW"})
 ok("GET /permission/check", j)
 
 j, _, _ = call("POST", "/api/lc/deployment/create",
@@ -1891,6 +1891,149 @@ check("修好之后再 provision 一次不再谎报补过列（幂等，状态�
 call("POST", "/api/lc/app/delete", {"appCode": DR_APP})
 
 call("POST", "/api/lc/app/delete", {"appCode": ED_APP})
+
+# ---------------------------------------------------------------- 缺陷 #48
+print("\n[15t] 缺陷 #48: 权限的写入口没有闸，读回来三条口径互不相同")
+# 这一族此前有三份平行的「什么算有权限」: 词表(注释里 READ/WRITE/ADMIN vs 矩阵列头
+# VIEW/CREATE/...)、查重(应用级那一支写的是 entity_code = NULL, 恒不匹配)、作用范围
+# (/check 只比 entity_code = ?，应用级行永远答拒绝)。再加两条读侧漏掉的: 三条列表与
+# hasPermission 都不比 tenant_code，而 grant 让调用方自报租户。
+# 下面每一条都打在**重新 install 并重启过的 fat jar** 上 —— java 那两层跑的是测试用的
+# Spring 上下文，指旧件等于没测。
+PM_APP = "e2e_perm_" + SUF
+ok("给权限探针单独建一个 app",
+   call("POST", "/api/lc/app/create",
+        {"tenantCode": TENANT, "appCode": PM_APP, "appName": "权限探针"})[0])
+
+
+def perm_list(**params):
+    j, _, _ = call("GET", "/api/lc/permission/list", params=params)
+    data = D(j)
+    return data if isinstance(data, list) else []
+
+
+def perm_grant(role, permission, entity=None, tenant=TENANT):
+    body = {"tenantCode": tenant, "appCode": PM_APP, "roleCode": role, "permission": permission}
+    if entity is not None:
+        body["entityCode"] = entity
+    return call("POST", "/api/lc/permission/grant", body)
+
+
+def perm_check_env(role, permission, entity=None):
+    params = {"appCode": PM_APP, "roleCode": role, "permission": permission}
+    if entity is not None:
+        params["entityCode"] = entity
+    return call("GET", "/api/lc/permission/check", params=params)
+
+
+def perm_check(role, permission, entity=None):
+    """是/否这一档；接口回的不是布尔(比如 400)时原样返回信封，让断言说得出哪一种。
+
+    不能走 D(): 它把 `data` 为假值一律换成 {}，`data:false` 就再也比不出 False 了。
+    """
+    j, _, _ = perm_check_env(role, permission, entity)
+    data = (j or {}).get("data") if isinstance(j, dict) else None
+    return data if isinstance(data, bool) else j
+
+
+j, st, _ = perm_grant("OWNER", "WIBBLE_不是词表里的")
+msg = env_msg(j)
+check("词表外的权限项在写入口就被拒（以前任何字符串都存得进去，矩阵却把它显示成已授予）",
+      isinstance(j, dict) and j.get("success") is False and j.get("code") == 400,
+      f"http={st} {str(j)[:180]}")
+check("拒的时候点名允许哪几个词、并复述被拒的那个（不点名=没人知道该改成什么）",
+      "VIEW" in msg and "EXPORT" in msg and "WIBBLE_不是词表里的" in msg, msg[:220])
+check("被拒的那一条一行都没留下（没写进去才是唯一的拒）",
+      perm_list(appCode=PM_APP) == [], str(perm_list(appCode=PM_APP))[:200])
+
+ok("带空白与小写的 permission 收得下", perm_grant("OWNER", " view ")[0])
+got = perm_list(appCode=PM_APP)
+check("存进去的是规范形态（trim + 大写），否则那个大小写敏感的 = 比不中、库里成并排两行、界面却亮着",
+      [r.get("permission") for r in got] == ["VIEW"], str(got)[:200])
+check("未指定实体时授的是整个应用，库里落成 NULL 而不是空串",
+      bool(got) and got[0].get("entityCode") is None, str(got)[:200])
+
+for _ in range(3):
+    perm_grant("OWNER", "VIEW")
+wide = [r for r in perm_list(appCode=PM_APP) if r.get("permission") == "VIEW"]
+check("应用级授权反复点只有一行（旧查重写 entity_code = NULL 恒不匹配，不选实体时每点一次多一行）",
+      len(wide) == 1, f"{len(wide)} 行: {[(r.get('id'), r.get('tenantCode')) for r in wide]}")
+# 矩阵页「整个应用」那一档在清空实体选择器后会留一个空串，接口收的也就是收的 ——
+# 但它必须落成 NULL: "" 与 NULL 在库里是两行，而查重与 /check 的 IS NULL 只认其中一种。
+ok("清掉实体选择器再点格子: 带空串的 entityCode 授得进去",
+   perm_grant("OWNER", "VIEW", entity="")[0])
+blank = [r for r in perm_list(appCode=PM_APP) if r.get("permission") == "VIEW"]
+check("空串实体归一成 NULL 并与应用级那一条查重合并（不许多出一行「看着像应用级、谁也查不到」的）",
+      len(blank) == 1 and blank[0].get("entityCode") is None,
+      f"{len(blank)} 行: {[(r.get('id'), repr(r.get('entityCode'))) for r in blank]}")
+check("应用级那条 VIEW 覆盖具体实体 deal（旧口径只比 entity_code = ?，矩阵亮着而 /check 答拒绝）",
+      perm_check("OWNER", "VIEW", "deal") is True, str(perm_check("OWNER", "VIEW", "deal"))[:160])
+check("/check 的 entityCode 留空 = 问整个应用那一档，同样成立（旧接口把这个参数写成必填）",
+      perm_check("OWNER", "VIEW") is True, str(perm_check("OWNER", "VIEW"))[:160])
+jn, stn, _ = perm_check_env("OWNER", "NOPE")
+check("/check 对词表外的项回 400，不静默答拒绝（那是把配置错误读成没权限）",
+      isinstance(jn, dict) and jn.get("code") == 400 and not isinstance(D(jn), bool),
+      f"http={stn} {str(jn)[:160]}")
+
+ok("给 deal 单独授一条 SALES 的 DELETE", perm_grant("SALES", "DELETE", "deal")[0])
+check("某个实体的单独授权不许冒充整个应用都能删",
+      perm_check("SALES", "DELETE") is False, str(perm_check("SALES", "DELETE"))[:160])
+check("而对 deal 本身它是允许的",
+      perm_check("SALES", "DELETE", "deal") is True, str(perm_check("SALES", "DELETE", "deal"))[:160])
+check("而对别的实体它不算数",
+      perm_check("SALES", "DELETE", "task") is False, str(perm_check("SALES", "DELETE", "task"))[:160])
+
+# 租户这一档在 HTTP 层是**钉死**的: 控制器把 grant 的 body 覆写成 default，/revoke 只认
+# default 的行，三条列表与 /check 也只查 default。所以接口这层根本种不出一行"别的租户"
+# 的数据 —— 下面两支打的是这个真实契约(自报租户被忽略)，而不是"外来行会不会漏进来"。
+# ⚠ 覆盖边界: 「跨租户读隔离」在**这一层**无法证伪 —— 四个端点都把租户钉成 default，
+# 接口面上没有能插入 foreign 行的入口。它在 java 的**契约层**证过牙:
+# `LcHttpContractTest.foreignTenantRowsNeitherGrantNorGetRevoked` 用直接 SQL 播一行
+# 另一租户的合法授权，再断言 /list 混不进来、/check 答 false、那个 id 回收回 400；
+# 由 `mutate_permission_service_guard.py` 的 J3(丢列表租户条件) 与 J5(回收不圈租户)
+# 分别认领它那两句 —— 不要在这一层声称它测过了，也不要说它没测。
+ok("自报一个别的 tenantCode 授 VIEW（写入口收下，但它不认这个参数）",
+   perm_grant("AUDITOR", "VIEW", tenant="other_tenant")[0])
+mine = perm_list(appCode=PM_APP)
+aud = [r for r in mine if r.get("roleCode") == "AUDITOR"]
+check("落库的租户是钉死的那个，调用方自报的被覆写（以前 body 里写什么就存什么）",
+      len(aud) == 1 and aud[0].get("tenantCode") == TENANT, str(aud)[:200])
+check("钉租户必须是写读两侧的同一口径: 刚授的那条在本租户清单里读得回来（不是被悄悄丢掉）",
+      any(r.get("roleCode") == "AUDITOR" and r.get("permission") == "VIEW" for r in mine),
+      str([(r.get('roleCode'), r.get('permission'), r.get('tenantCode')) for r in mine])[:240])
+ok("同一个键在默认租户下再授一次", perm_grant("AUDITOR", "VIEW")[0])
+check("查重也在同一租户口径内: 自报租户没有多骗出一行（多一行=同一条授权有两个说法）",
+      [r.get("roleCode") for r in perm_list(appCode=PM_APP)].count("AUDITOR") == 1,
+      str(perm_list(appCode=PM_APP))[:240])
+check("刚授的那条在 /check 里答允许（钉的是 default 这一侧，读写对得上）",
+      perm_check("AUDITOR", "VIEW") is True, str(perm_check("AUDITOR", "VIEW"))[:160])
+
+ids = [r.get("id") for r in perm_list(appCode=PM_APP) if r.get("roleCode") == "AUDITOR"]
+ok("回收一条真实存在的授权", call("POST", "/api/lc/permission/revoke", {"id": ids[0]})[0])
+check("回收之后清单里真的没有它（回读清单，不是看接口回了个 true）",
+      ids[0] not in [r.get("id") for r in perm_list(appCode=PM_APP)], str(ids[0]))
+j2, st2, _ = call("POST", "/api/lc/permission/revoke", {"id": ids[0]})
+check("再回收同一个 id 是 400 而不是成功（旧实现无条件回 success，界面照着报已回收）",
+      isinstance(j2, dict) and j2.get("success") is False and j2.get("code") == 400,
+      f"http={st2} {str(j2)[:160]}")
+j3, st3, _ = call("POST", "/api/lc/permission/revoke", {"id": 999999999})
+check("回收一个从没存在过的 id 同样 400",
+      isinstance(j3, dict) and j3.get("code") == 400, f"http={st3} {str(j3)[:160]}")
+
+# 记账: /list 的两种筛选彼此不等价，也和 /check 不等价 —— 矩阵页因此不再让后端替它筛
+by_entity = perm_list(appCode=PM_APP, entityCode="deal")
+by_both = perm_list(appCode=PM_APP, roleCode="OWNER", entityCode="deal")
+check("/list 按实体筛时不给应用级那些行（与 /check 的「实体或应用级」不同口径）",
+      [r.get("permission") for r in by_entity] == ["DELETE"], str(by_entity)[:200])
+check("/list 的 roleCode 优先于 entityCode: 两个一起给时实体那个被静默丢掉（页面把筛选搬到客户端的依据）",
+      [r.get("permission") for r in by_both] == ["VIEW"],
+      f"role+entity={str(by_both)[:160]} 而 entity={str(by_entity)[:120]}")
+
+for row in perm_list(appCode=PM_APP):
+    call("POST", "/api/lc/permission/revoke", {"id": row.get("id")})
+check("收尾: 本租户这一侧的探针行全部回收干净（留在库里会让下一轮的分母漂）",
+      perm_list(appCode=PM_APP) == [], str(perm_list(appCode=PM_APP))[:200])
+call("POST", "/api/lc/app/delete", {"appCode": PM_APP})
 
 # ---------------------------------------------------------------- cleanup
 

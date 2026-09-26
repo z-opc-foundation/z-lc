@@ -2095,4 +2095,203 @@ class LcHttpContractTest {
 
         post("/api/lc/app/delete", "{\"appCode\":\"" + app + "\"}");
     }
+
+    /* ================================================================== */
+    /* 缺陷 #48: 权限矩阵的写入口什么都收，读回来三条都对不上                */
+    /* ================================================================== */
+
+    private static String permApp(String tag) {
+        return "itperm" + tag;
+    }
+
+    /** entityCode 传 null = 「整个应用」那一支，也正是矩阵页默认在点的那一支。 */
+    private JsonNode grant(String app, String role, String permission, String entityCode) throws Exception {
+        StringBuilder body = new StringBuilder("{\"appCode\":\"" + app
+                + "\",\"roleCode\":\"" + role + "\",\"permission\":\"" + permission + "\"");
+        if (entityCode != null) {
+            body.append(",\"entityCode\":\"").append(entityCode).append('"');
+        }
+        return post("/api/lc/permission/grant", body.append('}').toString());
+    }
+
+    private JsonNode grantWithTenant(String app, String role, String permission, String tenant)
+            throws Exception {
+        return post("/api/lc/permission/grant", "{\"appCode\":\"" + app
+                + "\",\"roleCode\":\"" + role + "\",\"permission\":\"" + permission
+                + "\",\"tenantCode\":\"" + tenant + "\"}");
+    }
+
+    /** /check 的 data 就是那个布尔；HTTP 非 200 时不许被读成 false (那是坏消息，不是"拒绝")。 */
+    private boolean checkAllows(String app, String entityCode, String role, String permission)
+            throws Exception {
+        List<String> kv = new ArrayList<>();
+        kv.add("appCode");
+        kv.add(app);
+        if (entityCode != null) {
+            kv.add("entityCode");
+            kv.add(entityCode);
+        }
+        kv.add("roleCode");
+        kv.add(role);
+        kv.add("permission");
+        kv.add(permission);
+        JsonNode j = get("/api/lc/permission/check", kv.toArray(new String[0]));
+        assertEquals(200, lastHttpStatus, "/check 的坏消息不该以 " + lastHttpStatus + " 回来: " + j);
+        assertTrue(j.path("success").asBoolean(), "/check 本身失败了: " + j);
+        return j.path("data").asBoolean();
+    }
+
+    private int permRowCount(String app, String tenant) throws Exception {
+        Integer n = jdbc().queryForObject(
+                "SELECT COUNT(*) FROM z_lc_permission WHERE app_code = ? AND tenant_code = ?",
+                Integer.class, app, tenant);
+        return n == null ? 0 : n;
+    }
+
+    private int permScopedCount(String app, String entityCode) throws Exception {
+        Integer n = entityCode == null
+                ? jdbc().queryForObject(
+                        "SELECT COUNT(*) FROM z_lc_permission WHERE app_code = ? AND tenant_code = ?"
+                                + " AND entity_code IS NULL",
+                        Integer.class, app, TENANT)
+                : jdbc().queryForObject(
+                        "SELECT COUNT(*) FROM z_lc_permission WHERE app_code = ? AND tenant_code = ?"
+                                + " AND entity_code = ?",
+                        Integer.class, app, TENANT, entityCode);
+        return n == null ? 0 : n;
+    }
+
+    private List<String> permPermissions(String app) throws Exception {
+        return permPermissions(app, TENANT);
+    }
+
+    private List<String> permPermissions(String app, String tenant) throws Exception {
+        return jdbc().queryForList(
+                "SELECT permission FROM z_lc_permission WHERE app_code = ? AND tenant_code = ?"
+                        + " ORDER BY permission",
+                String.class, app, tenant);
+    }
+
+    private long permId(String tenant, String app, String role, String permission) throws Exception {
+        return jdbc().queryForObject(
+                "SELECT id FROM z_lc_permission WHERE tenant_code = ? AND app_code = ?"
+                        + " AND role_code = ? AND permission = ?",
+                Long.class, tenant, app, role, permission);
+    }
+
+    /** 绕过 API 直接写"另一个租户的一条合法授权" —— 判定要不受它影响，得先让它真在库里。 */
+    private void insertPerm(String tenant, String app, String role, String permission, String entityCode)
+            throws Exception {
+        jdbc().update("INSERT INTO z_lc_permission (app_code, entity_code, role_code, permission,"
+                        + " tenant_code, deleted, create_time) VALUES (?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)",
+                app, entityCode, role, permission, tenant);
+    }
+
+    private void purgePerms(String app) throws Exception {
+        jdbc().update("DELETE FROM z_lc_permission WHERE app_code = ?", app);
+    }
+
+    @Test
+    @DisplayName("缺陷#48 回归：应用级授权点两次只有一行，矩阵页那句「服务端幂等」得是真的")
+    void appWideGrantIsIdempotent() throws Exception {
+        String app = permApp(uniqueTag());
+        assertOk(grant(app, "editor", "VIEW", null), "第一次授予");
+        JsonNode second = grant(app, "editor", "VIEW", null);
+        assertOk(second, "第二次授予");
+        assertEquals(1, permRowCount(app, TENANT),
+                "同一份「整个应用」的授权每点一次多一行 —— 查重写的是 entity_code = NULL，一行也匹配不上");
+        // 第二次必须回的是那一行本身，而不是又造一行后随便回一条
+        assertTrue(second.path("data").path("id").asLong() > 0, second.toString());
+
+        // 实体级那一支同样要幂等，而且两类范围不许互相认错
+        grant(app, "editor", "VIEW", "orders");
+        grant(app, "editor", "VIEW", "orders");
+        assertEquals(1, permScopedCount(app, "orders"), "实体级授权也在长重复行");
+        assertEquals(1, permScopedCount(app, null), "应用级与实体级被认成了同一条: " + permRowCount(app, TENANT));
+        purgePerms(app);
+    }
+
+    @Test
+    @DisplayName("缺陷#48 回归：权限项只有词表里那五个收得下，被拒时点名允许什么；大小写归一存规范形态")
+    void unknownPermissionVerbIsRejectedAndCaseIsNormalized() throws Exception {
+        String app = permApp(uniqueTag());
+        JsonNode rejected = grant(app, "editor", "WIBBLE_不是词表里的", null);
+        assertFalse(rejected.path("success").asBoolean(), "任意思字符串都当权限项收下了: " + rejected);
+        assertEquals(400, lastHttpStatus, "被拒的授权该是 400，实际 http=" + lastHttpStatus);
+        String msg = rejected.path("message").asText();
+        assertTrue(msg.contains("VIEW") && msg.contains("EXPORT"), "文案没点名允许哪些项: " + msg);
+        assertNoSchemaLeak(msg);
+        assertEquals(0, permRowCount(app, TENANT), "被拒的授权还是留下了一行: " + msg);
+
+        // 反向证据（闸不是把一切按在外头）：词表里的项收得下，且小写也认
+        assertOk(grant(app, "editor", "view", null), "小写的合法项不该被闸拦住");
+        assertEquals(java.util.Collections.singletonList("VIEW"), permPermissions(app),
+                "库里必须存规范形态 —— 存 'view' 而 check 问 'VIEW' 会永远答拒绝");
+        assertTrue(checkAllows(app, "orders", "editor", "VIEW"),
+                "归一之后 check 必须认得这一行（不是靠两边都写歪才碰上）");
+        purgePerms(app);
+    }
+
+    @Test
+    @DisplayName("缺陷#48 回归：「整个应用」的授权要真覆盖每个实体，实体级的不许冒充应用级")
+    void grantScopeIsHonouredByTheCheckEndpoint() throws Exception {
+        String app = permApp(uniqueTag());
+        assertOk(grant(app, "clerk", "VIEW", null), "应用级授权");
+        assertTrue(checkAllows(app, "orders", "clerk", "VIEW"),
+                "应用级授权对具体实体答了拒绝（矩阵里那一行明明渲染成「整个应用」）");
+        assertTrue(checkAllows(app, null, "clerk", "VIEW"), "应用级授权在只问应用范围时答拒绝");
+        assertFalse(checkAllows(app, "orders", "clerk", "EXPORT"), "没授过的项答允许");
+        purgePerms(app);
+
+        assertOk(grant(app, "clerk", "VIEW", "orders"), "实体级授权");
+        assertTrue(checkAllows(app, "orders", "clerk", "VIEW"), "实体级授权对自己那个实体答拒绝");
+        assertFalse(checkAllows(app, "customers", "clerk", "VIEW"), "orders 的授权覆盖到了别的实体");
+        assertFalse(checkAllows(app, null, "clerk", "VIEW"), "拿某个实体的授权冒充「整个应用都可以」");
+        purgePerms(app);
+    }
+
+    @Test
+    @DisplayName("缺陷#48 回归：别的租户的授权行既不参与判定，也不许被本租户回收")
+    void foreignTenantRowsNeitherGrantNorGetRevoked() throws Exception {
+        String app = permApp(uniqueTag());
+        String other = "tenant_" + uniqueTag();
+        insertPerm(other, app, "outsider", "DELETE", null);
+        assertEquals(1, permRowCount(app, other), "夹具没把另一租户那一行写进去");
+
+        assertFalse(checkAllows(app, "orders", "outsider", "DELETE"),
+                "别的租户授的权，在本租户的 /check 里答了允许");
+        JsonNode listed = get("/api/lc/permission/list", "appCode", app);
+        assertOk(listed, "/permission/list");
+        assertEquals(0, listed.path("data").size(),
+                "/list 把别的租户的行混进了本租户的清单: " + listed.path("data"));
+        // 反向证据：那一行确实在库里、确实是合法的 —— 上面两句红只可能是因为不分租户
+        assertEquals(java.util.Collections.singletonList("DELETE"), permPermissions(app, other),
+                "夹具那一行本身不对");
+
+        long foreignId = permId(other, app, "outsider", "DELETE");
+        JsonNode revoked = post("/api/lc/permission/revoke", "{\"id\":" + foreignId + "}");
+        assertFalse(revoked.path("success").asBoolean(), "跨租户回收被报成成功: " + revoked);
+        assertEquals(400, lastHttpStatus, "回收不动却回 200: " + revoked);
+        assertTrue(revoked.path("message").asText().contains("没有可回收的授权"),
+                revoked.path("message").asText());
+        assertEquals(1, permRowCount(app, other), "报 0 行却把别人的行删掉了");
+
+        // 反向证据：本租户那一条要真删得掉，上面那句红不是因为回收整个坏了
+        assertOk(grant(app, "insider", "UPDATE", null), "本租户授权");
+        long mine = permId(TENANT, app, "insider", "UPDATE");
+        assertOk(post("/api/lc/permission/revoke", "{\"id\":" + mine + "}"), "本租户回收");
+        assertEquals(0, permRowCount(app, TENANT), "回收没删掉本租户那一行");
+        purgePerms(app);
+    }
+
+    @Test
+    @DisplayName("缺陷#48 回归：grant 落库的租户是入口钉死的，不是调用方在 body 里说的那个")
+    void grantIgnoresTheTenantTheCallerSupplies() throws Exception {
+        String app = permApp(uniqueTag());
+        assertOk(grantWithTenant(app, "editor", "VIEW", "attacker_tenant"), "授权请求");
+        assertEquals(1, permRowCount(app, TENANT),
+                "这一族里 grant 原本是唯一让调用方自报租户的写入口，别的 admin 控制器都钉死");
+        assertEquals(0, permRowCount(app, "attacker_tenant"), "body 里那个租户被原样落库了");
+        purgePerms(app);
+    }
 }

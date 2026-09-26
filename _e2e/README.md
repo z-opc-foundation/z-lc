@@ -14,21 +14,32 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar --spring.profiles.acti
 三层测试，当前全是绿的：
 
 ```bash
-mvn -o -B clean install          # 4646 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1251+112+57；z-lc-web 那 57 个里 55 个是 LcHttpContractTest 的真 HTTP 集成测试）
-python3 _e2e/e2e_api_test.py     # 434/434 项断言，打真在跑的 server
+mvn -o -B clean install          # 4656 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1256+112+62；z-lc-web 那 62 个里 60 个是 LcHttpContractTest 的真 HTTP 集成测试）
+python3 _e2e/e2e_api_test.py     # 464/464 项断言，打真在跑的 server
 python3 _e2e/probe_stats.py      # 非数值统计与字典值域 warning 的即席探针（要 server 在跑）
-cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 25 文件/238 用例 + vite build（产物 index-CAT5sfEl.js）
+cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 27 文件/248 用例 + vite build（产物 index-CQtLNKSU.js）
 E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 184 项/轮（先 build，preview 见下文）
 ```
 
-（以上是 2026-09-26 06:4x – 06:5x 这一窗**同轮**实跑的数，不是抄上一轮 —— 上一轮（02:0x – 02:1x）记的是 4627 / 353 / 223 / 160。
-这一窗的四道闸在同一次运行里串着跑（`mvn clean install` → 用刚构建的件重启 18090 → API → `npm run check` → build + 3 轮浏览器），
-退出码一起收在 `~/.cache/zlc47/gates.status`：`JAVA_EXIT=0 BOOT_EXIT=0 API_EXIT=0 CHECK_EXIT=0 BROWSER_EXIT=0`。
-⚠ 同一条链**第一次跑的时候 `JAVA_EXIT=1`** —— 红的是 #43 那两条契约断言（它们的前提被 #47 推翻了），
-不是产品坏了；判"过期"和判"坏了"的分界只有注入能给，见 `_e2e/mutate_provision_contract_guard.py` 那一格。）
+（以上是 2026-09-26 08:3x – 08:4x 这一窗**同轮**实跑的数，不是抄上一轮 —— 上一轮（06:4x – 06:5x）记的是 4646 / 434 / 238 / 184。
+这一窗的五道闸在同一次运行里串着跑（`mvn clean install` → 用刚构建的件重启 18090 → API → `npm run check` → build + 3 轮浏览器），
+退出码一起收在 `~/.cache/zlc48/gates/chain48.status`：`JAVA_EXIT=0 BOOT_EXIT=0 API_EXIT=0 CHECK_EXIT=0 BROWSER_EXIT=0`。
+⚠ 上一窗（06:4x – 06:5x）那条链**第一次跑的时候 `JAVA_EXIT=1`** —— 红的是 #43 那两条契约断言（它们的前提被 #47 推翻了），
+不是产品坏了；判"过期"和判"坏了"的分界只有注入能给，见 `_e2e/mutate_provision_contract_guard.py` 那一格。
+本窗这一条链一次跑绿，五个退出码没有第二个值。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**30 支，前端 16 + 后端 14**
-（这个数不是敲出来的：`ls _e2e/mutate_*.py | wc -l` = 14、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 16）：
+⚠ **本窗浏览器那一格差点测的不是本窗的件**：`npm run preview:e2e` 起在 5274 时撞上"端口已被占用"，
+它自己退到 5275（`preview48.log` 里写着 `Port 5274 is in use, trying another one...`），
+而 `browser-e2e.mjs` 打的是 **5274** —— 占着 5274 的是 06:27:52 起的一支 vite preview（本仓同一路径，不是本窗这条链起的）。
+这一格因此没有直接采信"退出码 0"，而是把三方对齐现量了一次：5274 返回的 HTML 里引用的产物 =
+5275 返回的 = 盘上 `dist/index.html` 引用的 = `index-CQtLNKSU.js`，且 `dist/assets/` 那一份的 mtime 是 `08:33:41`
+（= 本窗 `npm run check` 里 build 出来的那一个）。vite preview 每次请求现读磁盘，所以旧进程伺服的是**新件** ——
+但这条结论只有量过才敢写：**"preview 还在跑"不等于"它在测旧件"，也不等于"它在测新件"**。
+（收这条链时 5274/5275 都空了：脚本末尾按名字 `pgrep -f 'vite preview --port 5274'` + `kill -9`，把 06:27 那一支一起带走了 ——
+这一族脚本按端口/进程名清理时**会连别人那一支的 preview 一起杀**，用之前先想清楚这一点。）
+
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**33 支，前端 17 + 后端 16**
+（这个数不是敲出来的：`ls _e2e/mutate_*.py | wc -l` = 16、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 17）：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -45,6 +56,8 @@ python3 _e2e/mutate_edit_path_deployed_guard.py   # #45/#46 打 fat jar：E1..E6
 python3 _e2e/mutate_provision_reconcile_guard.py  # 定义与库对账 #47 java 层：C1..C7（补列/回读/幂等/只加不删）
 python3 _e2e/mutate_provision_deployed_guard.py   # 同一件事打到发出去的 jar：D1..D13，含"读库的判据不会因为报告撒谎而红"这条归口
 python3 _e2e/mutate_provision_contract_guard.py   # #47 的 java 契约层：K1..K8 打在 LcHttpContractTest 那两支上（8 支注入跑一整轮 8×mvn 只要 ~2 分钟，所以每轮跑**整个类**钉分母）
+python3 _e2e/mutate_permission_service_guard.py    # 权限 #48 java 层：J1..J14（PermissionServiceTest + LcHttpContractTest，分母每轮钉 75 条，认领 25 条具名断言）
+python3 _e2e/mutate_permission_deployed_guard.py   # #48 打发出去的 fat jar：D1..D14，认领 `[15t]` 那 30 支探针里的 24 支（另 6 支是 ok() 夹具，不进判红账，理由写在该支开头）
 cd z-lc-admin-ui && python3 e2e/mutate_degradation_guards.py     # 元数据降级口径 M1..M5
 cd z-lc-admin-ui && python3 e2e/mutate_admin_list_guards.py      # 管理页列表五态 A..H
 cd z-lc-admin-ui && python3 e2e/mutate_workspace_entity_guards.py# workspace 侧出口 A1..D1
@@ -59,6 +72,7 @@ cd z-lc-admin-ui && python3 e2e/mutate_pivot_browser_guard.py    # 交叉表**�
 cd z-lc-admin-ui && python3 e2e/mutate_field_code_browser_guard.py  # 字段编码闸**浏览器层** B1..B5（自带 build + preview）
 cd z-lc-admin-ui && python3 e2e/mutate_pipeline_wiring_guard.py  # 流水线词表/顺序/参数 F1..F13（按三个文件跑，含 java 参照集）
 cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a 那 23 条**浏览器层** S1..S9（自带 build + preview）
+cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵页 B1..B12（vitest 层，分母钉 10 条，跑在两支新文件上）
 ```
 
 ⚠ 每一支都自己报 `ALL MUTANTS BEHAVED AS CLAIMED` 才算数；退出码 0 而没跑完一整轮不等于通过。
@@ -66,14 +80,16 @@ cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a
 ⚠ **两支不能同时在飞**：它们都就地改写源文件，A 的"按字节还原"会把 B 正在判定的那份源码换掉。
 本轮实测踩到 —— 后台那支还没收线就前台再开一支，基线报出 1 条红
 （`字段表里不该预置引擎自建列: expected 3 to be 0`），那是**另一支的注入形状**，不是产品坏了。
-假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **25 支共用** `e2e/_mutlock.py`
-（**16 支前端全接**，后端接了 9 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
+假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **28 支共用** `e2e/_mutlock.py`
+（**17 支前端全接**，后端接了 11 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
 `mutate_pipeline_wiring_guard.py`、`mutate_pipeline_config_guard.py`、`mutate_replay_guard.py`（本窗补上：它改的
 `SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件）、`mutate_provision_reconcile_guard.py`、
-`mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py` 与 `mutate_edit_path_deployed_guard.py`
+`mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py`、`mutate_edit_path_deployed_guard.py`，
+以及本窗新增的两支 `mutate_permission_service_guard.py` / `mutate_permission_deployed_guard.py`
+（后者与前者的 D/J 编号虽不同战役，**改的是同一份 `PermissionService.java`**，不同锁就等于没有）
 —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 16/9 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 16 与
-`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 9 数出来的，不是点的）；
+这个 17/11 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 17 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 11 数出来的，不是点的）；
 更早那 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
@@ -189,6 +205,7 @@ cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a
 | 45 | `updateEntity` 是**全删再全插**：删是软删（留下墓碑行），插走唯一索引 `uk_field_def_tenant_code`（不含 `deleted`） | 同一份定义第二次保存必然撞自己刚留下的那行墓碑 → **带字段的实体建好之后就再也改不动**（PUT 一律 400，错误消息还是 #21 那一族索引名）。现在按 `fieldCode` 对齐：同名的原地更新并 copy 属性，多出来的墓碑化，只有新编码才 insert；大小写变体算同一个编码 | `_e2e/mutate_edit_path_deployed_guard.py` E1–E6 六支（打 18090 上真跑着的那支 jar，字节级 marker 预检不过就 FATAL —— 上一轮 `mvn install` 0.9 秒"成功"而 fat jar 里还是旧件）+ `[15r]`/`[15s]` 探针 |
 | 46 | **运行时权威源是事件链，但折叠从不删字段**：一栏被移除时只墓碑化元数据、不发 field 级 DELETE 事件；`EventReplayService.replay` 收到整实体 DELETE 也只是 `computeIfAbsent` 立个空桩 | 墓碑是表的口径，不是运行时的：删掉的栏在折叠出来的定义里永远活着（多出来的 `extra_col` 直接把整个列表打成 400，而不是少一列），删掉的实体照样供记录、还凭空多一个空桩 | 一栏移除时 `emitFieldRemoved` 补一条 field 级 DELETE；replay 里整实体 DELETE（payload 无 `fieldCode`）把实体从折叠里摘掉、不再预立空桩。`_e2e/mutate_replay_guard.py` M1–M3 —— M3（任何 DELETE 都抹整实体）在 HTTP 流程里是**等价变异**，只有折叠层单测捉得住，这正是"DELETE 带不带 fieldCode"这套词汇表要单独钉一层的原因 |
 | 47 | **定义跑在物理表前面之后，没有任何一条路能把它修回来**：`provisionOne` 见表已存在就一律 `FAILED`，运行时每次读都是裸 500（`Column "t.xxx" not found`），而设计器那句「未建成」横幅谁都清不掉 | 这是 #43 修好之后剩下的那半边：闸挡住了抢表，却没回答"漂移了怎么办"。用户的自助路径本来是现成的 —— 设计器里点一次 provision —— 但那次点击永远得到同一句谎。现在 provision 比对定义与 JDBC 元数据，缺的列 `ALTER TABLE` 补上并**回读库**作证（第四态 `ALTERED`，只加不改不删，幂等）；库自己拒的（如有行的表加 NOT NULL 无默认值）才 `FAILED` 并点名缺哪几列；读侧认得出列名的 `BadSqlGrammarException` 转 400、点名那一栏并指向 provision，认不出照旧 500（把真·库故障包装成"去点一下 provision"比 500 更坏）；界面上四态各说各的话、批量汇总多出 `altered` 一格、补成功即清横幅 | 五层各有牙，各自逐支实测吻合：`mutate_provision_reconcile_guard.py` C1–C7（java 单测：占表判定那五个谓词）→ `mutate_provision_contract_guard.py` K1–K8（java 契约层：`LcHttpContractTest` 那两支，8 支注入认领 **11** 条具名红、分母每轮钉 55 条）→ `mutate_provision_report_guard.py` M1–M18（vitest，`DesignerProvision.test.tsx` **15** 例 —— 本轮 `npm run check` 现读到的数，不是记的）→ `mutate_provision_deployed_guard.py` D1–D13（发出去的 jar）→ `mutate_provision_browser_guard.py` P1–P6（真浏览器 `11d` 那 **24** 条（静态 `check(` 25 个，末支在 catch 分支里只在失败时打）：8 条各有牙、6 条按未覆盖记账），`11d` 这一节自己从 `FAIL 3` 收到 `FAIL 0`、全绿 3/3 轮 |
+| 48 | **权限这一族六个写入口/读出口各说一套**：① `grant` 的查重写 `eq("entity_code", entity.getEntityCode())`，而"整个应用"的授权那一列是 NULL —— SQL 里 `entity_code = NULL` **恒为 unknown**，一行也匹配不上；② `hasPermission` 只比 `entity_code = ?`，丢掉了「或应用级」；③ 三个列表查询加一个判定**一个字都不比 `tenant_code`**，而 `grant` 把 body 里的租户原样落库；④ `revoke` 是 `deleteById(id)`，删 0 行与删掉别人的行都无条件回"已回收"；⑤ 权限项没有任何词表，任何字符串都收；⑥ 前端矩阵按"筛过的行"算格子真值，而 `/list` 的 `roleCode` 优先级高于 `entityCode`，两个筛选一起给时实体那个被后端静默丢掉 | 六条都不崩、都不报错，只让**策略数据与判定互相说不清**：①恰恰是矩阵页默认那一支（不选实体点格子），每点一次多一行"查重成功"的重复行；②让矩阵里明明白白渲染成「整个应用」的那些行对任何一个实体都答"拒绝"（反过来，某个实体的单独授权在旧页面上会把「整个应用」那一格点亮）；③两半合起来等于没有租户这一列 —— 任何人都能把别的租户的授权写进这张表，然后在本租户的判定里读到它（`/check` 直接答 true）；⑤最隐蔽，因为**实测这套 dev H2（`MODE=MySQL`）的 `=` 分大小写**（D3 取证时 curl 读到 `permission: "view"` 与 `"VIEW"` 在库里并排两行）：同一个逻辑授权成了两行、各自都"查重成功"，而矩阵与网关只认大写那一行 —— 存下了、查不到、界面上却亮着 | `PermissionKeys` 成唯一词表（VIEW/CREATE/UPDATE/DELETE/EXPORT，`ALL` 的顺序**就是**矩阵的列序），写入口 trim + 大写归一、不在词表内 400 并点名，`trimmedToNull` 把空范围统一成 NULL、查重按 `IS NULL`；判定分两支（给了实体→该实体 `OR` 应用级；留空→只问应用级，不拿某个实体的授权冒充"整个应用"）；四个端点全部钉 `DEFAULT_TENANT`（与 `AppAdminController`/`DictAdminController` 同口径）且服务层每个读方法都收 `tenantCode`；`revoke` 返回受影响行数、0 行抛 `IllegalArgumentException`→400；前端矩阵与 `/check` 用同一个 `coversScope`/`isAppWide` 口径，格子真值对**整张表**算（只按 `appCode` 拉一次全量、筛选放客户端），回收失败不再吞成"已回收"，空态两句话分开（"被筛掉了" vs "这个应用压根没配过权限"）。**三层各有牙，各自本窗实测**：`_e2e/mutate_permission_service_guard.py` J1–J14（java 单测+契约层，分母每轮钉 **75** 条、认领 **25** 条具名断言）→ `z-lc-admin-ui/e2e/mutate_permission_matrix_guard.py` B1–B12（vitest 层，分母钉 **10** 条、零连带红）→ `_e2e/mutate_permission_deployed_guard.py` D1–D14（发出去的 fat jar，认领 `[15t]` 那 **30** 支探针里的 **24** 支，另 6 支是 `ok()` 夹具、按理由不进判红账）。首轮**六处对不上的账全部按实测改**（D3/D7/D12 三处预期 + 两处从没红过 + 补出 D14 才有猎物），没有一条断言被改软 |
 
 ## 三、前端现状（`z-lc-admin-ui/`）
 
@@ -1586,10 +1603,56 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（最前面那张 06:4x–06:5x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+四层门禁当前状态（最前面那张 08:3x–08:4x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
 **不是当前数**。
 ⚠ 上一版这行写的是"10:4x 一轮实测"，而 19:5x 之后四层又各自重跑过 —— 表里每一行的时间戳才是证据，
 标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-26 08:3x – 08:4x 这一窗（#48 权限这一族收线：三层注入自证同轮跑齐）五道闸串行同轮实跑，
+五个退出码一起落在 `~/.cache/zlc48/gates/chain48.status`，日志各自在 `~/.cache/zlc48/gates/{java_full48,boot48,run_api48,npm_check48,browser48}.log`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**、**4656** 个用例 0 红 0 错 0 跳（surefire 模块汇总行现加 = 2701+525+**1256**+112+**62**；`JAVA_EXIT=0`。06:4x 那一记的 4646 → 4656 的 +10 **拆到模块级再拆到文件级**：z-lc-core 1251 → 1256、z-lc-web 57 → 62（两轮的四条汇总行逐字对过，只有这两条不同），再用 `git show HEAD:<文件> \| grep -c '@Test'` 与盘上现数各量一次对上 —— `PermissionServiceTest` **10 → 15**、`LcHttpContractTest` **55 → 60**。⚠ 这一窗**第一次**跑这条链就是绿的，五个退出码没有第二个值 |
+| 部署件 | 用刚构建的件重启 18090 | `BOOT_EXIT=0`（`boot48.log`；健康检查读到 `"status":"UP"` 之后才放行接口层） |
+| 接口 E2E | `python3 _e2e/e2e_api_test.py` | **464/464**：`run_api48.log` 第 **532** 行逐字是 `=== E2E RESULT: 464/464 passed ===`，`API_EXIT=0` 在同一轮的 marker 文件里。434 → 464 的 **+30 一段不差全在新增的 `[15t]`（权限这一族）**：拿两轮日志各自的 `[NNx]` 横幅 + 段内 PASS 行现算并逐段对比，结果是 `changed: {'15t': (None, 30)}` —— **其余 31 段一条都没动**。分母双向校验：32 段求和 = 464 = 标题那个数，且 `^  PASS ` 行数也 = 464。⚠ 上一窗那句"日志里共 **29** 段"用的是 `grep '\[[0-9]+[a-z]?\]'`，那个正则**不认** `[15d1]`/`[15d2]` 这种带尾数的段名 —— 同一条 grep 本窗得 30，仍然只有 `[15t]` 是新的；段数分母按解析器数（32）还是按那条 grep 数（30）得写明是哪个 |
+| 前端 | `cd z-lc-admin-ui && npm run check` | tsc 0 / `eslint --max-warnings 0` 无输出 / **vitest 248/248（27 个文件）** / build 绿，产物 `index-CQtLNKSU.js`，`CHECK_EXIT=0`。238 → 248 的 +10 **整份住在两支新文件里**（`npm_check48.log` 逐文件行：`PermissionsPage.test.tsx (8 tests)` + `permissionVocabulary.test.ts (2 tests)`，`git status` 现读两支都是 `??`），25 个老文件**逐文件计数与上一窗一条不差**（`changed: {}`、`gone: []`） |
+| 真浏览器 | `E2E_REPEATS=3 node e2e/browser-e2e.mjs` | **三轮各自 `PASS 184 / FAIL 0`**、`全绿轮次: 3/3`、`BROWSER_EXIT=0`。分母与上一窗**相同**：#48 没有新增任何浏览器层断言（`grep -c '权限\|permission' e2e/browser-e2e.mjs` = **0** —— 权限矩阵页在真浏览器层连一句"渲染正常"都没有，见下面那格边界）。唯一的非 2xx 仍是那条被登记放行的 400（`/api/lc/pipeline-config/create`）。⚠ 起 preview 时 5274 被一支 **06:27:52** 起的旧 vite preview 占着，这条链自己的那个退到了 5275，而门禁打的是 5274 —— "测的是本窗的件"这一句是**量**出来的（5274 / 5275 / 盘上 `dist/index.html` 三处引用的产物都是 `index-CQtLNKSU.js`，`dist/assets/` mtime `08:33:41` = 本窗 build 那一次），细节与"这条链收尾会按名字杀掉 5274 上别人的 preview"都在文首那一格 |
+| 注入自证 | 33 支（`ls` 现数：`_e2e/` 16 + `z-lc-admin-ui/e2e/` 17），带锁 28 支（`grep -l _mutlock` 现数：前端 17 全接 + 后端 11） | 本窗新跑并收线的是**同一族三层**：**J1–J14** `mutate_permission_service_guard.py`（java 层：分母每轮钉 **75** 条、认领 **25** 条具名断言、99_restored 复跑 75 条全绿）→ **B1–B12** `mutate_permission_matrix_guard.py`（vitest 层：分母钉 **10** 条，十二支逐支打印"无一条连带红"，恢复后 `10 tests, 0 failed`）→ **D1–D14** `mutate_permission_deployed_guard.py`（发出去的 fat jar：`RESULT: permission deployed-layer falsification done \| 14 支注入 / 认领 24 条 [15t] 探针`，十四支的"其它红"逐支为 `[]`，基线与还原后各一次 **464/464**，每支注入后产物指纹都必变、还原后必回基线指纹） |
+
+⚠ **本窗最值钱的三处读数，都是"预期红集"与实测对不上之后量出来的**（每一处改的都是账，没有一处把断言改软）：
+1. **D3（`grant` 不走词表闸）**：我预期"大小写漂移会让下游判定跟着比不中"，实测那三支按值过滤的探针**反倒看不见破坏** ——
+   恰恰因为库分大小写，`'view'` 与 `'VIEW'` 各成一行，`permission == 'VIEW'` 的过滤器读到的仍是那一条它期望的。
+   只有"整份清单恰好等于什么"那一支看得见。**后果**：判"归一有没有生效"不能用同一条归一后的值去筛。
+2. **D7（归一把 NULL 落成空串）**：写侧与读侧**共用同一个归一函数**，于是两侧一起漂，判定那三支因此测不到它 ——
+   等价变异在部署层的另一个方向。这一支真正的猎物是"整份清单"与"查重多出一行"那两支。
+3. **D12（回收丢掉 id 条件）**：删过头时"回收成功""清单里真的没有它"两支反倒读到它们期望的结果
+   （它们钉的是"删不掉时不许报成功"，不钉"不许多删"）；"多删"这一侧由 `/list` 那两支红出来。
+   **预期红集要按"谁读了这个值"估，不是按主题估** —— 这一条在 #47 的 K4 也踩过一次。
+另有两支"留空问应用级"的探针一整轮没红过：不是它们空跑，是十四支里原本没有一支把"整个应用"写成另一种范围形状，
+所以**补了 D14**（把那一档查成空串范围）才让它们有猎物 —— 补完之后 `TRACKED - ever_red` 为空，`WHY_NEVER_RED` 保持 `{}`。
+
+⚠ **这一窗量到的一条库事实（写进代码注释也写在这里）**：dev 的 H2（`jdbc:h2:mem:zlc;MODE=MySQL;
+DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE`）里 **`=` 对 VARCHAR 分大小写**。
+`CASE_INSENSITIVE_IDENTIFIERS` 只管**标识符**，不管**值** —— 照着名字里那个 "CASE_INSENSITIVE" 推断"值也不分"是本轮
+一处写错的 javadoc 的来源（已改成实测口径）。取证方式：对 D3 注入态的那支 jar 直接 curl `/grant` 两次
+（`view` / `VIEW`），`/list` 读回来是**并排两行**、各自的查重都报"成功"。
+
+⚠ **三层各自证不到的地方，逐条写明（不写 = 下一窗当"全绿"读）**：
+- **跨租户读隔离在接口层不可证，但在契约层证过**：四个端点都把租户钉成 `DEFAULT_TENANT`，所以 HTTP 面上**没有能插入
+  foreign 行的入口** —— D6（控制器不再钉租户）只能红掉那两支**写侧**探针。真正的反证在 java 契约层：
+  `LcHttpContractTest.foreignTenantRowsNeitherGrantNorGetRevoked` 用直接 SQL 播一行另一租户的合法授权，再断言
+  `/list` 混不进来、`/check` 答 false、那个 id 回收回 400（并各配一句反向证据：那一行确实在库里、本租户那一条确实删得掉），
+  由 J3 与 J5 两支注入**分别认领它的两句**（`H_FOREIGN_LIST` / `H_FOREIGN_REVOKE`）。
+  ⚠ 本窗我先把这条边界写成了"只有 `PermissionServiceTest` 覆盖到" —— **那是错的归属**：那一支用的是 mock mapper，
+  钉的是"条件串里有 `TENANT_CODE` 这个列名"，从没往库里放过一行 foreign 数据；真放过数据的是契约层那一支。
+  两者不是一回事（"条件在"≠"条件有效"），写错文件名的代价就是下一窗可能有人去改错的那一层。
+- **同一句 `IllegalArgumentException` 在 MockMvc 层与部署层的读数形状不同**：契约层拿到的 400 可以没有 body，
+  fat jar 后面有 `LcExceptionHandler` 统一转成带 `message` 的信封。所以 D 战役不能套 K/J 战役的预期红集，
+  两支各钉各的（`[15t]` 里那三支"消息要说清是哪一栏/哪一项"的探针只在部署层存在）。
+- **权限矩阵页在真浏览器层零断言**（连 §11 那句 `text.includes(label)` 的浅检查都没有覆盖它 —— 顺带说，那种整页找词的断言
+  正是缺陷 #29 点名过不要写的东西，补一条同形态的没有意义）。要补的话形态是 §11d 那种：种一条应用级授权 + 一条实体级授权，
+  在真页面上读格子的亮/暗并与 `/check`、与库里的 `entity_code` 三方对齐。**这是 #48 剩下的唯一一层，已登记为 #49 候选。**
 
 **09-26 06:4x – 06:5x 这一窗（#47 收线 + 两条过期契约断言修成仍可否证的形式）四道闸串行同轮实跑，
 五个退出码一起落在 `~/.cache/zlc47/gates.status`，日志各自在 `~/.cache/zlc47/gates/{java,boot,api,check,browser}.log`：**

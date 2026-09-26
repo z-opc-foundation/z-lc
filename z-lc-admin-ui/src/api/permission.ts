@@ -18,7 +18,8 @@ export function listPermissions(filter: PermissionFilter): Promise<PermissionEnt
 
 export function checkPermission(params: {
   appCode: string;
-  entityCode: string;
+  /** 不给 = 只问「整个应用」这一档。给了则应用级授权也算覆盖 (与后端口径一致)。 */
+  entityCode?: string;
   roleCode: string;
   permission: string;
 }): Promise<boolean> {

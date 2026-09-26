@@ -411,8 +411,10 @@ export interface WorkflowBindingEntity {
 export interface PermissionEntity {
   id?: number | null;
   appCode: string;
-  entityCode: string;
+  /** null / 缺省 = 整个应用（库里 `entity_code IS NULL`）；给值则只覆盖那一个实体。 */
+  entityCode?: string | null;
   roleCode: string;
+  /** 只认 `PermissionKeys` 里的那几个词，写入口会当场拒掉别的一律 400。 */
   permission: string;
   tenantCode?: string | null;
   createTime?: string | number | null;
