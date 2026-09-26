@@ -1,4 +1,4 @@
-# feature001 · 缺陷 #61 流程绑定：剩下没做完的工程量与等拍板的四问
+# feature001 · 缺陷 #61 流程绑定：剩下没做完的工程量与等拍板的五问
 
 登记时间：2026-09-26 23:12（`date` 现测）。仓库 HEAD 见文末"取数命令"，**别信本文任何数字，按命令现测**。
 
@@ -176,22 +176,564 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 
 ### 2.5 浏览器层
 
-- [ ] Playwright 那一层目前对 `WorkflowsPage` 零断言。要测：下拉里**没有**兑现不了的选项、
-      保存 400 时 reason 看得见、"发起账"抽屉能读出那一行。
+- [x] Playwright 那一层对 `WorkflowsPage` 的断言（新量具 `z-lc-admin-ui/e2e/mutate_workflow_browser_guard.py`，
+      套件里第 11w 段）。09-27 03:5x 实测：**基线一轮 PASS 279 / FAIL 0**，11w 段内 **59 条**检查
+      （`validate()` 扫源码取的分母，不抄清单；其中 23 条过 `wfCheck` 那道"桥没通就不算绿"的守卫）。
+      测的面：
+      - 词表 → 界面：下拉里只有 `/vocabulary` 给的时机、个数与词表相等、被拒清单连同引擎那句理由摆在窗里、
+        词表读失败时那一行标「时机未校对」而不是「引擎不兑现」+ 横幅给重试入口 + 新建按钮收住；
+      - 写：400 时接口那句原因**原样**出现在 toast 里（不是笼统"保存失败"）、保存后那一行三格齐、
+        与库里读回的那一条逐字相同；
+      - 账（抽屉）：一行 STARTED 的实例号/记录号/不写失败原因各按**格**读（不按整行 blob —— 见下面被证伪的那条）、
+        桩不可达那一条 FAILED 说得出为什么、FAILED 不覆盖上一条 STARTED、三行两成一败；
+      - (7b) 引擎**答了但没成**两种形状：200 + `success:false`（理由那句原样落到「为什么」）与
+        502 + 成功样的 body（`ghost-should-not-be-kept` 那一个号不许进账）—— 桩里这两个分支此前没人翻过旗，
+        于是"实例号必须是空的"那句只在"收不到 body"的成因下测过，是个没有猎物的字样；
+      - 读失败不许画成"没有"：`page.route` 把 `/fires` 打断后抽屉报"没有读到"、旧行不能继续亮着；
+      - 收尾：解绑真的让行下去 + 「已删除」+ 本节种的应用收掉 + 解绑与删应用一句都不发（清理前 4 句钉死）。
+      注入自证 **18 支**，每支只摘一句保证、红集合互不相同；另有 **27 条按未覆盖记账**，分三类理由
+      （(a) 夹具/桥/阳性对照，(b) 会让整节级联的写形状 —— 牙在 vitest 与 deployed 层，(c) 数据在服务端那一侧）。
+      W4/W5 是**成对**的：判据落在差集恰为一条「读失败那一屏也不留下三行账的假象」上，
+      单独一支 W4 证明那条不是它的替身。
+      跑一轮实测的红数（第二轮 04:3x–04:4x，`~/.cache/zlc61/browser_guard/run2.out`；读数由**独立判读脚本**
+      `~/.cache/zlc61/judge_run2.py` 从每轮原始日志现量，不拿预期清单当读数）：基线 **279 条 / 红 0**；
+      W1 3、W2 3、W3 1、W4 1、W5 2、W6 2、W7 3、W8 1、W9 1、W10 2、W11 2、**W12 6**、W13 5、W14 1、
+      W15 1、W16 1、W17 1、W18 3 ⇒ **18 支全部与账目逐字对上**（每支红的条数 = 记账条数，无一支空跑、
+      无一支多红）；W4/W5 的成对判据实测成立：`W5\W4 差集恰 1 条`（「读失败那一屏也不留下"三行账"的假象」）
+      且 `W4\W5 反向 0 条`。
+      第二轮收出来的两处不符都不是产品的账，一处改预期、一处修量具（断言一条没改软）：
+      4. W12 多红「引擎那句拒绝理由原样落在「为什么」那一格」⇒ **预期漏记**：那条断言的合取里确实写着
+         `wfRow4[1] === 'FAILED'`（`browser-e2e.mjs:3137`），而 W12 摘的正是那一格的字样；读数里「为什么」
+         那一格完好 ⇒ 不是替身红。按实测把 W12 的账从 5 改到 6，合取保留（它钉的是"200 而 success=false
+         这一行得自称 FAILED"）。同一条断言同时挂在 W12/W13/W18 名下 = 它读了三格，而三支的**整集**
+         6/5/3 互不相同，判据仍分得开。
+      5. 「恢复后复跑」那一轮 `总 2 / 红 1（基线 279）` ⇒ **量具自己撞名**，被报成了产品红：
+         `seedTestData()` 的 appCode 是 `uitest${Date.now().toString().slice(-6)}`（= epoch ms mod 1e6，
+         **每 1000s 回绕**），而物理表名取 `ui_task${appCode.slice(-4)}`（**每 100s 回绕**）；连跑 20 轮
+         （>3000s）后恢复轮的 `uitest429924` 撞在基线轮留下的 `uitest239924` 已占的 `ui_task9924` 上 ⇒
+         服务端拒建实体，而 `seed` 只 `console.error` 一行就继续跑 ⇒ 界面塌下来的是「表格渲染」那一条超时红、
+         后面整节没有数据可读。05:02 复测：这一对撞名**此刻还在盘上**（`app/list` 里 `uitest429924` 与
+         `uitest239924` 后 4 位同为 `9924`）。修在量具侧三处：appCode 加 4 位随机后缀、表名从完整 appCode
+         派生、实体建不成立刻 `throw`（"这一轮作废（环境残留不是产品缺陷）"）而不是一行日志放行。
+         源码恢复本身是干净的（`WorkflowsPage.tsx` 回填后 md5 `87b30e33161f27089623d260151e12fd`、
+         产物指纹回到基线 `index-ruBdvAdn.js`）⇒ 那一轮的红只归到 seed 撞名，不归到"变异没还原"。
+      - [ ] **残留另记一笔**：seed 的应用从来没人删（05:0x 实测 `app/list` 共 **99** 个应用，其中 `uitest*`
+            **50** 个）—— 清了能降撞名概率，但堵掉"撞名必假红"这条路的是上面那处量具修复，不是清理；
+            两者别混。**这一条不属于 #61**，是给套件收活的人留的。
+      - [ ] 同一把尺的第二处（09-27 05:5x 现读，**记为"不是缺陷"而不是新缺陷**）：`11w` 那节自己建应用用的名字
+            是 `wfui${Date.now().toString().slice(-6)}`（`browser-e2e.mjs:2703`）、物理表名取
+            `ui_wf${wfApp.slice(-5)}`（:2712 = ms mod 1e5，**每 100s 回绕**）—— 形状和上面撞过的那对一模一样。
+            区别在结局：这一节的应用/实体/provision 三步任一失败都当场 `throw` 并写明
+            「11w 建应用失败 / 建实体失败 / 表没建成」（:2708/:2718/:2720-2722），**不会穿着产品红的外衣进账**。
+            ⇒ 代价是白跑一轮，不是假绿/假红，本轮不改（改它要动在飞量具的源，见下）。收活的人若要根治，
+            和 `uitest` 那处一起换成同一套带熵的命名即可。
+      - [x] 第三轮（18 支整族，跑在改完账 + 修好撞名的量具上，05:02:05–06:00，
+            `~/.cache/zlc61/browser_guard/run3.out`，日志已归档到同目录 `run3_logs/` 44 份）落盘读数：
+            **`OK 18/18`、具名红 39 条、`出现预期之外的红` 0 次、`本轮分母` 不符 0 次、
+            每轮分母都是 279、`RESULT: 1 problem(s)`**。
+            39 这个数是量出来的不是加的：`grep -oE "预期 [0-9]+ 条全红" | uniq -c` = 8×1 + 4×2 + 4×3 + 1×5 + 1×6
+            = 39，与 `grep -c "RED (预期)"` 的 39 相互对上。
+            **那 1 条问题不是产品坏了、也不是变异没还原 —— 是我这只尺自己没有猎物（缺陷 #69，见 §2.11）**。
+            第二轮欠的那处「恢复轮」到这里闭了：撞名修好后恢复轮是 `PASS+FAIL 279 / 红 0`（基线也是 279），
+            恢复轮的源码 `WorkflowsPage.tsx` md5 与第二轮逐字节相同（`87b30e33161f27089623d260151e12fd`）。
+      第一轮（03:0x–03:2x，`~/.cache/zlc61/browser_guard/run1.out`）**RESULT: 3 problem(s)**，三条全是
+      我这只量具自己的毛病，没有一条是产品坏了，也没有一条靠加白名单抹平：
+      1. W13（「记录」那一列画事件码）预期红 2 条却红 0 条 —— 那两条当时写的是"整行 blob 里
+         `includes(String(recordId))`"，而时间那一格里全是数字、记录号是 1/2/3 这种小数，一蹭就中
+         ⇒ 检查是空的。改成按 `td` 读第一格后 W13 才有猎物（顺带把 W13 的红集扩到 5 条：靠记录号认领行的
+         那三条一起塌 —— 认不出行就没有"哪一行的理由"）。
+      2. W12（结果那一格画「—」）多红了一条没预期的「FAILED 那一行不许留下流程实例号」—— 当时靠行里的
+         `FAILED` 字样认领那一行，摘掉字样就"找不到那一行"而红：**替身红**。改成按
+         `data-testid="fire-status-FAILED"` 认行、再按格读第三格 ⇒ W12 不再红它，它归到 W7 名下。
+      3. W16 第一版（`!== 'ready'` → `!== 'loading'`）红 0 条：ready 态下上面 `implemented.includes(event)`
+         先命中，这一支结构上走不到 ⇒ **等价变异**。换成"未校对挂到了已兑现那一行"才打得到恢复态那条。
+      ⚠ 仍未覆盖的一条，浏览器层动不到：`/fires` 没有分页参数，而 `WorkflowBindingService.listFires`
+      结尾是 `orderByDesc("id").last("LIMIT 200")` ⇒ 第 201 条账**静默消失**（界面上"这个实体还没有
+      发起记录"那一类空态永远撞不到它）。要修得先给接口加 page/size，那是另一支的活。
 
 ### 2.6 250 真库（本轮实测的缺口）
 
-- [ ] `z_lc_workflow_fire` **在 250 的真 MySQL 8 里还不存在**：
-      `select table_name … where table_name like 'z_lc_workflow%'` ⇒ 只有 `z_lc_workflow_binding`（09-26 23:1x 实测）。
-      要么重跑 `deploy_250.sh schema`，要么补一条 `CREATE TABLE IF NOT EXISTS` 上线脚本 —— 走哪条要按 #51 的口径定，
-      注意 `init.sql` 里有 15 条 `DROP`，不可照跑。
-- [ ] **250 上没有 z-wf 在跑**（`docker ps` 实测：只有 mysql/z-ctc/z-vector/z-graph/registry），
-      而 `z-lc.adapter.wf.base-url` 默认 `http://localhost:8888` ⇒ 现在部署起来这条链**必然**落 `FAILED` 行。
-      这一支是好事（能证明账是真的），但要把"起一个真 z-wf"还是"部署期只跑桩"当结论写进 README，别留成谜。
+- [x] `z_lc_workflow_fire` **已建进 250 的真 MySQL 8**（09-27 05:0x 走 `deploy_250.sh schema`：
+      先把 `z-lc-admin/src/main/resources/db/schema-h2.sql` 单独 scp 上去并**逐字节对账**
+      （local=remote=`c7898003549cf25d447b723bdf559fa9`，`grep -c` 现量 15 条 `CREATE TABLE`、0 条 `DROP`），
+      再灌 —— 库里表数 **71 → 72**；`information_schema` 回读这张表 **14 栏**
+      （id/tenant_code/app_code/entity_code/record_id/binding_id/trigger_event/process_definition_key/
+      status/instance_id/detail/create_time/update_time/deleted），校对随库为 `utf8mb4_general_ci`，
+      与 `z_lc_workflow_binding` 一致 ⇒ 闸 3 不会因这一张新开洞。
+      （"15 条 DROP 不可照跑"说的是另一个文件 `init.sql`。）
+      ⚠ 只 scp schema 不 scp jar：那一次 `sync` 会把 `target/` 里**正被 18090 进程按需读取**的 jar 原地重写，
+      边跑边换会让在飞的测量读出与代码无关的红 —— 所以 `sync` 走 jar 那条路要等在飞的那轮收线。
+- [ ] **250 的 `:8888` 不是 z-wf，是别人的服务**（09-27 04:0x 实测：`ss -ltnp` 显示 `*:8888` 由 pid 1622
+      那个 java 持有 —— `z-opc-main-starter`，已跑 1 天 16 小时；对它 POST `/api/approval-center/processes/start`
+      回的是 **404 + 一段 Tomcat HTML**）。而 `z-lc.adapter.wf.base-url` 的默认值正是 `http://localhost:8888`
+      ⇒ **把当前这一版 jar 部署上去而不动这个参数，就等于每写一条记录都往别人在跑的服务发一次 POST**，
+      账上还落一条"应答不是可解析的 JSON/404"的 FAILED —— 那个原因不是产品的结论，是我打错了门。
+      ⇒ 250 这一腿开火前必须显式带 `--z-lc.adapter.wf.base-url=<自己起的桩>`（或真 z-wf），
+      README 里写死是哪一种，不许留默认值。
+      **落点已定位**（09-27 04:1x 现读）：`_e2e/deploy_250_remote.sh:163-176` 那段 `nohup java -jar` 里
+      `ctc` / `meta` / `script` 三个 adapter 都显式给了 `http://localhost:$APP_PORT`，**唯独 wf 没有**
+      ⇒ 今天这份部署脚本原样跑，就是把 wf 留在默认值上。补一行 `--z-lc.adapter.wf.base-url="$ZLC_WF_BASE_URL"`，
+      并且**没有默认值就 die**（"忘了带参数"要红在部署当场，而不是红成一条 FAILED 账）。
+- [ ] 04:1x–04:2x 复测（同一把尺第二次落到盘上）：`z_lc` 里仍是 **71 张表 / 只有 `z_lc_workflow_binding`**、
+      `*:8888` 仍在监听、**18888 空着**（桩可以起在这一格，不跟 8888 上那个别人的 starter 抢）。
+- [ ] 250 现在跑的是 **缺陷 #61 之前**的 jar ⇒ §2.6 的测试必须先从**当前提交树**重打 jar 再部署（并同步抬
+      z-boot 1.0.16 的依赖，见下面"取数命令"旁边的注意），否则测的是旧行为。
+      05:1x 复测（**换了尺**）：`~/zlc-deploy/lib/z-lc-admin-1.0.0-SNAPSHOT.jar` md5 仍是
+      `bb48651152a723dc2651ecd3aeb28ba4`、mtime 09-26 18:56；把它里面那个 **嵌套的**
+      `BOOT-INF/lib/z-lc-core-1.0.0-SNAPSHOT.jar` 抽出来 `unzip -l` ⇒ Workflow 类只有
+      `WorkflowBindingEntity/Mapper/Service` + `WorkflowTemplateDO`，
+      `grep -cE "WorkflowTriggerDispatcher|WorkflowFireEntity"` = **0**；
+      而本机 `target/` 那个 01:43 的 jar 同一把尺量出来是**有**这两个类的（数到 5 个匹配）。
+      ⚠ 上面这条"抽嵌套 jar"的动作不是洁癖：**前一版这条账记错了尺** —— `unzip -l 外层 fat.jar | grep -c 类名`
+      对 Spring Boot fat jar **结构上看不见任何应用类**（它们都在 `BOOT-INF/lib/*.jar` 里，外层清单只有那些
+      嵌套 jar 的名字），所以它对外层数出的永远是 0 ⇒ 这条判据**永远不可能判"已经部署了"**，
+      是个没有猎物的尺。仓里已提交的六支 deployed 守卫本来就都对嵌套 jar 取字节（`mutate_*.py` 里那句
+      `namelist() startswith "BOOT-INF/lib/z-lc-"`），是我这条临时命令没跟着仓库的做法走。
+      结论方向没变（旧构件是真），证据换成可判正的那一把。
+    - **09-27 06:0x 量"要不要为这一腿重打 jar"：不用 —— 本机 `target/` 那支就是当前提交树的 java**。
+          四条各自独立：① `git status --porcelain` 里 `.java` 一条都没有（树 == HEAD `ce81f49`）；
+          ② `git log --since="2026-09-27 01:44:00" -- '*.java'` **空**（jar 建好之后没有任何 java 提交，
+          那一窗只进了一支 `ce81f49`，动的是文档与量具）；③ `find -name '*.java' -newer <jar>` 点到的 4 支
+          mtime 齐刷刷是 **01:44:34** —— 那是 java 侧 deployed 守卫的**还原步**（`~/.cache/zlc61/deployed-guard-0927-013839.log`
+          尾行逐字 `restored sources: clean`），不是有人改了内容 ⇒ **别拿 mtime 当"内容变了"的尺**，
+          我差点这么误判；④ 决定性那条来自守卫自己：它的最后一步是 `restore: rebuild pristine, restart, re-run`，
+          并把**现在还在跑的 pid 72030** 归因成 `z-lc-admin-1.0.0-SNAPSHOT.jar`、写着
+          `artifact 回到基线字节: True`、`e2e = 532/532 本节 63 failures=(none)`。
+          我再独立读了一次运行时行为（只读 GET）：`/api/lc/workflow-binding/vocabulary` 回
+          `implemented:["AFTER_CREATE"]` + 六条带理由的 `rejected` —— W6 那一支注入（改 `WorkflowTriggers.java`）
+          若留在盘上，这一句不可能长这样。
+          尺换对之后的数（这次用嵌套 jar 那一把）：fat `af13088981968b1fc662fc202e0bc4c9`、
+          嵌套 `BOOT-INF/lib/z-lc-core-1.0.0-SNAPSHOT.jar` = `e4a21211a943319fd151e6bd4355d71f`、
+          其中 workflow 类 5 个匹配，逐条原文（都盖着 `09-27-2026 01:43` 的编译时刻）：
+          `workflow/WorkflowTriggerDispatcher.class`、`…Dispatcher$1.class`、`…Dispatcher$2.class`、
+          `workflow/entity/WorkflowFireEntity.class`、`workflow/WorkflowTriggers.class`
+          —— 对照 250 上那支 `bb48651152a723dc2651ecd3aeb28ba4`（09-26 18:56）
+          ⇒ md5 不同，`sync` 会真的搬东西过去。**这一腿省掉一次全量 `mvn package`**（它既要抢 CPU、
+          又会把在飞浏览器门禁脚下的 jar 换掉）。
+    - 🔴 **06:2x 复测：250 仍旧 blocked，但读数比 05:5x 那一趟更具体**（`python3` 逐个 `connect()` 现量，
+          区分"被拒"与"超时"是这一条的全部价值 —— 05:5x 那趟只有 `nc -z`，两种失败分不开）：
+          `22 CONNECTED`（接 TCP，但 `ssh` 仍旧 `kex_exchange_identification: read: Connection reset by peer`，两试同果）、
+          `18098 CONNECTED`（z-schedule 那套常驻还在服务）、
+          `18090 REFUSED`（我部署的 z-lc 没了）、`33061 REFUSED`（我的 `z-lc-deploy-mysql` 没了）、
+          `33060 REFUSED`（**别人的** `z-schedule-e2e-mysql` 也没了）、`18888 REFUSED`（我的桩没了）。
+          `ping -c 4` = 4 包丢 1（25%），rtt 稳在 `1.416/1.477/1.538 ms`。对照：同一时刻
+          `192.168.31.136:22` 连通且能执行（`06:28:00 up 5:42, load 0.21`）⇒ 我这侧网没事，250 难受。
+          **形状读法（这是观察，不是归因）**：宿主机上的 java 还活着（18098）而**两个容器口一起被拒**
+          ⇒ 像是容器运行时/那一层出事，不像是整机重启；我不写死，因为拿不到管理面就没法证。
+          ⚠ 明确不归因到我这一窗：我在 250 上最后一次动作是 05:2x 那几支负控，
+          `deploy_250_remote.sh` 的 `pkill` 只打 z-lc 自己的进程名，从不碰 33060 那一套；
+          本机群里同时有别的战役在打 250（z-mq W2h 04:07 派、z-rpc/z-graph 都在 250 跑全量）。
+          **这一条属于用户的基建，不由我代修，也不由我重启。**
+          对闸 6 的直接影响，把 05:5x 那句"桩还等着我收"改掉：18888 现在是被拒的 ⇒
+          **机器缓过来之后先看的不是"清掉我的桩"，而是"我的桩、我的 app、我的库容器三个都不在了"**
+          —— 这一腿要从 `sync` → `env` → 起桩 → `start` 起重做，不是接着跑 `fireprobe`。
+          仍成立的只有那句：闸 6 正向那一跑（期望 23 条全绿）**没跑，也跑不了**，
+          这一条不许被任何"部署已验"的话覆盖。
+
+    - 🔴 **250 这条腿现在整体 blocked（09-27 05:5x–06:0x 实测，不是"我没排上"）**
+          —— 下面是那一趟的原账，保留作出处；**06:2x 的复测在它上面那一格**（两口新读数与"我这侧网是干净的"对照都在那里）。
+          `ssh 250` 四次全在密钥交换阶段被重置 —— 逐字 `kex_exchange_identification: read: Connection reset by peer`
+          / `Connection reset by 192.168.31.250 port 22`。TCP 22 本身接得住（`nc -z -G 5` succeeded），
+          而我认识的那三个服务口这一趟全是 closed/filtered：`18090`（部署的 z-lc）、`33061`（我的
+          `z-lc-deploy-mysql` 容器）、`18098`（z-schedule 常驻）。⇒ 拿不到管理面，`sync`/`start`/`fireprobe` 一步都跑不了。
+          **归因排除在盘外**：同一张网卡（en0）同时打另外两台 —— `192.168.31.136` 10 包 0 丢、
+          `min/avg/max/stddev = 0.466/0.640/0.724/0.085 ms`；路由器 `.1` 6 包 0 丢、`0.471/0.522/0.597/0.041`；
+          而 `192.168.31.250` 20 包**丢 1（5%）**、`1.306/40.914/255.763/61.382 ms`。
+          我这侧的链路是干净的，抖动与丢包只在 250 身上 ⇒ 机器难受，不是网难受。
+          后果写清：**闸 6 正向那一跑（期望 23 条全绿）没有跑，也跑不了**；这一条不许被任何"部署已验"的话覆盖，
+          §2.6.3 那处"未闭合"里属于 250 的部分照旧未闭合。我留在 250 上的桩（pid 11408、`127.0.0.1:18888`）
+          现在既关不掉也够不着 —— 机器缓过来之后第一件事是 `ss -ltnp | grep ":18888 "` 确认它还在，
+          然后按 §2.6.3 的收尾把它收掉（它是我的进程，别留给下一跑当"别人的端口"）。
+          ⚠ 这是本机群里第二台出现"ping 得到、管理面进不去"的盒子（前例：zifang002 硬死机，
+          靠 `arm-watchdog.service` 才 69s 自愈）。**这一条属于用户的基建，不由我代修，也不该由我重启。**
+- [ ] **`deploy_250.sh api` 这一条走不通，且不通在"桥"上**（09-27 05:0x 现读 `_e2e/e2e_api_test.py`）：
+      第 `[15w]` 节的桩是**测试进程自己**起的 —— `WF_PORT = int(os.environ.get("LC_WF_STUB_PORT","8888"))`
+      (:2134)、`_WfStub(WF_PORT)` (:2193/:2434) 绑在**跑脚本这台机**的端口上，而 app 的 BASE 是 `sys.argv[1]`
+      (:21，默认 `http://localhost:18090`，250 腿会换成隧道口)。把 BASE 指到 250 之后，250 上那个 jar 发的是
+      **它自己的** `localhost:8888`（也就是 pid 1622 那个别人的 starter），永远打不到我本地的桩 ⇒
+      `WF_LIVE = bool(WF) and wf_count() == 1` (:2315) 恒假 ⇒ 这一节所有走 `wfc()` 的断言整排判红、
+      detail 写「桥没通（桩没起来或 jar 没打过来）⇒ 这一条没有判定，不算绿」。
+      记清两件事：①**这是真红不是假绿** —— :2121 那句注释定的规矩就是"桥没通就没有绿"，
+      负断言（"一条都没发"）在这种形状下不会蒙过去；②但**63 条整排红不是 250 这条腿的结论**，
+      它只说明这把尺的桩和 app 不在同一台机上。⇒ 250 这一腿**不要**跑整节 `[15w]`，
+      改跑一支聚焦的真库探针：桩起在 250（`_e2e/wf_stub.py`，见 §2.6.2）、`ZLC_WF_BASE_URL` 显式指它、
+      写一条记录后**从 MySQL 自己**读回 `z_lc_workflow_fire` 的行（STARTED 与 FAILED 各一），
+      再经 `/fires` 读回同一份，最后清场。
+- [ ] ⚠ **09-27 05:4x 把"线上那套库在哪"量成了一个否定结论**：本会话早先有一条账写着"`z_opc_lc` 是线上库、
+      里面有 29 行绑定、它在 136 上"。今天按这条线索去复跑，四把尺都落空：
+      ① `nc -z -G3 192.168.31.136 3306` → rc=1（端口不通本机）；
+      ② `ssh zifang@192.168.31.136`（这台机就是 `zifang002`，`uptime` 显示 00:45 才起来）
+         → 无 `docker`（`/usr/bin/docker`、`/usr/local/bin/docker` 都不存在）、无 `/opt/zopc`、
+         `ss -ltn` 上没有任何 3306/1809x/8080 监听，running units 里只有 `k3s-agent`；
+      ③ 250 上 `docker ps` 只有 `z-lc-deploy-mysql`(33061) 与 `z-schedule-e2e-mysql`(33060)，
+         前者的 `show databases` 是 `z_lc` 一个（05:4x 实测），没有 `z_opc_lc`；
+      ④ 250 的 k8s 全集群 `kubectl get pods -A` 共 **3** 个 pod，名字里没有 mysql/zopc。
+      另注一条量具账：我中途把 ③ 之前的一次 `ss -ltn | grep -c ":3306"` 读成"250 上有 3306"，
+      那是**子串假阳性**（`:33060`、`:33061` 都含 `:3306`）—— 换成 `grep ":3306 "` 与 `docker ps` 的端口列
+      同时看，250 上并没有对外暴露在 3306 的引擎。
+      ⇒ 所以"**#61 的 DDL 要落到哪一库**"今天**没有正面答案**，只有一张否定结论的账；能演示的 MySQL 8
+      就是 250 上我起的这一套（§2.6.2/§2.6.3）。这一问归用户：线上/常驻的那套 z-lc 到底部署在哪台机、
+      哪一库，我不去猜着 ALTER 别人的库。
+
+#### 2.6.1 "起真 z-wf 还是只跑桩"这一问，04:2x 已经量到答案的一半
+
+工单原文要求"别留成谜"。09-27 04:2x 实测：**真 z-wf 在同一.foundation 里，而且契约是对得上的**：
+
+- `z-opc-foundation/z-wf`（4 模块 admin/core/starter/web，git HEAD `cc1a21b`）里
+  `z-wf-web/.../ApprovalCenterController.java:617` 就是 `@PostMapping("/processes/start")`，
+  `:620` 收 `StartProcessRequestDTO`、回 `Result<Map<String,String>>`，`:664` 往 map 里放的是
+  `processInstanceId` ⇒ 与 `WfAdapter` 请求/解析的那几个字段同名（不是"看着像"，是逐字段读出来的）。
+- **桩的 `reject` 那一支是从真引擎抄来的**：`:672-673` `catch (Exception e) { return Result.fail("流程启动失败: " + e.getMessage()); }`
+  ⇒ 失败时 HTTP **200** + 信封 `success=false` + message 前缀 `流程启动失败: `。这正是浏览器层 (7b)
+  与 deployed 层 W 系列钉的那个形状。**这一支不是桩的发明**，所以"200 而 success=false 时记录照写、
+  界面把原话摆出来"两条测的是真结局。
+- 反过来，`http5xx`（502 + body 里带一个成功样的实例号）**不是** z-wf 这段代码能产出的形状 ——
+  它是"网关/容器层把连接掐了但留了个 body"那一族。留着它有独立价值（判"看状态码还是看信封"），
+  但账要记清：它证的是我们适配器的判据，不是 z-wf 的行为。
+
+- [ ] 于是 250 这一腿的口径定为：**部署期显式指一个我自己起的桩**（专门端口，绝不留默认 `localhost:8888`），
+      为的是量 MySQL 8 上那张 `z_lc_workflow_fire` 账真写得进、读得出；
+      **"跟真 z-wf 端到端打通"另立一票**（要在 250 上起 Camunda + 它自己的库 —— 上面那条契约证据说明
+      那一票是**部署活**，不是改代码的活）。两种口径都不要把默认值留在配置文件里。
+
+#### 2.6.2 桩已建，且它自己的冒烟是量过的（09-27 05:0x）
+
+`_e2e/wf_stub.py`（新增，为 250 这条腿造的）：只绑 `127.0.0.1`（不对外开洞），`--port` 默认 18888
+（避开 pid 1622 那个 starter 的 8888），`--hit-file` 逐行落 JSONL（部署腿要证"发出去的那一句长什么样"），
+`--pid-file` 给收尾用；`GET /__mode` 读/翻旗、`GET /__hits` 数收到几句、未知模式名 **400**（不许静默收下 ——
+那等于"我翻了旗"是假的）。四种模式的形状各有出处：`ok` = `data.processInstanceId`（真 z-wf `:664`）、
+`reject` = HTTP **200** + `success:false` + 前缀「流程启动失败: 」（真 z-wf `:672-673`）、
+`http5xx` = 502 + body 里带一个成功样的号（**不冒充引擎行为**，它证的是适配器"看状态码还是看信封"的判据）、
+`hang` = 不答（超时那一支；单线程 `HTTPServer` 下会串行卡住后面的请求，文档里写明了）。
+
+冒烟脚本 `~/.cache/zlc61/stub_smoke.py` 的判据不是"起得住"而是**八条具名读数**（05:0x 实测 `SMOKE_OK fails=0`）：
+用 `bind(0)` 挑空闲端口起桩（不占固定端口，撞不到别人的服务）→ `/__mode` 回 `ok` 且是自己（不是别人的应答）
+→ 四种模式逐一验 **状态码 + 信封形状**（`curl` 对 404 也返回 0，所以只判 rc 不算证据）→ 未知模式 400
+→ `/__hits` 数出恰好 3 句（第 4 次是 GET，不该进账 —— 这一条钉"计数只数 POST"）→ hit 文件逐行是真报文
+→ terminate 后端口真的没人答（阳性对照：收尾不留一个别人会被 redirect 打到的口）。
+
+第一版冒烟**是红的**，且红在桩自己身上：`FAIL 桩在挑到的空闲端口上起住了… << mode=None` 而手工复现看到
+`wf_stub listening 127.0.0.1:20889 mode=ok`、`curl` 拿回的却是 `http=000` —— 进程在听、也"答过了"，
+客户端只会等到超时。根因是 `_send` 里 `send_response`/`send_header` 之后**漏了 `end_headers()`**，
+头没写完就送 body ⇒ 应答永远不完整。补上那一句后八条全绿；这一处记进台账，是因为"服务在监听而客户端拿不到
+应答"这个形状，只判"端口起住了"的冒烟是抓不到的。
+
+- [ ] 部署脚本那一侧的闸已同步加硬（`_e2e/deploy_250_remote.sh`）：`require_app_env` 现在要求**显式**
+      `ZLC_WF_BASE_URL`，没带就 die（"忘了带参数"红在部署当场，而不是红成一条 FAILED 账）；`step_env`
+      把它写进 `app.env`；`step_start` 的 `nohup java -jar` 那一串里补了 `--z-lc.adapter.wf.base-url=`
+      （ctc/meta/script 三个 adapter 原本都有、唯独 wf 缺）。双向实测过：`bash -n` 通过，
+      在临时 CONF 上**不带**该变量 ⇒ rc=1 且报的是那一句具名 die，**带上** ⇒ rc=0。
+
+#### 2.6.3 闸 6 `step_fireprobe`：250 这条腿的判据改由 MySQL 自己承认（09-27 05:1x）
+
+`_e2e/deploy_250.sh fireprobe`（新）→ `deploy_250_remote.sh:step_fireprobe`，**21 个 `fp_check` 调用点、
+一趟实跑 23 条具名读数**（数目 05:31 用一段 `python` 现量的：从 `step_fireprobe()` 截到闭合 `}`、
+数 `fp_check "` 的调用点 = 21，其中实体那一组在 `for pair` 循环里、一趟实跑两遍 ⇒ +2 = 23），
+每条带读数、不 fail-fast（一本账只报第一处坏就等于把其余的坏藏起来）。四段归因先于判定：
+端口上的 pid == `app.pid`（构件）⇒ **那个进程的 argv 里真有 `--z-lc.adapter.wf.base-url=` 且等于桩**
+（不看 `app.env`：进程是上一次 start 起来的，env 写了而 argv 没带是两种不同的事实）⇒ `ZLC_WF_BASE_URL`
+指向的端口就是探针翻旗/数 hits 那个口（wf 这一腿）⇒ **那个端口上听的就是我自己起的桩**
+（`ss` 的 pid == `$DIR/wf_stub.pid`，见下面"起点旗标"那一条）。之后才判据：物理表在 `information_schema` 里查得到、
+`/vocabulary` 的 `implemented` 含 `AFTER_CREATE`、写一条记录 ⇒ 桩**正好**收到一句、那一句带登记的 KEY
+且 `businessKey` 能定位回这条记录、**库里**多一行 `STARTED` 且 `instance_id` 等于桩回的那个号、
+`/fires` 读回同一行、翻 `reject` 后多一行 `FAILED` 且 `detail` 带引擎那句原话、两行各记各的账、
+没绑定的实体一句都不发且账上不多行。
+
+- [x] **起点旗标由探针自己钉（05:2x 发现的量具形状，不是产品的账）**：探针第二幕会把桩翻到
+      `reject` 且**翻完不还原**，而清场走的是 `die` ⇒ 一跑红过之后桩就停在 reject。05:26 在 250 上实测：
+      `/__mode` 答 `{"mode": "reject"}`、`/__hits` 的 `count` 是**本进程**的计数（重启后归 0，与
+      `wf_hits.jsonl` 里那两行旧证据不同基）—— 也就是说，若直接打正向那一跑，桩会回
+      `200 + success=false`，`STARTED=0`、`instance_id 对不上`、`/fires 没有 STARTED` 一串红**看着像
+      "这版构件里派发器没跑"**，而真相是我的替身还停在上一幕。这正是 #55 那一族（"有进程"≠"端口上就是它"）
+      在替身状态上的形状。改法两处：`fp_clean`（EXIT trap 里）末尾把桩还原成 ok，且 `step_fireprobe`
+      **起点**主动 `?mode=ok` 并读回来判一条 —— 判据不依赖"上一跑很规矩"。
+- [x] **负控跑过两遍，而且是白捡的**：250 上此刻还是 #61 之前那个 jar（pid 25776、argv 里没有 wf 那一项），
+      同一支探针打上去 —— 第一遍（05:16，provision 还没补）`rc=1` **14 条红 / 7 条 ok**；
+      第二遍（05:18，补完 provision + 改了 detail）`rc=1` **12 条红 / 9 条 ok**。
+      **少掉的那两条红就是我自己那处坏**（两个实体的物理表：现在 provision 真调用、表真在，所以转 ok），
+      而该红的 12 条一条没少，红的位置正是该有的位置：
+      `argv 里那一句=<没有这一项>`、`implemented=<空>`、`rid=1 桩收到 0 句（应为 1）`（记录这次**写成了**，
+      派发器却没跑 —— 这一条才是它的猎物）、`STARTED=0 全部行: `、
+      `/fires` 回 **404 `{"path":"/api/lc/workflow-binding/fires"}`**、
+      `桩多收 0 句（应为 0）、账上共 0 行（应为 2）`。⇒ 这把尺**能红**，且红落在被测物上而不是落在尺上。
+      ⚠ 上面那两条新加的（桩的 pid 归因、起点旗标）是 05:2x 之后加的，**这两条在负控里没有账**：
+      负控那两跑跑在旧版探针上。它们各自的猎物是"端口上换了别人进程"与"上一跑留下 reject"，
+      下一跑（正向）会给出它们的第一次读数，账在那时记。
+      ⚠ 有一条负向判据在负控里是**空跑的 ok**：「FAILED 那一行不许留下实例号」当时一行都没有，它当然找不到
+      `^FAILED|wf250`。它的牙由同支里那条存在式（`STARTED=1 且 FAILED=1 且总行数=2`）撑着，
+      **别把这一条单独当证据** —— 记账是为了下一跑别误读。
+- [x] 这次负控顺手抓出**探针自己**两处坏（不是产品的账）：
+      ① 建实体后我**没调** `/api/lc/admin/entity/provision` ⇒ 物理表不在、"写一条记录"红成 `rid=None`，
+         那条红会被读成"派发器没跑"而真相是我的探针没建表；补上 provision 并让它单独判一条。
+      ② 最后一条把两个判据（桩句数 / 账行数）写在一个 detail 里，负控里报的是「桩收到 0 句（应为 0）」
+         而真正不成立的是行数那半 ⇒ 读数改成两半各报一个数。
+- [x] 清场实测（05:2x，判红那条路上）：`z_lc_workflow_binding=0`、`z_lc_workflow_fire=0`、
+      `e2e_fp%` 物理表 `=0`、`deploy_fp%` 应用与实体 `=0` —— `trap … EXIT` 在 `die` 这条路上真走得通
+      （闸 4 当年记过 `RETURN` 留脏的坑，这一支照它的修法挂 EXIT）。
+- [ ] 正向那一跑（换成 #61 之后的 jar 再打一次，期望 23 条全绿）**还没跑**：要等浏览器层的注入自证
+      收线才能重打 jar —— 05:31 实测本机 18090 上是 `java -jar …/z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar`
+      （pid 见 `lsof`），`mvn package` 会原地重写那个文件，而 JVM 是按需加载类的，边跑边换会让那一轮
+      读出与代码无关的红。**别为抢这一跑去打断在飞的测量**。
+      编号避开：`healthproof` 早就是"闸 5"（缺陷 #52），这一支记作**闸 6**。
+
+#### 2.6.4 顺带修掉的部署量具缺陷 **#64**（原先记作 #59，撞号已改）：`status` 的归因行从 #55 起就没打印过
+
+⚠ **编号这一段是查号时发现的，别照抄"59"**：`git grep` 实测 #59/#60 已被 `4fee620`（#52 那一窗，
+09-26 19:23）占走 —— 那两号指的是"`healthproof` 不许写死端口"与"`trap` 的最后一条状态当退出码"；
+#62/#63 是另一会话的 adapter 战役（`_doc/003_待办事项/README.md` 里两行），#61 是本轮。
+下一个真空号是 **#64**（`#64` 在全仓只以 `&#64;` 的 HTML 转义出现，不是编号），这一支记作 #64。
+
+`step_status` 里那句归因（`app.pid=… 端口 18090 上=…`）尾随一个 `| sed "s/\$/APP_PORT/$APP_PORT/"`：
+双引号内 `\$` 先出 `$`，表达式变成 `s/$APP_PORT/18090/` —— sed 的分隔符是 `/`，第三个 `/` 让它当场报
+`unknown option to 's'` 并回 1（05:1x 在 250 上实测复现），整套脚本跑在 `set -euo pipefail` 下，
+于是 `deploy_250.sh status` **非零退出**、而那行归因一个字都没落盘。这一行正是缺陷 #55 为了
+"别把旧进程的应答认成这次部署的"专门加的 —— 加了之后从没打印过。
+去掉那句多余的 sed（`echo` 里的 `$APP_PORT` 本来就展开），空/非空改用 `${have:-<无>}`
+（原先两种都尾随一个 `<无>`，端口上真有 pid 时读起来反而像"没有"）。修后实测 `rc=0` 且打印
+`app.pid=25776  端口 18090 上=25776`。
+**这一支在提交树里仍是坏的**（05:31 用 `git show HEAD:… | awk '/^step_status/,/docker ps/'` 回读，
+HEAD=`ce81f49` 那版第 9–10 行仍是 `| sed "s/\$/APP_PORT/$APP_PORT/"`）—— 即修前每跑一次 `status`
+都会非零退出，而这条退出码此前没人当判据用，所以它藏了一整窗。
+
+### 2.7 新撞到的欠账：`/fires` 静默截到 200 条，界面一处指示都没有（缺陷 **#65**）
+
+读侧那一句是 `WorkflowBindingService.java:55` —— `q.orderByDesc("id").last("LIMIT 200")`（05:3x 现读，
+方法注释里也写着"最多 200 条"）。方向是**新的在前**，所以被丢掉的是更早的发起结局 —— 这一点比
+"最新的被丢了"温和，但仍然是"一份不完整的清单长得像完整"。量到的三处事实：
+
+- `grep -rn "LIMIT 500\|LIMIT 200" z-lc-core/src/main/java` 全仓**只有这一条**命中 ⇒ 没有第二处可以照抄的
+  既有写法（同仓的变更审计那条 `LIMIT 500` 在 `mybatis/DbTableMapper.xml:56`，走的是另一条读侧，
+  而且它的 javadoc 只说"只留最近 500 条，防无限增长"，同样没有任何一侧知道自己被截了）。
+- `grep -n "200\|更多\|还有\|截断\|分页" z-lc-admin-ui/src/views/admin/WorkflowsPage.tsx` **0 命中**；
+  再在 `fires` 的渲染行里找 `length\|slice\|count\|条` 也 **0 命中** ⇒ 界面拿到 200 行与拿到 5 行长得一模一样。
+- 200 这个数**只存在于 java 那一行**，界面无法知道 ⇒ 就算今天补一句"仅最近 200 条"的文案，
+  下一窗把 LIMIT 改成 100，那句文案会静默变成假话（这正是本轮 #61 的形状：广告与兑现两处各长各的）。
+
+**打算这么修**（写下来是为了下一窗不必重新论证）：把上限做成服务里的一个具名常量，并从
+`/vocabulary` 一起报出来（那个口本轮刚刚成为"部署的构件自己承认支持什么"的唯一面 —— §2.2、W17 都钉过它），
+界面按"行数 == 报上来的上限"才加一行"更早的没列出"。成对的注入自证跟着走：
+① 改服务里的常量而不动 vocabulary ⇒ 必须有红（两处不同步 = 广告与兑现分家）；
+② 去掉界面那一行 ⇒ 浏览器层红。**不选**"把响应从数组换成 `{rows,truncated}` 对象"那一案 ——
+它要动的是已被 63 条部署件探针 + 契约层 + 浏览器层三方各自 grep 的形状，改一格的代价大于一格的收益。
+
+⚠ 为什么现在不动手：这一支要同时改 `WorkflowsPage.tsx` 与 java，而
+① 那个文件此刻正被在飞的第三轮注入自证改写（05:3x 实测它带 ` M`，diff 内容正是 W 系列摘 `canDraft`
+那一句：`disabled={!appCode || !canDraft}` → `disabled={!appCode}`）；
+② java 一改就要重打 jar，而本机 18090 正 `java -jar` 着 `target/z-lc-admin-1.0.0-SNAPSHOT.jar`
+（05:31 `lsof` 实测 pid 72030）。两件事都要等那一轮收线，和 §2.6.3 正向那一跑排在同一批里做。
+
+### 2.8 新撞到的欠账：`update` 那条查重**结构上打不到任何行**（缺陷 **#66**，机制待运行时证）
+
+同一处查重要求"同一 (租户, 应用, 实体, 事件, 流程 KEY) 只留一份"，理由是它自己在 javadoc 里写的那句
+—— 重复登记会让一条记录同时发起 N 个流程实例。**create 那一路是真的**（`create()` 在 `validateForWrite`
+之前控制器已经把租户钉成 `default`）。**update 那一路读起来是死的**，三段都在盘上（05:4x 现读）：
+
+1. `WorkflowBindingController.java:76` —— `/update` 进门第一件事是 `entity.setTenantCode(null)`
+   （注释写着"归一化而不是覆盖：update 里租户仍取库里那一份，service 负责"）；
+2. `WorkflowBindingService.java:130` —— `requireNotDuplicate(entity, entity.getId())`；
+3. `WorkflowBindingService.java:134` —— `entity.setTenantCode(existing.getTenantCode())`，**在第 130 行之后**。
+
+⇒ 查重时 `candidate.getTenantCode()` 是 `null`，`requireNotDuplicate` 走的 `listByEvent` 拼的是
+`new QueryWrapper<>().eq("tenant_code", null)`。这一句我**还没有跑过**，所以按两条静态尺先记着：
+`grep -rn "FieldFill" WorkflowBindingEntity.java` 无填充器、全仓 `grep -rln "TenantLineHandler\|TenantLineInnerInterceptor"`
+**0 命中**（没有租户拦截器会替我把 null 换成值）⇒ 没有任何一层会救这个 null。
+若 `eq(col, null)` 真按 MyBatis-Plus 的无条件拼法出 `tenant_code = NULL`，SQL 里这一谓词对任何行都是 UNKNOWN
+⇒ **查重恒查 0 行 ⇒ 恒不报重复**。那样的话"把 B 改成和 A 同 KEY"这条路能造出两条都满足 `listByEvent`
+的绑定，一条记录写成功 ⇒ 发 N 个并行流程实例 —— 正是这支守卫声称要挡的那件事。
+
+下一批要做的（顺序即判据，别跳）：
+- [ ] **先证机制再改**：拿本机 H2（18090，跑完那一轮之后）或契约层，登记 A、再 `update` B 成同 KEY ⇒
+      看今天是不是**放行**。这一跑同时回答"`eq(col,null)` 出不出条件"这一问 —— 别用读代码的结论当结论。
+      ⚠ 不要在浏览器层那一轮在飞的时候做（新建一个 app 会动到界面下拉的顺序，那一轮 40 分钟白跑）。
+      ⇒ 06:3x 现状：**改动与测试已经写进工作树，但一条都还没跑**（整族那一跑占着 CPU，
+      跑 mvn 会把它脚下的浏览器轮次撞成 15s 定位超时那种假红）。下面三格同一扇窗一起量，别分窗。
+- [x] 修法已落工作树（**未跑，未绿**）：`WorkflowBindingService` 新增
+      `normalizeBeforeJudgement(entity)`（只剪 `triggerEvent` / `processDefinitionKey` 的空白，null 留给
+      `validateForWrite` 去指名），create 与 update **都排在 `validateForWrite` + `requireNotDuplicate` 之前**；
+      update 里 `entity.setTenantCode(existing.getTenantCode())` 从原来的第 134 行（查重之后）提到**查重之前**；
+      `requireNotDuplicate` 再加一道"候选的租户是 null 就当场说话"（`IllegalArgumentException`），
+      理由写在那一格的注释里：没有租户的查重在 SQL 上是恒不匹配，而它自己不知道。
+- [x] 测试已写五支（core）+ 一支（HTTP 契约层），**全部未跑**：
+      `WorkflowBindingServiceTest.updateShouldRefuseDuplicateEvenWhenTheCallerSendsNoTenant`（送 null，走真接线形状）、
+      `…AcrossWhitespaceInTheEventAndKey`、`createShouldRefuseADuplicateWhoseKeyOnlyDiffersByWhitespace`、
+      `requireNotDuplicateRefusesToJudgeWithoutATenant`（钉那道 null 哨兵真的响、报的是这一句；
+      ⚠ 这一支的可达性在测试注释里写死了：DDL 上 `tenant_code NOT NULL` 且两个调用方都不送 null，
+      所以它钉"哨兵会响"，不钉"生产上有这条路径"），
+      以及既有那支 `updateShouldRefuseDuplicates` 原样保留（它绿的原因是替身不符接线，见上面第 1 条，不删它是因为
+      "带租户也要拒"本身是一条真要求）；
+      `WorkflowTriggerContractTest.updateIntoADuplicateIsRefusedAtTheHttpDoorAndNoKeyFiresTwice`
+      走 `/update`：钉 400 + `message` 含「已经绑定过」**且含 `id=`**、`/list` 读回那一行 KEY 仍是 `p_second`
+      且租户没被搬走；再写一条记录，钉 `STUB.count()==2` **且 `"processKey":"p_first"` 只出现一次**
+      （`occurrences(STUB.allBodies(), …)`）+ 发起账两行。
+      ⚠ **我在这格原先写的是"钉 `STUB.count()==1`"，那是错的，06:4x 改回来了**：这一条例子里活着的是
+      两条*不重复*的绑定（`p_first`、`p_second`），派发器对每条绑定各发一句 ⇒ 正确的句数就是 2；
+      病灶形状不是"两句"而是"两句都是 `p_first`"（同一 KEY 两行 ⇒ 同一条记录把同一个流程起两个并行实例）。
+      数总句数在修法前后都是 2，**结构上抓不到这个缺陷** —— 这就是"判据要问哪个 KEY 被发了两次"而不是"发了几次"。
+- [ ] 成对注入自证（**这一格没跑就不算闭**）：把上面那个修法还原成"改之前"的形状
+      （补租户 + 剪空白挪回查重之后，并摘掉那道 null 守卫 —— 两步一起，缺一就不是历史形状）⇒
+      上述新增那几支必须**具名红**；再还原回来 ⇒ 绿。
+      ⚠ 两个方向落在不同支上，记账时别混：只摘 null 守卫 ⇒ `requireNotDuplicateRefusesToJudgeWithoutATenant` 红；
+      只退回顺序（守卫还在）⇒ 那一支照旧绿（它种的那行本来就 null 租户），红的是
+      `…EvenWhenTheCallerSendsNoTenant`（消息变成哨兵那句而不是「已经绑定过这个流程」）；
+      两步一起摘 ⇒ 那两支 + HTTP 那一条同时红（HTTP 那条第一关就撞在"应当 400 而拿到 200"上）。
+      命令（跑法照本仓既有口径，串行、去 `-q` 留日志）：
+      `mvn -o -pl z-lc-core -am -Dtest=WorkflowBindingServiceTest test`
+      `mvn -o -pl z-lc-web -am -Dtest=WorkflowTriggerContractTest test`
+      ⚠ 备份用 `cp`，还原用 `cp`，**不许拿 `git checkout --` 当还原步**（这一窗工作树里还有别人/别的批的未提交改动）。
+
+**06:2x 现读，补两条"为什么它在全绿测试底下活着"**（都不改上面那句"待运行时证"，只是把嫌疑收窄）：
+
+1. **单测那一支是绿的，而它绿的形状不是接线的形状**：`WorkflowBindingServiceTest.java:385 updateShouldRefuseDuplicates`
+   的候选行由 `edit(storedRow(1))` 造，而 `edit()` 在 `:132` 逐字写 `binding(stored.getTenantCode(), …)`
+   ⇒ 候选**带着** `"default"` ⇒ `listByEvent` 查得到行 ⇒ 查重真的红。
+   而 HTTP 那一口先进 `WorkflowBindingController.java:76` 的 `setTenantCode(null)`。
+   ⇒ 这一对差别就是老教训的形状：**测试替身没走生产接线，洞在测试里永远绿**。
+   所以新增那一条必须走 `/update`（HTTP 契约层），不是给 core 单测再加一支带租户的候选。
+2. **界面也躲不掉，不是只有裸调 API 才碰得到**：`WorkflowsPage.tsx:44` 的 payload 明明写着
+   `tenantCode: DEFAULT_TENANT_CODE`，到控制器照样被第 76 行抹成 `null` ⇒ 从界面上"把第二条改成和第一条同 KEY"
+   这条路今天走得通，走完库里就是两条都满足 `listByEvent` 的绑定 ⇒ 一条记录写成功发 N 个并行流程实例。
+   （另有一处二阶：`WorkflowBindingService.java:135` 的 `setTriggerEvent(….trim())` 也在第 130 行之后，
+   带空白的 event 同样会让那一句 `eq("trigger_event", …)` 打空；这条不是主因，一起收进同一个归一化入口就行。）
+
+- [ ] 修法：把第 134 行那三句"取库里那份"的归一化**提到第 130 行之前**（查重必须按将被写入的那条记录所属的租户查），
+      并让 create/update 走同一条归一化入口，别再靠调用方各自记得。
+- [ ] 成对注入自证：① 把归一化再挪回查重之后 ⇒ 新增那条测试必须红（否则测试是空的）；
+      ② 摘掉 `requireNotDuplicate` ⇒ 同一支必须红在具名那一句（对照 create 那一路 W 系列已有的形状）。
+- [ ] 契约层补一条正向：`/update` 改成重复 KEY ⇒ 400 且 `message` 说清是哪条 id 挡的
+      （今天 `WorkflowTriggerContractTest` 里 `grep -n "Duplicate\|duplicate"` **0 命中**，
+      `"/update"` 只出现在 `AFTER_UPDATE` 被拒那一条 —— 即这一路测试零覆盖，缺陷才活得下来）。
+
+### 2.9 新撞到的欠账：绑定钉在 `default`，派发却按记录自己的租户查（缺陷 **#67**，静态读出）
+
+同一条链的两端用的是**两个不同的租户**（05:4x 现读，尚未跑过）：
+
+- 写侧：`WorkflowBindingController.java:67` —— `create` 进门第一件事 `entity.setTenantCode(DEFAULT_TENANT)`，
+  所以**任何**绑定都落在 `"default"` 这一格（这一条不是疏忽，是 #48 那一窗为堵"把绑定写到别人租户下"
+  刻意钉的，javadoc 里写着"body 里带来的 tenantCode 一律不用"）。
+- 读侧：`RuntimeCrudController.java:188` —— `afterCreate(body.getTenantCode(), …)`，派发器拿的是
+  **请求体里那条记录自己的租户**；`WorkflowTriggerDispatcher.java:147` 用它去
+  `bindingService.listByEvent(tenantCode, …)`，而 `listByEvent` 第一条件就是 `.eq("tenant_code", tenantCode)`。
+
+⇒ 一条落在非 `default` 租户的记录，**永远查不到任何绑定 ⇒ 一句都不发**，而写入口、`/list`、界面全都不说话。
+`z_lc_workflow_fire` 也不会有行（没发起就没有账），所以这一支连 §2.6.3 那条"库自己承认"的尺都照不到 ——
+它的形状是"沉默的不兑现"，也就是 #61 的原病灶换了一个接缝。
+运行时这一层确实支持多租户：同一个方法里 `resolveEntity(appCode, entityCode, tenantCode)` 是按租户找定义的
+（不是硬编码），所以这不是"理论上可能的形状"，是接口面明摆着能走到的路径。
+
+**两条修法，方向相反，要拍的是产品口径而不是工程量**（所以它同时进 §3 当第五问）：
+- (甲) **绑定按实体所属租户存**：写侧不再钉 `default`，改成"按 `(appCode, entityCode)` 去元数据里读它真正的租户"。
+  这才是多租户下对的做法，但它把 #48 当初钉掉的那道闸又打开一半 —— 没有认证之前，任何人都能往别人的租户登记绑定。
+  ⇒ 前置是"管理面得先有租户归属判定"，那不是这一批的量。
+- (乙) **登记当场拒**（我倾向这一条，因为它把沉默变响、且不加新权限面）：`create` 在校验前先按
+  `(appCode, entityCode)` 读元数据租户，**不等于 `default` 就 400**，话要说全：
+  "这条绑定登记在 `default`，而实体 `<x>` 属于租户 `<y>` ⇒ 记录写成功也不会发起流程"。
+  配合成对注入自证：① 摘掉这一句 ⇒ 新增那条契约测试必须红；② 元数据租户读成 null 时不许放行
+  （否则"读不到租户"会变成第三条偷偷通过的路）。
+- 无论哪一条，**§2.6.3 的闸 6 都要加一幕**：在非 `default` 租户下建一条记录，判"桩收到 0 句"这一条
+  到底是"设计上不发"还是"链断了"——今天的探针只在 `default` 上跑，这一格对它俩**分不开**。
+
+### 2.10 新撞到的欠账：同一个派发器里，读侧吞、写侧不吞（缺陷 **#68**，静态读出）
+
+`WorkflowTriggerDispatcher.afterCreate` 那 30 行里两半的失败处理是**不对称**的（05:4x 现读，行号相对方法首行）：
+
+- 查绑定那一半有 catch：`catch (RuntimeException ex) { log.warn("流程绑定查询失败…"); return 0; }`
+  ⇒ 绑定的元数据表读不出来（**没建表**、库不可达、列漂了）＝ 一条 `warn` 日志 + 静默不发单，
+  用户的记录照样写成功。部署期"库里没这张表"是**真实存在过的状态**（250 上那张 `z_lc_workflow_fire`
+  是我这一窗才补进去的，见 §2.6 的 schema 那条），所以这一支不是假想。
+- 写结局那一半没 catch：`record(binding, start, …)` 直接暴露在外（方法体里 `fire(...)` 与 `record(...)`
+  两句都不在 try 内）。⇒ 如果 `z_lc_workflow_binding` 在而 `z_lc_workflow_fire` **不在**（半套迁移，
+  最容易发生的那种），记录已经写成了、流程也已经**真的发出去了**，然后写账一抛 ⇒ 一路抛出到
+  `RuntimeCrudController:188` 之后（那两句在 controller 的 try/catch **之外**，我核过：catch 块在
+  `:176-180`，`create`/`afterCreate` 在 `:182-188`）⇒ 用户拿到的是**裸 500**，而账上什么都没有。
+
+⇒ 两个坏结局撞在同一处缺表上，一个"什么都不说"、一个"说得很响但指错了方向"。这跟 #47 是同一族
+（"运行时每次读都是裸 500"）而根因更靠前：**部署期就该发现表没建齐**。
+
+**倾向的修法**：不在 `record()` 外面套一个 catch 把它变哑 —— 那只是把 500 换成日志，仍然撒谎。
+按 #52/#57 的既有口径办：**启动当场红**。仓里已有 `DataSourceConfigGuard`（#52 那批进的）与
+`LcModuleDataSource`，让它对 LC 库要求的表清单里带上 `z_lc_workflow_binding` + `z_lc_workflow_fire`，
+缺表 ⇒ 进程拒起，而不是等第一条记录去撞。读侧那句 `log.warn(... ) return 0` 也一并重判：
+表**存在**而查询失败才是"降级不发"，表**不存在**属于配置错误，两种情况今天被并成同一句 warn。
+
+- [ ] 运行时证（下一批，按这个顺序做才有牙）：
+      ① 在一套只有 `z_lc_workflow_binding`、没有 `z_lc_workflow_fire` 的库里，登记绑定 + 写一条记录 ⇒
+        今天应当复现"记录写成了 + 接口裸 500 + 账上 0 行"三件事同时成立（少一件就说明我对调用链的读法错了）；
+      ② 修完之后同一跑 ⇒ 进程**起不来**，且拒起那句话点名缺的是哪张表；
+      ③ 成对注入：把新加的启动校验摘掉 ⇒ ② 必须回到"能起来"（否则那条校验是空的）；
+      ④ 部署腿同步：`deploy_250.sh schema` 那一支要把两张表都建（今天只钉了 `TABLES_MIN=14` 这类**计数**，
+        计数不点名 ⇒ 少一张多的另一张它能绿）。⚠ 这一条是闸 6 的正向跑之前必须落的地基，
+        否则 21/23 条读数里那些"表在不在"的判据测的是我自己 scp 上去的手工动作。
+
+### 2.11 新撞到的量具缺陷：恢复判据拿"产物逐字节相等"当尺，而本机 rollup 不逐字节可复现（缺陷 **#69**，09-27 06:0x 已修）
+
+  - **症状**：第三轮 `RESULT: 1 problem(s)`，那一条逐字是
+    `!! 恢复后产物 index-ruBdvAdn.js|d6d15714e665b683385238301be28116 != 基线 index-DBJrrqb7.js|5f2afecc45687a775eafb5cfdf21e571 —— 源码回来了而产物没回来`。
+    号没撞（06:04 全库 `grep -rn "#69" --include=*.md --include=*.py --include=*.tsx --include=*.mjs --include=*.java .` = 零命中，
+    本窗新号 #65–#69 里它是最后一支；**这一条是 06:0x 这一窗的**）。
+  - **它是"没有猎物的尺"，不是"抓到了的东西"**：三轮里 `未恢复到原始内容` 那句 0 次触发；
+    跑完之后的 `WorkflowsPage.tsx` md5 = `87b30e33161f27089623d260151e12fd`，与第二轮恢复轮的记录逐字节相同；
+    而产物名在同一份源码上给过两个值 —— 六次干净 src 构建、两个名字、方向还反了一次，
+    逐条时刻与出处落在 `_e2e/README.md`「缺陷 #69」那一节的表里（每一行都指得到盘上还存在的日志）。
+    ⚠ 我早先在这格写过"06:02–06:06 连跑三次 build 全是 `index-DBJrrqb7.js`"—— **这句删了**：
+    06:2x 回查时 `~/.cache/zlc61/` 里那个时刻没有任何 build 日志，三次这个数字拿不出来，
+    而结论不靠它（靠的是 03:44 / 05:02 / 06:00 / 06:09 / 06:15 / 06:19 这六条现可回读的读数）。
+    两次构建的 chunk 表逐行只差在名字上，`antd-*.js` 甚至差 `1,269.60` vs `1,269.64` kB
+    ⇒ **产物字节在本机不是源码的确定函数**（rollup 的 chunk 哈希会漂）。
+    仓里另一支守卫 `mutate_permission_browser_guard.py` 早就为这件事改用 src 指纹（README:1761 记着
+    "同一棵树三次构建跑出两套 index-*.js 名字"），这一支却照抄了"产物相等"⇒ 一条必红而红不到任何东西的判据。
+  - **改法（不是删判据，是换成抓得住猎物的那一把）**：`e2e/mutate_workflow_browser_guard.py`
+    ① 新增 `src_digest()`（整棵 `src/` 按路径排序取字节 md5）；② 每支注入写盘后判
+    `src_digest() == base_src` ⇒ 红（**锚点落空、变异没进树**这一整类假绿从此有牙）；③ 每支收尾除
+    PAGE 文本相等外再判一次 src 指纹（补上"改的是 PAGE 之外的文件"那个瞎处）；④ 恢复轮判据换成
+    src 指纹，产物只打印不判红，并写明为什么（漂移要看得见，不许当判据）。
+    顺带把「注入有没有进产物」这一格记清：它从前的产物相等判据名义上管、实际管不住（产物本来就会漂，
+    相等几乎不发生 ⇒ 空跑），现在由"这一轮预期那几条必须红"behavioral 地管 —— 改动没落到界面上就红。
+  - **自证（同轮，注入到量具自己身上，不 build、不抢端口）**：`python3 e2e/mutate_workflow_browser_guard.py --selftest`
+    06:0x 实测 `SELFTEST RESULT: 0 problem(s)` / `SELFTEST_EXIT=0`，三支成对：
+    `OK A` 往 `PAGE` 之外加一个 src 文件 ⇒ 指纹动而 PAGE 逐字不变（旧判据在这一处是瞎的）；
+    `OK B` 撤掉探针 ⇒ 指纹回到基线；
+    `OK C` 拿真注入的锚点接一个源码里不存在的尾巴造出"replace 静默落空"⇒ 写盘后指纹不动
+    ⇒ 证明新加的**那条红打得出来**（`main()` 里 `src_digest() == base_src` 这一支不是死码）。
+    跑完 `WorkflowsPage.tsx` md5 仍是 `87b30e33…`、`src/__guard_probe__.ts` 不存在（无残留）。
+  - **波及面已普查（06:2x，别再重查一遍）**：`z-lc-admin-ui/e2e/` 下六支浏览器注入量具，
+    拿 src 字节指纹判还原的只有两支 —— `mutate_permission_browser_guard.py`（早就为这件事改的）与这一支（#69 改的）。
+    另外四支（`field_code` / `pipeline` / `pivot` / `provision`）**没有一条拿产物名判红**：
+    `mutate_pipeline_browser_guard.py` 判的是逐个文件"不是原始内容"（`:336`、`:347`，比指纹更直接），
+    余下三支 `grep -cE '产物.*(!=|回到基线|一致)'` 也是 0。⇒ **#69 不是一张欠账清单，是这一支独有的病**，
+    收口时不许写"这一族都改完了"（没得改），也不许写"另外四支待修"（没坏）。
+    ⚠ 别被 `_e2e/README.md:1408` 那格的括号骗到：`三次构建的产物 index-DiIAeQ4C.js → index-DED1Bq_b.js → index-DiIAeQ4C.js
+    （回到原 hash 才叫"被测件换回来过"）` —— 那是**我上一窗写文档时的叙述**，不是那支量具的判据；
+    它实际判的是源码内容相等（上面那两行）。产物名在这族里能来回漂，"回到原值"从来不是证据。
+  - **还欠的**：`main()` 里改过的那几行没在 19 轮整族里跑过。为了不为这一件事烧 58 分钟，加了
+    `--only <题号>` 收窄档（只跑基线 + 那支 + 恢复轮，并在日志里写死"这一跑不能当整族自证的账"），
+    06:09 起的是 `--only W12`（选 W12 因为它红集最大、6 条），落盘
+    `~/.cache/zlc61/browser_guard/run4_narrow.out`。**收窄跑已收，读数（`NARROW_EXIT=0`，06:17 落盘）**：
+    基线 `00_baseline: PASS+FAIL 279 / 红 0` → W12 `12_W12: PASS+FAIL 279 / 红 6`，六条**全部标 `RED (预期)`、
+    `OK W12 …: 预期 6 条全红，无一条连带红`** → 恢复轮 `99_restored: PASS+FAIL 279 / 红 0`。
+    两件事是这一跑要证的，都证到了：
+    ① 新判据在真 build + 真浏览器轮次里跑通且**没有再造假红** —— 这一轮照样漂
+    （基线 `index-ruBdvAdn.js` → 恢复轮 `index-DBJrrqb7.js`，日志里那行 `（信息）产物 … != 基线 … —— 产物漂移，不作判据`
+    逐字在，而 `!!` 一行都没有），旧判据在这一轮会给出第二条红；
+    ② 收窄跑与整族第三轮**测的是同一件事**：两支的 W12 红集把行尾墙上时钟归一后 `diff` 为空
+    （`diff <(grep '^  FAIL' run3_logs/12_W12.log | sed -E 's/2026-09-27 [0-9:]+//g') <(grep '^  FAIL' 12_W12.log | …)` 无输出），
+    即"红 6 条"不是这一跑偶然撞出来的形状。
+    ⚠ 但收窄跑**不顶整族的账**（横幅自己写着），所以 06:20 起在飞的是不带 `--only` 的整族那一跑
+    （`run5_family.out`，18 支 + 基线 + 恢复轮）—— 这一跑的读数**等它落盘再记**，别提前写进任何格子。
+    另记一条这一窗才看清的**读数口径**：这一族量具的 `RESULT: N problem(s)` 那行**只在 N>0 时才打印**
+    （`e2e/mutate_workflow_browser_guard.py` 收尾那段写作 `if bad: print(f"\nRESULT: {bad} problem(s)")` 然后
+    `return 1`，绿的时候走到下一条 `print`），
+    绿的时候尾行是 `RESULT: 11w 的 31 条各自钉住一件事（18 支注入）；27 条按未覆盖记账…` + 退出码 0。
+    ⇒ 读这一族的账要认**退出码 + 族汇总行**，不要 grep "0 problem(s)"（那是 `--selftest` 的格式，两支尺口径不同）。
+    `mutate_provision_browser_guard.py` 同形，`mutate_pipeline_browser_guard.py` 则是把两种读数塞进同一行
+    （`RESULT: {'11a 那九支各自打掉一句保证' if bad == 0 else f'{bad} problem(s)'}{tail}`）—— 抄数前先看清是哪一支。
+    ⚠ 这三处我一开始都写的行号（674 / 314 / 361），写完发现改 docstring 已经把第一处挪到 681 ⇒ **一律改写成可 grep 的构造**，
+    别在这一族里发行号。
 
 ---
 
-## 3. 等你（主编/CEO）拍的四问 —— 我先按默认值做了，但默认值**不算裁定**
+## 3. 等你（主编/CEO）拍的五问 —— 我先按默认值做了，但默认值**不算裁定**
+（"五"是 06:2x 现数的：`awk 'NR>=659 && NR<=700 && /^[0-9]+\./' TASK.md` = 5 行（第 661/664/665/668/671 行）。
+上一版标题写"四问"，是加第 5 问（租户那一问）时忘了改计数 —— 标题里的数字也是一句断言。）
 
 1. **范围**：本轮只兑现"记录新建之后"（`AFTER_CREATE`），`AFTER_UPDATE`/`AFTER_DELETE` 写入口直接 400。
    ⇒ 接受"配置项比引擎能力少"，还是要我把更新/删除两条派发点也接上？
@@ -203,16 +745,63 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 4. **发起失败要不要回滚用户那条记录**？默认**不回滚**（外部引擎不可用不该把用户的写入带走），
    账落在 `z_lc_workflow_fire` 的 `FAILED` 行里。
    ⇒ 若要求"审批流是硬约束"，就得改成"发起失败 ⇒ 写入口 400 且记录不落"，那是另一种产品形状。
+5. **流程绑定算不算多租户特性**（§2.9 / 缺陷 #67）？今天的实况是"写侧钉 `default`、读侧按记录自己的租户"
+   ⇒ 非 `default` 租户的记录**永远不发单且一声不响**。
+   ⇒ (甲) 绑定按实体所属租户存（对，但要先把管理面的租户归属/认证补上）／(乙) 登记当场拒（我倾向这一条）
+   ／(丙) 明确宣布"低代码运行时这一版只支持 `default` 租户"，那就该在**运行时的写入口**拒非 default 的 create，
+   而不是只在流程这一格静默跳过。**这一问不给答案，我就按 (乙) 做**（把沉默变响，不新增权限面）。
+
+### 3.5 我对其中前四问的建议（第 1–4 问；**第 5 问（租户）的默认值写在它自己那一行里，本节没有替它建议**（09-27 05:3x 写；**建议不是裁定**，拍板前不动实现）
+
+1. **范围：建议本轮就接 `AFTER_UPDATE`，`AFTER_DELETE` 另立一票。**
+   理由分两层。① 界面上那两个选项是本轮 §2.2 亲手从词表长出来的，"词表说支持、写入口 400"这个形状
+   本身正是缺陷 #61 的病灶 —— 我在 java 层 W17 钉的就是"部署的构件不承认的选项不许出现在界面上"，
+   那么反过来"构件承认却没接线"同样不该留在词表里；要么接，要么从词表里摘下去，不能停在中间。
+   ② `update` 那条挂点比 `delete` 干净得多：记录已存在、business key 稳定、撤销路径的语义清楚
+   （撤销一次更新＝回到旧值，不该再发一次流程）。而 `delete` 要和**逻辑删除**一起判
+   （`deleted=0` 那一栏：删了还能恢复 ⇒ 流程发不发？恢复算不算一次新建？）—— 这三个问题里每一个都是
+   产品裁定而不是工程量，硬接上去只会造出下一个"存了但按你想的语义不一样"。
+   ⇒ 所以我的默认值是：接 `AFTER_UPDATE`（含它自己的成对注入），`AFTER_DELETE` 留在词表外
+   （界面不再给这一项），等这一问拍完再单独开一票。
+
+2. **批量导入 / 撤销重做：建议维持"不算触发点"，但把"不算"变成看得见的。**
+   现在它只在 §2.1 钉成守卫（写入口拒），这是对的；但要补一条：导入的结果摘要里必须写
+   "N 条已写入，流程未发起（批量导入不是触发点）" —— 否则运维会以为审批流跑了，而这是
+   与 #61 同族的"沉默的不兑现"。工程量小（导入摘要那一行本来就有），值得同批做。
+
+3. **`autoSubmit=0`：建议**把这一列从界面上彻底摘掉**，并在 java 侧把它读成"永远派发"。**
+   三个候选里另两个都更坏："写入口拒"（今天的默认）等于把一条**已经存在的历史配置**变成
+   一具谁都不能碰的尸体 —— 用户看到 400 而不知道它从哪来；"存着但永不派发"就是缺陷 #61 复刻。
+   摘掉 + 读成恒真，是**唯一**一个让存量行和增量行语义一致、且界面不再撒谎的做法。
+   ⚠ 这一条改的是既有语义，所以必须配一次数据体检：250/136 那两套库里
+   `select count(*) from z_lc_workflow_binding where auto_submit=0` 到底有几行 —— **0 行**则这一改
+   纯清理，**>0 行**则要先给运维一条迁移说明（哪些绑定会突然开始发流程，是要人知道的）。
+   我没有量过这个数，所以这条建议的前置是"先量它"。
+
+4. **发起失败不回滚：建议维持不回滚。** 外部引擎不可用把用户已经填好的表单一起带走，
+   是比"审批没发出去"更差的用户结局，且和 `z_lc_workflow_fire` 这张账表的设计意图一致
+   （存在就是为了"这一单没成也留痕"，§2.6.3 的正向那一跑钉的就是 FAILED 行带引擎原话）。
+   但补一条硬的：**界面必须把 FAILED 那一行摆出来**，不能只在库里 —— 这一条本轮 §2.2/§2.5 已经在做
+   （`/fires` 回读 + 浏览器层 59 条），所以拍板时可以说"兑现面已存在"，不是空头承诺。
 
 ---
 
 ## 4. 收口口径（照 #41/#48 那一族的既有标准）
 
+**本窗新撞的四支，先在此归堆**（免得收口时只当"§2.6 那条腿没跑完"）：
+#64 部署量具 `status` 归因行（§2.6.4，**已修**，修后 rc=0 实测）、
+#65 `/fires` 静默截 200 无指示（§2.7，未修）、
+#66 `update` 的查重结构上打不到行（§2.8，未修，机制待运行时证）、
+#67 绑定钉 `default` 而派发按记录租户（§2.9，未修，等 §3 第五问裁定）。
+其中 #65/#66/#67 三支都**不在**本轮 W1–W18 那 18 支的猎物清单里 —— 也就是说注入自证跑绿
+不等于这三行没有红可报；这一句写在这里，是为了下一窗别把"18 支全对"读成"流程这一族全证过"。
+
 - 六层同窗重测：java 全量（本轮 `z-lc-core` **1326 例 / 0 失败 / 0 错误 / BUILD SUCCESS**，以最新一跑为准）、
   契约层、vitest、`_e2e` 接口层、浏览器层、注入自证 —— **同一窗口内都出数才算闭**，跨窗口相减不算。
 - 250 那条腿必须再跑一次（§2.6），且 `healthproof` + `gates` 两步不能跳。
-- `_e2e/README.md` 加一行 #61，数字现数；项目记忆 `project-z-lc-lowcode-state.md` 同步（#52/#59/#60 已闭、
-  #61 状态、HEAD 现测）。
+- `_e2e/README.md` 加一行 #61，数字现数；项目记忆 `project-z-lc-lowcode-state.md` 同步
+  （#52 与**它那一窗的** #59/#60 已闭、本轮新撞的 #64 见 §2.6.4、#61 状态、HEAD 现测。
+  ⚠ #59/#60 这两个号在两扇窗里被用过两次，写进记忆时要带"哪一窗的"，否则下一条窗读不回来）。
 - 提交只 `git add` 本批自己的路径（共享工作树），**不要**带 `z-lc-admin-ui/pnpm-lock.yaml` / `pnpm-workspace.yaml`。
   ⚠ `ae07610` 那一笔（另一会话 20:09 代提交）已经把这两个文件推进了仓库，要不要回退单独问用户。
 

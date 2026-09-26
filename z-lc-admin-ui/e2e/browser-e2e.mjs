@@ -11,6 +11,7 @@
  *     "永远绿的那几条"，正是它当初掩盖的东西。
  */
 import { chromium } from 'playwright-core';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -80,7 +81,14 @@ async function domSnapshot(page, label) {
 /*  建测试数据（每轮开始前调用一次）                                     */
 /* ------------------------------------------------------------------ */
 async function seedTestData() {
-  const appCode = `uitest${Date.now().toString().slice(-6)}`;
+  // 名字里必须带熵。`Date.now().toString().slice(-6)` 是 `epoch ms mod 1e6` ⇒ **每 1000s 循环一次**，
+  // 而物理表名取的是后 4 位 ⇒ **每 100s 就撞一次**。09-27 04:4x 实测到一次真撞：注入自证连跑 20 轮
+  // （>3000s），恢复轮的应用 `uitest429924` 撞在基线轮留下的 `uitest239924` 占的 `ui_task9924` 上 ⇒
+  // 建实体被服务端拒、界面上塌下来的是「表格渲染」那一条超时红、后面整节被 skip（那一轮只有 2 个读数）。
+  // 那是环境残留被报成产品红 —— 残留本身（seed 的应用从来没谁删过，04:4x 实测盘上 92 个）另记 TASK，
+  // 这一支先把"撞名必假红"这条路堵掉。
+  const appCode = `uitest${Date.now().toString().slice(-6)}`
+    + Math.floor(Math.random() * 1e4).toString().padStart(4, '0');
   const created = await fetch(`${API}/api/lc/app/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' },
@@ -93,7 +101,7 @@ async function seedTestData() {
     headers: { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' },
     body: JSON.stringify({
       tenantCode: 'default', appCode, entityCode: 'task', entityName: '任务',
-      tableName: `ui_task${appCode.slice(-4)}`,
+      tableName: `ui_task${appCode.slice(-8)}`,
       fields: [
         { fieldCode: 'title', fieldName: '标题', fieldType: 'STRING', required: true, fieldLength: 64, sortOrder: 1 },
         { fieldCode: 'prio', fieldName: '优先级', fieldType: 'STRING', dictCode: 'ui_prio', fieldLength: 16, sortOrder: 2 },
@@ -102,7 +110,12 @@ async function seedTestData() {
       ],
     }),
   }).then((r) => r.json());
-  if (!entityRes.success) console.error('  entity create failed:', entityRes.message);
+  if (!entityRes.success) {
+    // 这一句原本只 console.error ⇒ 实体没建成，最后塌下来的是 15s 之后的「表格渲染」超时红，
+    // 归因要人翻日志尾（04:44 那一轮就是这样）。服务端那句原话本身就写着"谁占着这张表"，
+    // 拿它当场拒跑：环境残留不许穿着产品红的外衣进台账。
+    throw new Error(`seed 的实体没建成 ⇒ 这一轮作废（环境残留不是产品缺陷）：${entityRes.message}`);
+  }
 
   // 原来这一句连返回值都不看：重复创建在旧代码里是一次 500 + JDBC 堆栈，日志里却一片祥和。
   // 现在服务端把重复返回成 400 "字典已存在"，那是跨轮复用同一个 H2 时的正常幂等结果；
@@ -2660,6 +2673,585 @@ async function runOnce(runNum, appCode) {
       await shot(page, `r${runNum}-13-bulk-delete-FAIL`);
     }
 
+    /* ---- 11w. 流程绑定：界面上点出去的那一句，z-wf 那边真的收到了账（#61 浏览器层）---- */
+    // 上面每一节测的都是"页面说得出什么"。这一节测的是"点下去之后外面发生了什么"，所以它必须自己
+    // 起一个 z-wf 桩：没有桩，"发出去了"这句话在浏览器层就没有任何一层能兑现 —— 而那正是 #61 的形状
+    // （绑定存进了库、界面一片祥和、运行期一个字都不做）。
+    // 桩只能听 8888：那是 `z-lc.adapter.wf.base-url` 的默认值，写死在部署件里（不是我这会儿挑的端口，
+    // 见 #59 那一支教训）。端口被人占着 ⇒ 本节整体 SKIP，而不是让下面每一条各自红一次。
+    // 分母由 e2e/mutate_workflow_browser_guard.py **从源码扫**出来，所以这里每一条都必须写成
+    // `check('…')` / `wfCheck('…')`、名字在同一行、整节之内不重名，且名字里不许插本轮才有的值。
+    let wfStubServer = null;
+    // 清场必须在 try 外面：finally 拿不到 try 里 const 的东西（写在里面就是 ReferenceError）。
+    const wfKillSafe = () => new Promise((resolve) => {
+      const srv = wfStubServer;
+      wfStubServer = null;
+      if (!srv) return resolve();
+      if (srv.closeIdleConnections) srv.closeIdleConnections();
+      if (srv.closeAllConnections) srv.closeAllConnections();
+      srv.close(() => resolve());
+    });
+    try {
+      const WF_H = { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' };
+      const wfPost = (p, body) => fetch(`${API}${p}`, {
+        method: 'POST', headers: WF_H, body: JSON.stringify(body ?? {}),
+      }).then((r) => r.json()).catch((e) => ({ success: false, message: String(e?.message ?? e) }));
+      const wfGet = (p) => fetch(`${API}${p}`, { headers: WF_H })
+        .then((r) => r.json()).catch((e) => ({ success: false, message: String(e?.message ?? e) }));
+
+      // ---- 只属于本节的应用：不发别人的账，也不让 seed 那个应用的行数被本节改动 -----------------
+      const wfApp = `wfui${Date.now().toString().slice(-6)}`;
+      const wfKey = `expense_${wfApp}`;
+      const wfAppRes = await wfPost('/api/lc/app/create', {
+        tenantCode: 'default', appCode: wfApp, appName: '流程绑定冒烟', description: '11w',
+      });
+      if (!wfAppRes.success) throw new Error(`11w 建应用失败: ${wfAppRes.message}`);
+      const wfEntRes = await wfPost(
+        `/api/lc/admin/app/entity/create?appCode=${wfApp}&tenantCode=default`, {
+          tenantCode: 'default', appCode: wfApp, entityCode: 'case', entityName: '工单',
+          tableName: `ui_wf${wfApp.slice(-5)}`,
+          fields: [
+            { fieldCode: 'title', fieldName: '标题', fieldType: 'STRING', required: true, fieldLength: 64, sortOrder: 1 },
+            { fieldCode: 'note', fieldName: '备注', fieldType: 'STRING', fieldLength: 64, sortOrder: 2 },
+          ],
+        });
+      if (!wfEntRes.success) throw new Error(`11w 建实体失败: ${wfEntRes.message}`);
+      const wfProv = await wfPost(`/api/lc/admin/app/provision-all?appCode=${wfApp}&tenantCode=default`, {});
+      if (!wfProv.success || !wfProv.data || wfProv.data.allOk !== true) {
+        throw new Error(`11w 的表没建成（后面每一条"写记录"都指不回原因）: `
+          + JSON.stringify((wfProv.data && wfProv.data.items) || wfProv.message).slice(0, 220));
+      }
+
+      // ---- z-wf 桩 ------------------------------------------------------------------------------
+      // 每条应答都带 Connection: close 并掐掉 socket：Java 那侧的连接池若把长连接攥到"桩已换一次"
+      // 之后，重启阳性对照就会撞上一个自己造出来的 stale socket，那种红指不回任何产品结论。
+      const wfStub = { requests: [], mode: 'ok' };
+      const wfListen = () => new Promise((resolve, reject) => {
+        const srv = http.createServer((req, res) => {
+          let raw = '';
+          req.on('data', (c) => { raw += c; });
+          req.on('end', () => {
+            const instance = `wf-ui-${wfStub.requests.length + 1}`;
+            wfStub.requests.push({ path: req.url, body: raw, instance });
+            const payload = wfStub.mode === 'reject'
+              ? JSON.stringify({ success: false, code: 500, message: '流程启动失败: business key 已存在' })
+              : wfStub.mode === 'http5xx'
+                ? JSON.stringify({ success: true, code: 200, message: null,
+                  data: { processInstanceId: 'ghost-should-not-be-kept' } })
+                : JSON.stringify({ success: true, code: 200, message: null,
+                  data: { processInstanceId: instance } });
+            res.writeHead(wfStub.mode === 'http5xx' ? 502 : 200, {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload),
+              Connection: 'close',
+            });
+            res.end(payload);
+            req.socket.destroy();
+          });
+        });
+        srv.once('error', reject);
+        // 必须双栈：JVM 把 `localhost` 解析成 **::1** 先试（实测 02:04：同一份桩，绑 127.0.0.1
+        // 收不到、绑 ::1 立刻收到）。只绑 IPv4 的桩会让"桥"变成一次 DNS 排序的抛硬币，
+        // 而红下来长得像"流程绑定没接上"——那是量具的故障，不是产品的。
+        srv.listen({ port: 8888, host: '::', ipv6Only: false }, () => resolve(srv));
+      });
+      const wfCount = () => wfStub.requests.length;
+      const wfLast = () => {
+        const one = wfStub.requests[wfStub.requests.length - 1];
+        if (!one) return { path: '', body: {}, instance: '' };
+        try {
+          return Object.assign({}, one, { body: JSON.parse(one.body || '{}') });
+        } catch {
+          return Object.assign({}, one, { body: {} });
+        }
+      };
+      try {
+        wfStubServer = await wfListen();
+      } catch (e) {
+        throw new skipRemaining(`11w 的 z-wf 桩起不来（8888 被别的进程占着？）: ${e && e.message ? e.message : e}`);
+      }
+
+      // ---- 本节自己的网络账 ---------------------------------------------------------------------
+      const wfCreateReqs = [];
+      const wfActors = [];
+      const wfOnReq = (req) => {
+        if (req.method() !== 'POST') return;
+        const u = req.url();
+        if (u.includes('/workflow-binding/create')) wfCreateReqs.push({ url: u, body: req.postData() || '' });
+        if (u.includes('/runtime/create')) wfActors.push(req.headers()['x-user-code'] || '');
+      };
+      page.on('request', wfOnReq);
+
+      // toast 三秒就自己收掉：边出现边抄（11a 那一族的教训）。而且每次 goto 之后 window 是新的，
+      // 所以这个观察器要能反复装、且已装过时只补一次扫描（不清空，否则把上一句抄丢了）。
+      const wfWatchToasts = async () => {
+        await page.evaluate(() => {
+          const w = window;
+          if (w.__wfToastWatched) return;
+          w.__wfToastWatched = true;
+          w.__wfToasts = [];
+          const scan = () => {
+            document.querySelectorAll('.ant-message-notice').forEach((node) => {
+              const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+              if (t && w.__wfToasts.indexOf(t) < 0) w.__wfToasts.push(t);
+            });
+          };
+          new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+          setInterval(scan, 120);
+          scan();
+        }).catch(() => {});
+      };
+      const wfToasts = async () => {
+        await wfWatchToasts();
+        const list = await page.evaluate(() => (window.__wfToasts ? window.__wfToasts.slice() : []))
+          .catch(() => []);
+        return list.join(' || ');
+      };
+
+      const wfBindingRows = async () => (await page
+        .locator('.ant-table-tbody tr.ant-table-row').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+      const wfList = async () => {
+        const r = await wfGet(`/api/lc/workflow-binding/list?appCode=${wfApp}`);
+        return Array.isArray(r.data) ? r.data : null;
+      };
+
+      let wfLive = false;
+      const wfCheck = (name, cond, detail) => check(name, Boolean(cond) && wfLive,
+        wfLive ? detail
+          : `桥没通（桩没收到界面上那一句）⇒ 这一条没有判定，不算绿。${String(detail === undefined ? '' : detail)}`);
+
+      // ================= (1) 词表决定界面，不是界面决定界面 =====================================
+      await wfWatchToasts();
+      await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1500);
+      const wfPageText = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+      check('流程绑定页在真浏览器里渲染出来（这一页此前在整条门禁里一个字都没断言过）',
+        wfPageText.includes('流程绑定') && wfPageText.includes('新建绑定'), wfPageText.slice(0, 160));
+
+      const wfVocRes = await wfGet('/api/lc/workflow-binding/vocabulary');
+      const wfVoc = wfVocRes.data && Array.isArray(wfVocRes.data.implemented)
+        ? wfVocRes.data : { implemented: null, rejected: null };
+      check('词表接口给得出「引擎真兑现」的时机清单（读不到就别往下比）',
+        Array.isArray(wfVoc.implemented) && wfVoc.implemented.length >= 1,
+        JSON.stringify(wfVocRes).slice(0, 200));
+
+      const wfNewBtn = page.locator('[data-testid="workflow-new-binding"]');
+      check('词表读得到的时候，「新建绑定」这颗按钮是 enabled 的（上一条的阳性对照：别把闸读成按钮坏了）',
+        (await wfNewBtn.count()) === 1 && !(await wfNewBtn.first().isDisabled()),
+        `count=${await wfNewBtn.count()}`);
+
+      await wfNewBtn.click();
+      await page.locator('.ant-modal').first().waitFor({ state: 'visible', timeout: 10000 });
+      await page.locator('[data-testid="workflow-trigger-select"]').click();
+      await page.waitForTimeout(500);
+      const wfOptions = (await page
+        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option')
+        .allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+      check('下拉里可选项的个数 = 词表里「引擎真兑现」的个数（界面不再自己抄一份清单）',
+        Array.isArray(wfVoc.implemented)
+        && wfOptions.length === wfVoc.implemented.length && wfOptions.length >= 1,
+        `options=${JSON.stringify(wfOptions)} implemented=${JSON.stringify(wfVoc.implemented)}`);
+      check('兑现不了的时机一个都进不了下拉（事件码和中文名都不许出现）',
+        !/AFTER_UPDATE|BEFORE_CREATE|BEFORE_UPDATE|AFTER_DELETE|status_change|更新后|状态变化|删除后|写入前|更新前/.test(wfOptions.join('|')),
+        wfOptions.join('|'));
+      check('下拉里那一项说的是人话（「创建后」而不是裸事件码 AFTER_CREATE）',
+        wfOptions.length === 1 && wfOptions[0] === '创建后', wfOptions.join('|'));
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(400);
+
+      const wfRejectedTxt = await page.locator('[data-testid^="workflow-rejected-"]').allInnerTexts()
+        .then((ts) => ts.map((t) => t.replace(/\s+/g, ' ').trim()));
+      check('被拒的时机连同「为什么兑现不了」摆在窗里，而不是让用户选完再挨一次 400',
+        Array.isArray(wfVoc.rejected) && wfRejectedTxt.length === wfVoc.rejected.length
+        && wfRejectedTxt.length >= 1,
+        `rejected=${JSON.stringify(wfRejectedTxt).slice(0, 260)}`);
+      check('每一条被拒理由都由引擎给出（不许空、也不许是客户端那句兜底的「引擎没有说原因」）',
+        wfRejectedTxt.length >= 1 && wfRejectedTxt.every((t) => {
+          const reason = t.replace(/^[^\s]+\s*——\s*/, '').trim();
+          return reason.length >= 6 && !reason.includes('引擎没有说原因');
+        }), JSON.stringify(wfRejectedTxt).slice(0, 260));
+      check('被拒清单里的每一条都点名了自己的事件码（只有原因没有事件，用户不知道该改哪一格）',
+        Array.isArray(wfVoc.rejected) && wfVoc.rejected.length >= 1
+        && wfVoc.rejected.every((item) => wfRejectedTxt.some((t) => t.startsWith(item.event))),
+        JSON.stringify(wfRejectedTxt.map((t) => t.split(' ')[0])).slice(0, 200));
+
+      const wfEntityShown = (await page.locator('.ant-modal .ant-select-selection-item').first()
+        .innerText().catch(() => '')).trim();
+      check('新建那张窗默认选中这个应用的第一个实体（不让用户先猜要选谁）',
+        wfEntityShown.includes('工单') || wfEntityShown.includes('case'), wfEntityShown);
+      const wfRespPromise = page.waitForResponse((res) => res.url().includes('/workflow-binding/create')
+        && res.request().method() === 'POST', { timeout: 15000 });
+      await page.locator('input[placeholder="例如 leave_approval"]').fill(wfKey);
+      await page.locator('.ant-modal-footer').getByRole('button', { name: /保\s*存/ }).click();
+      let wfCreateResp = null;
+      try {
+        wfCreateResp = await wfRespPromise;
+      } catch { /* 没等到响应：下面那一条会红，不让它把整节带走 */ }
+      await page.waitForTimeout(1500);
+      const wfCreateToast = await wfToasts();
+      check('在界面上保存绑定真的发出了一次写请求，并且服务端答 200（不是前端自说自话）',
+        (wfCreateResp ? wfCreateResp.status() : null) === 200 && wfCreateReqs.length === 1,
+        `http=${wfCreateResp ? wfCreateResp.status() : '没等到'} reqs=${wfCreateReqs.length}`);
+      const wfDraft = (() => {
+        try {
+          return JSON.parse(wfCreateReqs[0].body || '{}');
+        } catch {
+          return {};
+        }
+      })();
+      check('送出去的那一份带着本节的 appCode 与流程 KEY（不是上一个应用的绑定换了个名字）',
+        wfDraft.appCode === wfApp && wfDraft.processDefinitionKey === wfKey,
+        JSON.stringify(wfDraft).slice(0, 220));
+      check('界面送出去的草稿里 autoSubmit 真的是 1（那个开关从页面上摘掉之后别再送 0，送错就是一次看不懂的 400）',
+        wfDraft.autoSubmit === 1, JSON.stringify(wfDraft).slice(0, 220));
+      check('草稿里的触发时机就是下拉里那一个（词表给的，不是页面抄的）',
+        wfDraft.triggerEvent === (Array.isArray(wfVoc.implemented) ? wfVoc.implemented[0] : ''),
+        `sent=${wfDraft.triggerEvent} voc=${JSON.stringify(wfVoc.implemented)}`);
+      check('保存成功那一下界面说「已保存」，且没有一句失败文案（只断言"没报错"对着空 toast 也会打绿灯）',
+        wfCreateToast.includes('已保存') && !wfCreateToast.includes('失败'), wfCreateToast.slice(0, 220));
+
+      const wfTableRows = await wfBindingRows();
+      check('表里那一行同时给出实体、时机与流程 KEY 三格',
+        wfTableRows.length === 1 && wfTableRows[0].includes('case')
+        && wfTableRows[0].includes('创建后') && wfTableRows[0].includes(wfKey),
+        JSON.stringify(wfTableRows).slice(0, 260));
+      check('那一行不带「引擎不兑现」的红标，也不带「不会发起」（时机是词表给的那个、autoSubmit 是 1）',
+        wfTableRows.length === 1 && !wfTableRows[0].includes('引擎不兑现')
+        && !wfTableRows[0].includes('不会发起'), JSON.stringify(wfTableRows).slice(0, 260));
+      const wfStored = await wfList();
+      check('界面那一行与库里读回的那一条逐字相同（表格不是本地状态的画廊）',
+        Array.isArray(wfStored) && wfStored.length === 1
+        && wfStored[0].processDefinitionKey === wfKey && wfStored[0].entityCode === 'case',
+        JSON.stringify(wfStored).slice(0, 260));
+
+      // ================= (3) 重复登记：撞闸要撞得明白，且只撞一次 ================================
+      await wfNewBtn.click();
+      await page.locator('.ant-modal').first().waitFor({ state: 'visible', timeout: 10000 });
+      const wfDupResp = page.waitForResponse((res) => res.url().includes('/workflow-binding/create')
+        && res.request().method() === 'POST', { timeout: 15000 });
+      await page.locator('input[placeholder="例如 leave_approval"]').fill(` ${wfKey} `);
+      await page.locator('.ant-modal-footer').getByRole('button', { name: /保\s*存/ }).click();
+      let wfDupHttp = null;
+      let wfDupUrl = '';
+      try {
+        const r = await wfDupResp;
+        wfDupHttp = r.status();
+        wfDupUrl = r.url();
+      } catch { /* 下面那一条会红 */ }
+      await page.waitForTimeout(1200);
+      const wfDupToast = await wfToasts();
+      if (wfDupHttp !== null) sanctionedRejections.push(`${wfDupHttp} ${wfDupUrl}`);
+      check('同一实体同一 KEY 重复登记时，界面把接口那句原因原样摆出来（不是只说"保存失败"）',
+        wfDupHttp === 400 && /已经绑定过/.test(wfDupToast),
+        `http=${wfDupHttp === null ? '没等到' : wfDupHttp} toast=${wfDupToast.slice(0, 200)}`);
+      check('带空白的重复也算重复（KEY 在写入口是剪过空白比的，界面不另算一套）',
+        wfDupToast.includes('已经绑定过') && wfCreateReqs.length === 2,
+        `create 次数=${wfCreateReqs.length}`);
+      const wfAfterDupRows = await wfBindingRows();
+      const wfAfterDupDb = await wfList();
+      check('被拒之后表里仍然只有那一条绑定（拒了就是一个字都没写进去）',
+        wfAfterDupRows.length === 1 && Array.isArray(wfAfterDupDb) && wfAfterDupDb.length === 1,
+        JSON.stringify(wfAfterDupRows).slice(0, 200));
+      await page.locator('.ant-modal-footer').getByRole('button', { name: /取\s*消/ }).click().catch(() => {});
+      await page.waitForTimeout(400);
+
+      // ================= (4) 桥：界面上写一条记录，桩真的收到一句 ================================
+      const wfWriteViaUi = async (title) => {
+        const before = wfCount();
+        try {
+          await wfWatchToasts();
+          await page.goto(`${BASE}/${wfApp}/case/FORM`, { waitUntil: 'networkidle', timeout: 20000 });
+          await page.waitForTimeout(900);
+          await page.locator('.zlc-form-row').first().locator('input').first().fill(title);
+          await page.keyboard.press('Tab');
+          await page.waitForTimeout(200);
+          await page.getByRole('button', { name: /创\s*建/ }).click();
+          await page.waitForURL(/\/DETAIL\//, { timeout: 20000 });
+        } catch (e) {
+          return { recordId: null, sent: wfCount() - before, err: String(e && e.message ? e.message : e) };
+        }
+        const id = ((page.url().match(/\/DETAIL\/(\d+)/) || [])[1]) || null;
+        // 派发是在写入口里同步做的（最多 3s），响应回来了就说明那一句已经发出去了
+        await page.waitForTimeout(400);
+        return { recordId: id ? Number(id) : null, sent: wfCount() - before, err: '' };
+      };
+
+      const wfFire1 = await wfWriteViaUi('界面建的第一个工单');
+      wfLive = wfFire1.sent === 1 && wfCount() === 1;
+      check('界面上写一条记录 ⇒ 桩正好收到一句（这一条是整节的桥：它红，本节其余"发出去了"都无判定）',
+        wfLive,
+        `这一条发出去 ${wfFire1.sent} 句、累计 ${wfCount()} 句、记录号=${wfFire1.recordId}`
+        + `${wfFire1.err ? ` 报错=${wfFire1.err}` : ''}`);
+      wfCheck('打的必须是 z-wf 真映射的那条路径（浏览器点出来的这一句和接口层量的是同一格）',
+        wfLast().path === '/api/approval-center/processes/start', wfLast().path);
+      wfCheck('businessKey 能定位回界面上刚建的那一条（不是上一条、也不是别的实体）',
+        wfLast().body.businessKey === `${wfApp}:case:${wfFire1.recordId}`,
+        `body=${JSON.stringify(wfLast().body).slice(0, 220)}`);
+      wfCheck('initiator 用的是这个浏览器自己的那个人（请求头 X-User-Code），不是常量 "1"',
+        Boolean(wfLast().body.initiator) && wfActors.length >= 1
+        && wfLast().body.initiator === wfActors[wfActors.length - 1]
+        && wfLast().body.initiator !== '1',
+        `initiator=${wfLast().body.initiator} actor=${wfActors[wfActors.length - 1]}`);
+      wfCheck('流程变量里带着低代码这一侧的坐标（lcAppCode/lcEntityCode/lcRecordId 三格都有值）',
+        wfLast().body.variables && wfLast().body.variables.lcAppCode === wfApp
+        && wfLast().body.variables.lcEntityCode === 'case'
+        && String(wfLast().body.variables.lcRecordId === undefined ? '' : wfLast().body.variables.lcRecordId)
+          === String(wfFire1.recordId),
+        JSON.stringify(wfLast().body.variables || null).slice(0, 240));
+      wfCheck('界面上打的那一句标题作为流程变量带走了（不是只发一个空壳）',
+        wfLast().body.variables && wfLast().body.variables.title === '界面建的第一个工单',
+        JSON.stringify(wfLast().body.variables || null).slice(0, 240));
+      wfCheck('流程 KEY 是界面上填的那一格，空白已剪掉',
+        wfLast().body.processKey === wfKey, JSON.stringify(wfLast().body).slice(0, 200));
+
+      // ================= (5) 发起记录抽屉：账要看得见 ==========================================
+      await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1200);
+      const wfOpenFires = async () => {
+        await page.locator('[data-testid^="workflow-fires-"]').first().click();
+        await page.locator('.ant-drawer-body').first().waitFor({ state: 'visible', timeout: 10000 });
+        await page.waitForTimeout(1200);
+        return (await page.locator('.ant-drawer-body').first().innerText()).replace(/\s+/g, ' ');
+      };
+      const wfFiresRows = async () => (await page
+        .locator('.ant-drawer-body .ant-table-tbody tr.ant-table-row').allInnerTexts())
+        .map((t) => t.replace(/\s+/g, ' '));
+      // 按格读，不按整行读。注入量具 W13 抓出来的：整行 blob 里 `includes(String(recordId))`
+      // 会被"时间那一格"里的同一个数字蹭中（记录号是 1、2、3 这种小数字，而时间串里全是数字），
+      // 于是那两条检查在"记录那一格被换成事件码"的注入下照样打绿灯。
+      const wfFiresCells = async () => Promise.all((await page
+        .locator('.ant-drawer-body .ant-table-tbody tr.ant-table-row').all())
+        .map(async (row) => (await row.locator('td').allInnerTexts())
+          .map((t) => t.replace(/\s+/g, ' ').trim())));
+      // 认"哪一行是 FAILED"要认引擎自己写进 testid 的那个状态码，不是认行里的字样：
+      // W12（结果那一格画「—」）摘掉字样之后，按字样认行的检查会因为"找不到那一行"而红 ——
+      // 那是替身红，指不到"FAILED 行长出了实例号"这件事上。
+      // 再按格读第三格（流程实例）：W7（实例那一格画记录号）才是这一条的猎物，而整行 blob 里
+      // 「记录」那一格本来就有数字，字样尺抓不到"这一格长出了别的东西"。
+      const wfFailedInstanceCells = async () => Promise.all((await page
+        .locator('.ant-drawer-body .ant-table-tbody tr.ant-table-row')
+        .filter({ has: page.locator('[data-testid="fire-status-FAILED"]') }).all())
+        .map(async (row) => {
+          const cells = (await row.locator('td').allInnerTexts())
+            .map((t) => t.replace(/\s+/g, ' ').trim());
+          return cells[2] ?? '';
+        }));
+      // 按「记录」那一格认领一行（0=记录 1=结果 2=流程实例 3=为什么 4=时间）。
+      const wfRowOf = (cells, recordId) => cells.filter((c) => c[0] === String(recordId))[0] || null;
+      const wfCloseFires = async () => {
+        await page.locator('.ant-drawer-close').first().click().catch(() => {});
+        await page.waitForTimeout(600);
+      };
+      const wfInstance1 = wfLast().instance;
+      const wfDrawer1 = await wfOpenFires();
+      const wfDrawerRows1 = await wfFiresRows();
+      wfCheck('「发起记录」抽屉里正好一行，且状态是 STARTED（绑定存在≠发出去了，这一格才是账）',
+        wfDrawerRows1.length === 1 && wfDrawerRows1[0].includes('STARTED'),
+        JSON.stringify(wfDrawerRows1).slice(0, 260));
+      wfCheck('那一行给出的流程实例号就是 z-wf 回的那一格（不是记录号、也不是空、也不是「—」）',
+        wfDrawer1.includes(wfInstance1) && wfInstance1.indexOf('wf-ui-') === 0
+        && wfDrawer1.includes('记录') && !wfDrawer1.includes(`${wfApp}:case`),
+        `抽屉=${wfDrawer1.slice(0, 200)} 实例=${wfInstance1}`);
+      const wfCells1 = await wfFiresCells();
+      wfCheck('那一行记着是哪条记录的账（记录号 = 界面上刚建的那一条，且就在「记录」那一格里）',
+        wfCells1.length === 1 && String(wfFire1.recordId) === (wfCells1[0][0] ?? ''),
+        JSON.stringify(wfCells1).slice(0, 260));
+      wfCheck('成功那一行不写失败原因（STARTED 与 FAILED 不能混在同一格里说）',
+        wfDrawerRows1.length === 1 && !wfDrawerRows1[0].includes('FAILED')
+        && !/超过|抛错|不可达|失败/.test(wfDrawerRows1[0]), JSON.stringify(wfDrawerRows1).slice(0, 260));
+      await wfCloseFires();
+
+      // ================= (6) 引擎不在：记录照写，账上留一条 FAILED ===============================
+      await wfKillSafe();
+      const wfFire2 = await wfWriteViaUi('引擎不在时也写得进去');
+      check('桩不可达时记录照样写成功（发起失败不该把用户这次保存一起吞掉）',
+        wfFire2.recordId !== null, `recordId=${wfFire2.recordId}${wfFire2.err ? ` err=${wfFire2.err}` : ''}`);
+      wfCheck('桩不可达时一句都不许发出去（FAILED 那一行是账，不是猜的）',
+        wfFire2.sent === 0, `这一条发出去 ${wfFire2.sent} 句`);
+      await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1200);
+      await wfOpenFires();
+      const wfDrawerRows2 = await wfFiresRows();
+      const wfDrawer2 = (await page.locator('.ant-drawer-body').first().innerText()).replace(/\s+/g, ' ');
+      const wfFailed2 = wfDrawerRows2.filter((r) => r.includes('FAILED'));
+      wfCheck('抽屉里多出来的那一行是 FAILED，并且说得出为什么（不是空白、也不是"暂无"）',
+        wfDrawerRows2.length === 2 && wfFailed2.length === 1
+        && /Failed to connect|ECONN|Connection|refused|不可达|抛错|超过/i.test(wfFailed2.join(' ')),
+        JSON.stringify(wfDrawerRows2).slice(0, 300));
+      const wfFailedInstance2 = await wfFailedInstanceCells();
+      wfCheck('FAILED 那一行不许留下流程实例号（发不成的单在账上不能长得像发成了 —— 实例那一格必须是空的）',
+        wfFailedInstance2.length === 1 && wfFailedInstance2[0] === '—',
+        JSON.stringify(wfFailedInstance2).slice(0, 260));
+      wfCheck('FAILED 不覆盖上一条 STARTED（两行各记各的，账是流水不是状态位）',
+        wfDrawerRows2.filter((r) => r.includes('STARTED')).length === 1
+        && wfDrawerRows2.length === 2 && wfDrawer2.includes(String(wfFire1.recordId))
+        && wfDrawer2.includes(String(wfFire2.recordId)),
+        JSON.stringify(wfDrawerRows2).slice(0, 300));
+      await wfCloseFires();
+
+      // ================= (7) 桩回来：同一条绑定立刻又发得出去 ====================================
+      try {
+        wfStubServer = await wfListen();
+      } catch (e) {
+        check('把桩换回来（换不回来就没有"FAILED 不是把绑定判死"这一条的判定）', false,
+          e && e.message ? e.message : String(e));
+      }
+      const wfFire3 = await wfWriteViaUi('桩回来之后的第一条');
+      wfCheck('把桩换回来：同一条绑定立刻又发得出去（FAILED 不是把这条绑定判死）',
+        wfFire3.sent === 1 && wfFire3.recordId !== null,
+        `这一条发出去 ${wfFire3.sent} 句、累计 ${wfCount()} 句、记录号=${wfFire3.recordId}`);
+      await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1200);
+      await wfOpenFires();
+      const wfDrawerRows3 = await wfFiresRows();
+      wfCheck('账上三行两成一败：这一节发出去的每一句都留了痕（成功的也不例外）',
+        wfDrawerRows3.length === 3
+        && wfDrawerRows3.filter((r) => r.includes('STARTED')).length === 2
+        && wfDrawerRows3.filter((r) => r.includes('FAILED')).length === 1,
+        JSON.stringify(wfDrawerRows3).slice(0, 300));
+      const wfCells3 = await wfFiresCells();
+      wfCheck('三行各自指着三条不同的记录（「记录」那一格三个值正好是本节那三条，一个不重不漏）',
+        new Set(wfCells3.map((c) => c[0])).size === 3
+        && [wfFire1.recordId, wfFire2.recordId, wfFire3.recordId]
+          .every((id) => wfCells3.some((c) => c[0] === String(id))),
+        JSON.stringify(wfCells3.map((c) => c[0])).slice(0, 220));
+      await wfCloseFires();
+
+      // ================= (7b) 引擎答了、可这单没成：200+success=false 与 502 带一个号 ============
+      // 桩里那两个分支（`wfStub.mode`）早就写好了，可此前没有任何一处翻过旗 —— 于是上面那条
+      // "FAILED 那一格的实例号是空的"只在"桩不可达"这一种成因下测过，而那种成因结构上收不到
+      // body，那一格不可能有号。真正的猎人是 502 带一个成功样的 body：引擎把号给出来了、
+      // 但这单没成，账上不能留那个号（同契约层 http5xxWithASuccessfulLookingBodyIsNotAFire，
+      // 那一层钉服务端写没写，这一层钉界面画没画）。
+      wfStub.mode = 'reject';
+      const wfFire4 = await wfWriteViaUi('引擎答 200 而 success=false');
+      wfCheck('引擎答 200 而 success=false 时记录照写（这一单没发成不该把用户这次保存一起吞掉）',
+        wfFire4.recordId !== null && wfFire4.sent === 1,
+        `recordId=${wfFire4.recordId} sent=${wfFire4.sent}${wfFire4.err ? ` err=${wfFire4.err}` : ''}`);
+      wfStub.mode = 'http5xx';
+      const wfFire5 = await wfWriteViaUi('引擎答 502 而 body 里带一个流程实例号');
+      wfCheck('引擎答 502 而 body 里带号时记录照写（发不成的单不是回滚上一次保存的理由）',
+        wfFire5.recordId !== null && wfFire5.sent === 1,
+        `recordId=${wfFire5.recordId} sent=${wfFire5.sent}${wfFire5.err ? ` err=${wfFire5.err}` : ''}`);
+      wfStub.mode = 'ok';
+      await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1200);
+      await wfOpenFires();
+      const wfCells5 = await wfFiresCells();
+      const wfRow4 = wfRowOf(wfCells5, wfFire4.recordId);
+      const wfRow5 = wfRowOf(wfCells5, wfFire5.recordId);
+      wfCheck('引擎那句拒绝理由原样落在「为什么」那一格（200 而 success=false 是最像成功的一种失败，界面不许替它圆场）',
+        wfRow4 !== null && wfRow4[1] === 'FAILED'
+        && /z-wf 拒绝发起/.test(wfRow4[3]) && wfRow4[3].includes('business key 已存在'),
+        JSON.stringify(wfRow4).slice(0, 260));
+      wfCheck('502 带一个成功样的 body：那一个号不许进账（实例那一格还是空的，而那一行还得自称 FAILED）',
+        wfRow5 !== null && wfRow5[1] === 'FAILED' && wfRow5[2] === '—'
+        && !wfRow5.join(' ').includes('ghost-should-not-be-kept'),
+        JSON.stringify(wfRow5).slice(0, 260));
+      wfCheck('502 那一行的「为什么」说的是这一单没成，而不是"没有这条绑定"那种兜底话',
+        wfRow5 !== null && /http=502/.test(wfRow5[3]),
+        JSON.stringify(wfRow5).slice(0, 260));
+      await wfCloseFires();
+
+      // ================= (8) 读失败不许画成"没有"（账本这一侧） ==================================
+      const wfFiresRoute = '**/api/lc/workflow-binding/fires*';
+      await page.route(wfFiresRoute, (route) => route.abort('failed'));
+      const wfReadFailed = await wfOpenFires();
+      check('读不到发起记录时，抽屉报的是"没有读到"，而不是"这个实体还没有发起记录"',
+        /发起记录没有读到/.test(wfReadFailed) && !wfReadFailed.includes('还没有发起记录'),
+        wfReadFailed.slice(0, 260));
+      check('读失败那一屏也不留下"三行账"的假象（读不到就是读不到，旧行不能继续亮着）',
+        !/STARTED/.test(wfReadFailed), wfReadFailed.slice(0, 200));
+      await page.unroute(wfFiresRoute);
+      await wfCloseFires();
+
+      // ================= (9) 词表读失败时，界面不许把每一行都说成"引擎不兑现" ====================
+      // #19/#22/#23 同一族：量具坏了不能被说成数据坏了。词表读失败时页面只知道"没有清单"，
+      // 它不知道这一行的事件码引擎兑不兑现 —— 那一句必须留白并说"未校对"。
+      await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1000);
+      const wfVocRoute = '**/api/lc/workflow-binding/vocabulary*';
+      await page.route(wfVocRoute, (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, code: 200, data: { implemented: null, rejected: [] } }),
+      }));
+      await page.reload({ waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1500);
+      const wfUncolored = await wfBindingRows();
+      check('词表形状读坏时，那一行标的是「时机未校对」而不是「引擎不兑现」（把量具故障说成数据问题）',
+        wfUncolored.length === 1 && wfUncolored[0].includes('时机未校对')
+        && !wfUncolored[0].includes('引擎不兑现'), JSON.stringify(wfUncolored).slice(0, 260));
+      check('词表读失败时那一行仍然照常给出流程 KEY 与「自动提单=是」（未校对只修饰时机那一格，不吞整行）',
+        wfUncolored.length === 1 && wfUncolored[0].includes(wfKey) && wfUncolored[0].includes(' 是 '),
+        JSON.stringify(wfUncolored).slice(0, 220));
+      const wfAlerts = (await page.locator('.ant-alert').allInnerTexts())
+        .map((t) => t.replace(/\s+/g, ' '));
+      check('词表读失败时页面报的是「触发时机词表没有读到」，并给重试的入口',
+        wfAlerts.some((t) => t.includes('触发时机词表没有读到'))
+        // antd 会把两个汉字渲染成「重 试」（中间一个空格），精确名永远匹配不上 —— 同 11d 那颗
+        // "cloud-upload Provision" 的教训：可及名要按渲染后的样子匹配。
+        && (await page.getByRole('button', { name: /重\s*试/ }).count()) >= 1,
+        `alerts=${JSON.stringify(wfAlerts).slice(0, 300)}`);
+      check('词表读失败时「新建绑定」收住（草稿里那个时机将是无处可查的）',
+        (await wfNewBtn.count()) === 1 && (await wfNewBtn.first().isDisabled()),
+        `count=${await wfNewBtn.count()}`);
+      await page.unroute(wfVocRoute);
+      await page.reload({ waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1500);
+      const wfRecovered = await wfBindingRows();
+      check('把词表换回来：同一行立刻不再报「未校对」（上一条不是把页面判死了）',
+        wfRecovered.length === 1 && wfRecovered[0].includes('创建后')
+        && !wfRecovered[0].includes('时机未校对') && !(await wfNewBtn.first().isDisabled()),
+        JSON.stringify(wfRecovered).slice(0, 240));
+
+      // ================= (10) 从界面上解绑 ======================================================
+      const wfDeleteResp = page.waitForResponse((res) => res.url().includes('/workflow-binding/delete')
+        && res.request().method() === 'POST', { timeout: 15000 });
+      await page.locator('[data-testid^="workflow-fires-"]').first().waitFor({ timeout: 10000 });
+      await page.locator('.ant-table-tbody button', { hasText: '删除' }).first().click();
+      await page.locator('.ant-popover .ant-btn-primary, .ant-popconfirm .ant-btn-primary').first().click();
+      let wfDeletedHttp = null;
+      try {
+        wfDeletedHttp = (await wfDeleteResp).status();
+      } catch { /* 下面那一条会红 */ }
+      await page.waitForTimeout(1500);
+      const wfAfterDelete = await wfBindingRows();
+      check('从界面上解绑之后，表里那一行真的下去了（http 200 + 行数 0）',
+        wfDeletedHttp === 200 && wfAfterDelete.length === 0,
+        `http=${wfDeletedHttp === null ? '没等到' : wfDeletedHttp} rows=${JSON.stringify(wfAfterDelete).slice(0, 200)}`);
+      const wfAfterDeleteDb = await wfList();
+      check('库里也读不到这一条（表格不是本地状态的画廊，解绑是真删）',
+        Array.isArray(wfAfterDeleteDb) && wfAfterDeleteDb.length === 0,
+        JSON.stringify(wfAfterDeleteDb).slice(0, 200));
+      const wfDeleteToast = await wfToasts();
+      check('解绑那一下界面说「已删除」，且没有一句失败文案',
+        wfDeleteToast.includes('已删除') && !wfDeleteToast.includes('失败'), wfDeleteToast.slice(0, 200));
+
+      // ================= (11) 收尾：本节种的东西不留账 ==========================================
+      const wfBeforeCleanup = wfCount();
+      const wfAppGone = await wfPost('/api/lc/app/delete', { appCode: wfApp });
+      check('这一节的应用收掉了（留着会占住别人的实体名清单，下一轮读到的是别人的账）',
+        wfAppGone.success === true, JSON.stringify(wfAppGone).slice(0, 200));
+      wfCheck('解绑与删应用本身不发流程（这两个动作各发起一单的话，账就再也对不上了）',
+        wfBeforeCleanup === 4 && wfCount() === wfBeforeCleanup,
+        `清理前 ${wfBeforeCleanup} 句、清理后 ${wfCount()} 句`);
+      page.off('request', wfOnReq);
+      await shot(page, `r${runNum}-08w-workflows`);
+    } catch (e) {
+      if (e instanceof skipRemaining) throw e;
+      check('流程绑定的发起账（#61 浏览器层）', false, e && e.message ? e.message : String(e));
+      await shot(page, `r${runNum}-08w-workflows-FAIL`);
+    } finally {
+      await wfKillSafe();
+    }
+
     /* ---- 9. 全局异常 ---- */
     try {
       check('全程没有未捕获的 JS 异常', pageErrors.length === 0, pageErrors.slice(0, 3).join(' ;; '));
@@ -2759,7 +3351,7 @@ async function main() {
   const allTimelines = [];
   const results = [];
   for (let i = 1; i <= REPEATS; i++) {
-    // 每轮新建一个应用，避免数据积累
+    // 每轮新建一个应用（"避免数据积累"这句以前写在这儿，其实一个都没删过 —— 见 seedTestData 上方）
     const appCode = await seedTestData();
     console.log(`--- 第 ${i}/${REPEATS} 轮 (app=${appCode}) ---`);
     const r = await runOnce(i, appCode);

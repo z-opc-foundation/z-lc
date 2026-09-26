@@ -100,10 +100,16 @@ case "${1:-all}" in
   # 闸 5（缺陷 #52）：三档真启动自证——坏 url 拒起 / 两池真探 / 库不可达如实报 DOWN。
   # 只在 18095 上起自己的进程，不碰 18090 那个线上实例。
   healthproof) rssh healthproof ;;
+  # 闸 6（缺陷 #61 §2.6）：流程发起那本账在真 MySQL 8 上写不写得进、读不读得出。
+  # 判据读的是库（information_schema + z_lc_workflow_fire），不是应用的转述；桩要先在 250 本机起来：
+  #   scp _e2e/wf_stub.py 250:~/zlc-deploy/ && ssh 250 'cd ~/zlc-deploy && nohup python3 wf_stub.py \
+  #     --port 18888 --hit-file ~/zlc-deploy/logs/wf_hits.jsonl --pid-file ~/zlc-deploy/wf_stub.pid &'
+  # 且 env/start 两步要带 ZLC_EXTRA_ENV='ZLC_WF_BASE_URL=http://localhost:18888'（闸 1 现在不给默认值）。
+  fireprobe) rssh fireprobe ;;
   collate) rssh collate ;;
   repair)  rssh repair ;;
   api)    tunnel; echo "=== API 层门禁打远程 ==="; \
           python3 -u "$REPO/_e2e/e2e_api_test.py" "http://localhost:$LOCAL_TUNNEL" ;;
   all)    sync; rssh db; rssh schema; rssh env; rssh start; rssh verify; rssh collate; tunnel ;;
-  *) echo "用法: $0 [all|sync|db|schema|env|start|verify|collate|repair|gates|gate1|gate2|gate3|gate4|healthproof|api|tunnel|status|stop]"; exit 2 ;;
+  *) echo "用法: $0 [all|sync|db|schema|env|start|verify|collate|repair|gates|gate1|gate2|gate3|gate4|healthproof|fireprobe|api|tunnel|status|stop]"; exit 2 ;;
 esac

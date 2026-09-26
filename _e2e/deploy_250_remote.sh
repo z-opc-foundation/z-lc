@@ -47,6 +47,13 @@ require_app_env() {
     jdbc:mysql://*|jdbc:h2:*) ;;
     *) die "闸1: url 不像 JDBC 串（前 24 字符：${SPRING_DATASOURCE_URL:0:24}）—— 若是 HIDE_IN_REPO 则环境变量没设上" ;;
   esac
+  # wf 的 base-url **没有默认值**：`WfAdapter` 的属性默认是 `http://localhost:8888`，而 250 上那一格
+  # 是别人的进程（09-27 04:1x 实测：`ss -ltnp` 显示 `*:8888` 由 pid 1622 的 z-opc-main-starter 持有，
+  # 对它 POST `/api/approval-center/processes/start` 回 404 + 一段 Tomcat HTML）。留着默认值部署上去 =
+  # **每写一条低代码记录就往别人在跑的服务发一次 POST**，账上再落一条"应答不是 JSON/404"的 FAILED ——
+  # 那个原因不是产品的结论，是我打错了门。所以部署期必须点名（走 ZLC_EXTRA_ENV='ZLC_WF_BASE_URL=...'）。
+  [ -n "${ZLC_WF_BASE_URL:-}" ] \
+    || die "闸1: ZLC_WF_BASE_URL 是空的 —— 不许把 wf 留在 properties 的 localhost:8888 默认值上（250 的 8888 是别人的服务）。重跑 env 时带上它"
 }
 
 # 端口上真正的监听者 pid（问不到回空串）。用 ss 而不是 lsof：250 上没装 lsof。
@@ -135,7 +142,9 @@ step_env() {
   local url="jdbc:mysql://127.0.0.1:$DB_PORT/z_lc?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
   { printf 'SPRING_DATASOURCE_URL=%q\n' "$url"
     printf 'SPRING_DATASOURCE_USERNAME=%q\n' zlc
-    printf 'SPRING_DATASOURCE_PASSWORD=%q\n' "$LC_DB_PASSWORD"; } > "$CONF/app.env"
+    printf 'SPRING_DATASOURCE_PASSWORD=%q\n' "$LC_DB_PASSWORD"
+    # 由调用方经 ZLC_EXTRA_ENV 塞进来；空值在这里就被 require_app_env 拦掉（不留 properties 的默认值）。
+    printf 'ZLC_WF_BASE_URL=%q\n' "${ZLC_WF_BASE_URL:-}"; } > "$CONF/app.env"
   echo "    已写 $CONF/app.env（值一律 %q）"
   require_app_env
 }
@@ -173,6 +182,7 @@ step_start() {
     --z-lc.adapter.ctc.base-url="http://localhost:$APP_PORT" \
     --z-lc.adapter.meta.base-url="http://localhost:$APP_PORT" \
     --z-lc.adapter.script.base-url="http://localhost:$APP_PORT" \
+    --z-lc.adapter.wf.base-url="$ZLC_WF_BASE_URL" \
     > "$LOG" 2>&1 &
   local pid=$!
   echo "$pid" > "$pidfile"
@@ -749,6 +759,207 @@ step_healthproof() {
   echo "  healthproof: D1 拒起 / D2 真探两池 / D3 不可达如实报 DOWN —— 三档都在 $HP_PORT 上真起过进程"
 }
 
+# ---- 闸 6：流程发起那本账在真 MySQL 8 上写不写得进、读不读得出（缺陷 #61 §2.6）----
+#
+# 为什么这一支不能拿接口层那 63 条代替：`_e2e/e2e_api_test.py` 的 `[15w]` 桩是**测试进程自己**起的
+# （`WF_PORT` :2134 绑在跑脚本那台机上，`_WfStub(WF_PORT)` :2193），而 app 的 BASE 只是 `sys.argv[1]`
+# (:21)。把 BASE 指到 250 之后，250 上那个 jar 发的是**它自己的** localhost —— 我本地的桩永远收不到 ⇒
+# `WF_LIVE = bool(WF) and wf_count()==1` (:2315) 恒假 ⇒ 整节 63 条一律判"桥没通"。那是真红不是假绿
+# （:2121 定的规矩就是桥没通就没有绿），但它说的只是"桩和 app 不在同一台机"，不是 250 的结论。
+# 所以这一支把桩搬到 250 本机（`_e2e/wf_stub.py`），并把判据从"应用怎么转述"换成"库自己承认哪几行"。
+FP_APP=""; FP_TBL=""; FP_TBL2=""; FP_BAD=0
+FP_STUB_PORT="${ZLC_FP_STUB_PORT:-18888}"
+
+fp_check() {  # $1 名字 $2 判定(1/0) $3 读数 —— 不 fail-fast：一本账只报第一处坏，剩下的坏就看不见
+  if [ "$2" = "1" ]; then echo "  ok   $1"
+  else echo "  !!   $1 << $3"; FP_BAD=$((FP_BAD + 1)); fi
+}
+
+fp_post() {  # $1 = path(+query)，$2 = JSON（可空）。引号只在此处拼一次
+  if [ -n "${2:-}" ]; then
+    curl -s -m 30 -X POST "http://127.0.0.1:$APP_PORT$1" \
+      -H 'Content-Type: application/json' -H 'X-Tenant-Code: default' --data-binary "$2"
+  else
+    curl -s -m 30 -X POST "http://127.0.0.1:$APP_PORT$1" \
+      -H 'Content-Type: application/json' -H 'X-Tenant-Code: default'
+  fi
+}
+
+fp_get() { curl -s -m 20 "http://127.0.0.1:$APP_PORT$1"; }
+fp_stub() { curl -s -m 5 "http://127.0.0.1:$FP_STUB_PORT$1"; }
+
+fp_port_pid() {  # 指定端口 → pid。上面那把 port_pid 是钉死 APP_PORT 的，桩这一腿得另问一次
+  ss -ltnp 2>/dev/null \
+    | awk -v p=":${1:-$FP_STUB_PORT}" '$4 ~ (p "$") {print; exit}' \
+    | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' || true
+}
+
+fp_hits() { fp_stub "/__hits" | sed -n 's/.*"count":[[:space:]]*\([0-9][0-9]*\).*/\1/p'; }
+# 信封里的 data 有两种形状（record/create 回数字、entity/create 回对象），各自取各自的。
+fp_data_num() { python3 -c 'import sys,json;print(json.load(sys.stdin).get("data"))' 2>/dev/null || true; }
+fp_data_id() { python3 -c 'import sys,json;print((json.load(sys.stdin).get("data") or {}).get("id"))' 2>/dev/null || true; }
+
+fp_fire() {  # 库自己那句话，不经应用转述：$1 = where 片段
+  sql_out "select concat_ws('|',status,ifnull(instance_id,''),ifnull(detail,''),record_id)
+           from \`$DB_NAME\`.z_lc_workflow_fire where $1 order by id"
+}
+
+fp_clean() {
+  # 替身也要还原：第二幕把桩翻去了 reject，中途 die 出去就停在那儿 —— 下一跑（或别人手动打这一腿）
+  # 拿到的"STARTED=0"看着像"派发器没跑"，真相是我自己留的旗标。只还原旗标，不动 hit-file（那是证据）。
+  fp_stub '/__mode?mode=ok' >/dev/null 2>&1 || true
+  # 元数据按那一个一次性 appCode 删（复用闸 4 那把尺：逐个标识符校验再拼 SQL）；
+  # 物理表按**这次探针自己建的那两个表名** DROP，别按前缀 —— 前缀会扫到别人的表。
+  [ -n "$FP_APP" ] || return 0
+  g4_clean_meta "$FP_APP"
+  local t
+  for t in "$FP_TBL" "$FP_TBL2"; do
+    if [ -n "$t" ]; then sql_out "DROP TABLE IF EXISTS \`$DB_NAME\`.\`$t\`" >/dev/null; fi
+  done
+}
+
+step_fireprobe() {
+  require_app_env
+  local want have voc impl bindout bid eid rid n0 n1 rows started failed mode lastbody lastkey lastbiz
+  local key="fp_expense_$(date +%N | tail -c 6)"
+  want=$(cat "$DIR/app.pid" 2>/dev/null || true)
+  have=$(port_pid)
+  [ -n "$want" ] && [ "$have" = "$want" ] \
+    || die "闸6: 端口 $APP_PORT 上是 pid=${have:-none}，app.pid 记的是 ${want:-<无>} —— 先跑 start，否则测的不是这次部署的构件"
+  # 归因链第三段：构件归因到 pid 之后，还得把 **wf 这一腿**归因到我这个桩。app.env 里那个
+  # ZLC_WF_BASE_URL 必须就是下面翻旗/数 hits 用的那个端口，否则"桩收到一句"量的不是这个进程。
+  case "$ZLC_WF_BASE_URL" in
+    *"127.0.0.1:$FP_STUB_PORT"*|*"localhost:$FP_STUB_PORT"*) ;;
+    *) die "闸6: ZLC_WF_BASE_URL=$ZLC_WF_BASE_URL 不指向 127.0.0.1:$FP_STUB_PORT —— 探针翻的旗和被测的出口不是同一个，别往下走" ;;
+  esac
+  FP_APP="deploy_fp_$(date +%N | tail -c 7)"
+  FP_TBL="e2e_fp_${FP_APP#deploy_fp_}"
+  FP_TBL2="${FP_TBL}_2"
+  trap 'fp_clean' EXIT
+
+  # app.env 里写了不算数 —— 进程是上一次 start 起来的，它的 argv 才是被测的那份配置。
+  # 只把 wf 那一个 token 切出来（argv 里有数据源口令，整行一律不落盘、不回显）。
+  local argv wfarg
+  argv=$(ps -o args= -p "$have" 2>/dev/null | tr ' ' '\n' || true)
+  wfarg=$(printf '%s\n' "$argv" | grep '^--z-lc.adapter.wf.base-url=' | head -1 || true)
+  fp_check "端口上那个进程自己带着 wf 的 base-url，且就是探针这个桩（读 argv 不读 app.env）" \
+    "$([ -n "$wfarg" ] && [ "${wfarg#*=}" = "$ZLC_WF_BASE_URL" ] && echo 1 || echo 0)" \
+    "argv 里那一句=${wfarg:-<没有这一项>}"
+
+  fp_check "桩活着且应答形状对（/__mode 有 mode 字段）" \
+    "$([ -n "$(fp_stub '/__mode' | sed -n 's/.*"mode":[[:space:]]*"\([a-z0-9]*\)".*/\1/p')" ] && echo 1 || echo 0)" \
+    "$(fp_stub '/__mode')"
+
+  # 归因第四段（缺陷 #55 那一族在桩这一腿上的形状）：`/__mode` 答了不等于答的是我那个桩。
+  # 250 上 `*:8888` 已经被人占过一次，桩端口这一格同样可能被别人拿去用 —— 那时"桩收到一句"
+  # 量的就是别人的进程。pid-file 是起桩时写下的那一个（`deploy_250.sh` 的用法注释里带着）。
+  local spid spidfile
+  spid=$(fp_port_pid); spidfile=$(cat "$DIR/wf_stub.pid" 2>/dev/null || true)
+  fp_check "被问的那个端口上就是我自己起的桩（ss 的 pid == $DIR/wf_stub.pid）" \
+    "$([ -n "$spid" ] && [ "$spid" = "$spidfile" ] && echo 1 || echo 0)" \
+    "端口 $FP_STUB_PORT 上=${spid:-none} pid-file=${spidfile:-<无>}"
+
+  # 起点旗标必须自己钉：上一跑（尤其负控）会把桩翻到 reject 并停在原地。带着 reject 开跑，
+  # 第一幕那一串红（STARTED=0 / instance_id 对不上）会被读成"这版构件里派发器没跑"，
+  # 而真相是我自己的替身还停在上一幕 —— 05:2x 在 250 上实测到 `/__mode` 就是 reject。
+  mode=$(fp_stub '/__mode?mode=ok' | sed -n 's/.*"mode":[[:space:]]*"\([a-z0-9]*\)".*/\1/p')
+  fp_check "起点旗标钉成 ok（不看上一跑把它留在了哪儿）" \
+    "$([ "$mode" = "ok" ] && echo 1 || echo 0)" "桩说 mode=${mode:-空}"
+
+  local appout; appout=$(fp_post "/api/lc/admin/app/create" \
+    "{\"tenantCode\":\"default\",\"appCode\":\"$FP_APP\",\"appName\":\"流程发起探针\"}")
+  fp_check "探针应用建得成（后面每一步都挂在它身上）" \
+    "$(printf '%s' "$appout" | grep -q '"success":true' && echo 1 || echo 0)" "$(printf '%s' "$appout" | head -c 200)"
+
+  local f='{"fieldCode":"ref","fieldName":"编号","fieldType":"STRING","sortOrder":1}'
+  local pair ent tbl
+  for pair in "case|$FP_TBL" "plain|$FP_TBL2"; do
+    ent=${pair%%|*}; tbl=${pair##*|}
+    eid=$(fp_post "/api/lc/admin/app/entity/create?appCode=$FP_APP&tenantCode=default" \
+      "{\"tenantCode\":\"default\",\"appCode\":\"$FP_APP\",\"entityCode\":\"$ent\",\"entityName\":\"探针表\",\"tableName\":\"$tbl\",\"fields\":[$f]}" \
+      | fp_data_id)
+    fp_check "实体 $ent 建成（拿到 id=${eid:-空}）" "$([ -n "$eid" ] && echo 1 || echo 0)" "id=${eid:-空}"
+    # 元数据建好不等于物理表在：运行时要的是 provision 那一步。少了这一句，后面"写一条记录"红的是
+    # 我的探针没建表，而不是被测的那版构件没派发（05:1x 负控第一次跑就是这个形状）。
+    fp_post "/api/lc/admin/entity/provision?id=$eid" >/dev/null
+    fp_check "实体 $ent 的物理表真建出来了（$tbl）" \
+      "$([ "$(count_sql "select count(*) from information_schema.tables where table_schema='$DB_NAME' and table_name='$tbl'")" = "1" ] && echo 1 || echo 0)" \
+      "provision 之后 information_schema 里仍查不到 $tbl"
+  done
+
+  voc=$(fp_get "/api/lc/workflow-binding/vocabulary")
+  impl=$(printf '%s' "$voc" | python3 -c 'import sys,json;print(",".join(json.load(sys.stdin).get("data",{}).get("implemented") or []))' 2>/dev/null || true)
+  # 词表是"部署的构件里有没有 #61"的第一号试纸：派发器没接上的那版构件，这一栏要么没有、要么不含 AFTER_CREATE。
+  fp_check "/vocabulary 的 implemented 含 AFTER_CREATE（派发器在不在这一版构件里）" \
+    "$(printf '%s' ",$impl," | grep -q ',AFTER_CREATE,' && echo 1 || echo 0)" "implemented=${impl:-<空>}"
+
+  bindout=$(fp_post "/api/lc/workflow-binding/create" \
+    "{\"tenantCode\":\"default\",\"appCode\":\"$FP_APP\",\"entityCode\":\"case\",\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"$key\"}")
+  bid=$(printf '%s' "$bindout" | fp_data_id)
+  fp_check "登记一条 AFTER_CREATE 绑定并拿到 id=${bid:-空}" "$([ -n "$bid" ] && echo 1 || echo 0)" "$(printf '%s' "$bindout" | head -c 200)"
+
+  n0=$(fp_hits); n0=${n0:-0}
+  rid=$(fp_post "/api/lc/runtime/create?entityCode=case" \
+    "{\"appCode\":\"$FP_APP\",\"tenantCode\":\"default\",\"entityCode\":\"case\",\"fieldValues\":{\"ref\":\"FP-1\"}}" | fp_data_num)
+  n1=$(fp_hits); n1=${n1:-0}
+  fp_check "写一条记录 ⇒ 桩正好收到一句（这一条是整支的桥：0 句意味着派发器压根没跑）" \
+    "$([ "$((n1 - n0))" = "1" ] && [ -n "$rid" ] && [ "$rid" != "None" ] && echo 1 || echo 0)" \
+    "rid=${rid:-空} 桩收到 $((n1 - n0)) 句（应为 1）"
+
+  lastbody=$(fp_stub "/__hits" | python3 -c 'import sys,json;print((json.load(sys.stdin).get("last") or {}).get("body",""))' 2>/dev/null || true)
+  lastkey=$(printf '%s' "$lastbody" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("processDefinitionKey"))' 2>/dev/null || true)
+  lastbiz=$(printf '%s' "$lastbody" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("businessKey"))' 2>/dev/null || true)
+  fp_check "发出去那一句带的是登记的 KEY（不是流程里的上一个）" \
+    "$([ "$lastkey" = "$key" ] && echo 1 || echo 0)" "key=${lastkey:-空} 期望=$key body=$(printf '%s' "$lastbody" | head -c 200)"
+  fp_check "发出去那一句能定位回这条记录（businessKey 含 record_id=${rid:-?}）" \
+    "$(printf '%s' "$lastbiz" | grep -q -- "$rid" && echo 1 || echo 0)" "businessKey=${lastbiz:-空}"
+
+  rows=$(fp_fire "app_code='$FP_APP'")
+  started=$(printf '%s' "$rows" | grep -c '^STARTED|' || true)
+  fp_check "MySQL 自己承认有一行 STARTED（不是应用转述）" \
+    "$([ "$started" = "1" ] && echo 1 || echo 0)" "STARTED=$started 全部行: $(printf '%s' "$rows" | tr '\n' ' ')"
+  fp_check "那一行的 instance_id 就是桩回的那一个号（wf250-$n1）" \
+    "$(printf '%s' "$rows" | grep -q "^STARTED|wf250-$n1|" && echo 1 || echo 0)" "$(printf '%s' "$rows" | tr '\n' ' ')"
+
+  local fires; fires=$(fp_get "/api/lc/workflow-binding/fires?appCode=$FP_APP&entityCode=case&recordId=$rid")
+  fp_check "/fires 读回同一行（库里那行经应用读得出，状态 STARTED）" \
+    "$(printf '%s' "$fires" | grep -q '"status":"STARTED"' && printf '%s' "$fires" | grep -q "wf250-$n1" && echo 1 || echo 0)" \
+    "$(printf '%s' "$fires" | head -c 300)"
+
+  # 第二幕：引擎**答了但没成**（200 + success=false，形状抄自真 z-wf ApprovalCenterController:672-673）。
+  mode=$(fp_stub '/__mode?mode=reject' | sed -n 's/.*"mode":[[:space:]]*"\([a-z0-9]*\)".*/\1/p')
+  fp_check "翻旗真的翻动了（reject 不是我没设上）" "$([ "$mode" = "reject" ] && echo 1 || echo 0)" "桩说 mode=${mode:-空}"
+  rid=$(fp_post "/api/lc/runtime/create?entityCode=case" \
+    "{\"appCode\":\"$FP_APP\",\"tenantCode\":\"default\",\"entityCode\":\"case\",\"fieldValues\":{\"ref\":\"FP-2\"}}" | fp_data_num)
+  n1=$(fp_hits)
+  rows=$(fp_fire "app_code='$FP_APP'")
+  failed=$(printf '%s' "$rows" | grep -c '^FAILED|' || true)
+  fp_check "引擎答 200 而 success=false ⇒ 库里落一行 FAILED（这一单没成不该一个字都不留）" \
+    "$([ "$failed" = "1" ] && echo 1 || echo 0)" "FAILED=$failed 全部行: $(printf '%s' "$rows" | tr '\n' ' ')"
+  fp_check "FAILED 那一行带引擎那句原话（不是笼统一句「发起失败」）" \
+    "$(printf '%s' "$rows" | grep -q '^FAILED||流程启动失败' && echo 1 || echo 0)" "$(printf '%s' "$rows" | tr '\n' ' ')"
+  fp_check "FAILED 那一行不许留下实例号（发不成的单不能长得像发成了）" \
+    "$(printf '%s' "$rows" | grep -q '^FAILED|wf250' && echo 0 || echo 1)" "$(printf '%s' "$rows" | tr '\n' ' ')"
+  fp_check "两行各记各的账（STARTED 没被 FAILED 覆盖）" \
+    "$([ "$started" = "1" ] && [ "$failed" = "1" ] && [ "$(printf '%s' "$rows" | grep -c '.' || true)" = "2" ] && echo 1 || echo 0)" \
+    "$(printf '%s' "$rows" | tr '\n' ' ')"
+
+  # 第三幕：负断言。没登记绑定的实体写记录，一句都不该发、账上也不该多一行。
+  # 敢判 0 是因为上面那条桥已经证明"这个 app 真会打到这个桩" —— 否则 0 只是链断了。
+  n0=$(fp_hits)
+  fp_post "/api/lc/runtime/create?entityCode=plain" \
+    "{\"appCode\":\"$FP_APP\",\"tenantCode\":\"default\",\"entityCode\":\"plain\",\"fieldValues\":{\"ref\":\"FP-3\"}}" >/dev/null
+  n1=$(fp_hits)
+  # 两半各自读数：只写"应为 0"的那一句会把"账上多了一行"这种坏也报成"桩多收了"（05:1x 负控实测踩过）。
+  local nrows; nrows=$(printf '%s' "$(fp_fire "app_code='$FP_APP'")" | grep -c '.' || true)
+  fp_check "没有绑定的实体一句都不发（且账上不多行）" \
+    "$([ "$n1" = "$n0" ] && [ "$nrows" = "2" ] && echo 1 || echo 0)" \
+    "桩多收 $((n1 - n0)) 句（应为 0）、账上共 $nrows 行（应为 2）"
+
+  [ "$FP_BAD" = "0" ] || die "闸6: $FP_BAD 条没过关（上面每条都带读数）—— 先归因再谈部署成功"
+  echo "  ✓ 流程发起的账在真 MySQL 8 上写得进、读得出：STARTED/FAILED 各一行由库自己承认，桩收到句数与账对齐"
+}
+
 step_status() {
   # 只认 `java -jar …z-lc-admin`：pgrep -af 的 -f 会把我自己这条含字面量的命令行也算进去。
   # awk 无匹配也回 0，所以"有没有 app"要看输出空不空，不能看退出码。
@@ -757,14 +968,19 @@ step_status() {
         | sed 's/password=[^ ]*/password=<redacted>/')
   [ -n "$out" ] && echo "$out" || echo "    no app"
   # 归因两行一起看: "有 java 进程"和"端口上就是它"是两件事（缺陷 #55 就是这么骗过 verify 的）。
-  echo "    app.pid=$(cat "$DIR/app.pid" 2>/dev/null || echo '<无>')  端口 $APP_PORT 上=$(port_pid || true)<无>" \
-    | sed "s/\$/APP_PORT/$APP_PORT/"
+  # 这一行原先尾随一句 `| sed "s/\$/APP_PORT/$APP_PORT/"`，从 #55 起就是坏的：双引号里 `\$` 先出 `$`，
+  # 于是表达式变成 `s/$APP_PORT/18090/` —— sed 以 `/` 为分隔符，第三个 `/` 让它报
+  # "unknown option to `s'"、退出码 1（250 实测），整条 status 因 pipefail 一起非零；而 echo 里那句
+  # `$APP_PORT` 本来就已经展开，这句 sed 是想补没有的。顺带 `${have:-<无>}`：原先空与非空都尾随一个
+  # `<无>`，端口上真有 pid 时读起来反而像"没有"。
+  local have; have=$(port_pid || true)
+  echo "    app.pid=$(cat "$DIR/app.pid" 2>/dev/null || echo '<无>')  端口 $APP_PORT 上=${have:-<无>}"
   docker ps --format '{{.Names}} {{.Status}} {{.Ports}}' | grep "$DB_CONTAINER" || echo "    no container"
   ls -la "$DIR/logs" 2>/dev/null | tail -4 || true
 }
 
 case "${1:-status}" in
-  db|schema|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair|healthproof)
+  db|schema|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair|healthproof|fireprobe)
     step="step_$1"; shift; "$step" "$@" ;;
-  *) echo "用法: bash -s -- [db|schema [库名]|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair|healthproof]"; exit 2 ;;
+  *) echo "用法: bash -s -- [db|schema [库名]|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair|healthproof|fireprobe]"; exit 2 ;;
 esac

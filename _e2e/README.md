@@ -17,8 +17,8 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar --spring.profiles.acti
 mvn -o -B clean install          # 4677 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1276+112+63；z-lc-web 那 63 个里 61 个是 LcHttpContractTest 的真 HTTP 集成测试）
 python3 _e2e/e2e_api_test.py     # 464/464 项断言，打真在跑的 server
 python3 _e2e/probe_stats.py      # 非数值统计与字典值域 warning 的即席探针（要 server 在跑）
-cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 27 文件/252 用例 + vite build（产物 index-C4lf5SiW.js）
-E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 222 项/轮（先 build，preview 见下文）
+cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 28 文件/252 用例 + vite build（09-27 06:1x 实测产物 index-ruBdvAdn.js。⚠ 这个名**不是身份**：同一份 src 本机 rollup 会给出不同名，见下文"#69：产物名不能当还原判据"）
+E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 279 项/轮（先 build，preview 见下文。⚠ 这一行原写 222，是 09-26 那窗的数；#61 §2.5 给流程绑定页补了断言，09-27 05:0x 实测 `~/.cache/zlc61/browser_guard/00_baseline.log` 逐字 `=> PASS 279 / FAIL 0`，两跑（第二轮基线 / 第三轮基线）都是 279）
 bash _e2e/deploy_250.sh gates    # 部署层四道闸，各自带负控，都要能红（见「部署演练怎么跑」一节）
 ```
 
@@ -1675,6 +1675,54 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 （本窗实测 `z_lc` 从 39 张涨到 **49** 张，逐名列出后确认新增的都是 `e2e_pq_*` / `e2e_pipe_*` / `e2e_fc*` 这几族探针表，
 `z_lc_*` 元数据 14 张一张没多）。这不是脏数据（每一张都是那一轮真打出来的表），但**别把"表数"当判据**——
 它只说明"这里跑过几轮"，闸 3 的判据是校对而不是表数。
+
+---
+
+### ⚠ 缺陷 #69：本机 rollup **不逐字节可复现**，"产物回到基线字节"这一条判据没有猎物（2026-09-27，浏览器注入量具）
+
+出处是 `z-lc-admin-ui/e2e/mutate_workflow_browser_guard.py`（18 支 W1–W18，打 `WorkflowsPage.tsx`）的第三轮整族跑，
+尾行 `RESULT: 1 problem(s)`，而那一整轮 18 支注入**逐支 OK**、无一条连带红 —— 唯一那条红出在恢复轮，逐字（`~/.cache/zlc61/browser_guard/run3.out:138`）：
+
+```
+  !! 恢复后产物 index-ruBdvAdn.js|d6d15714… != 基线 index-DBJrrqb7.js|5f2afecc… —— 源码回来了而产物没回来
+```
+
+它想防的是"变异没还原"。但它抓不到那一轮真正要防的东西，反而是**必然红**：`PAGE` 的 md5 在恢复轮前后是同一个值
+（`87b30e33…`，本窗再次实测仍是这个），
+也就是说**源码逐字节回来了它照样红**。一条"几乎必然红"的判据和一条"几乎必然不触发"的判据是同一枚硬币 ——
+前者会把"量具有病"记成"产品坏了"，本窗就是这么撞上的。
+
+漂移不是罕见事件，是这一族的常态。六次"干净 src"构建，两个名字，交替出现（每行的日志现在还在盘上）：
+
+| 时刻 | 谁构建的 | 产物 | 那时 src 是不是同一份 |
+| --- | --- | --- | --- |
+| 03:44:25 | `build_7b.log`（本窗早先的一次 build） | `index-DBJrrqb7.js` | — |
+| 05:02:10 | 整族第三轮基线 | `index-DBJrrqb7.js` | — |
+| 06:00:02 | 整族第三轮恢复轮 | `index-ruBdvAdn.js` | `WorkflowsPage.tsx` md5 与基线前后逐字节同为 `87b30e33…` |
+| 06:09:21 | 收窄跑基线 | `index-ruBdvAdn.js` | — |
+| 06:15:11 | 收窄跑恢复轮 | `index-DBJrrqb7.js`（← 与本轮基线不同名） | 新判据现量：恢复轮 src 指纹 **==** 基线指纹 |
+| 06:19:52 | `npm run check` | `index-ruBdvAdn.js`（← 与上一行同 src） | 中间只改过 `_e2e/README.md`（不在 `src/` 里） |
+
+看第 3–5 行：**恢复轮和紧随其后的 `npm run check` 拿同一份 src 得出两个不同名**，方向和第三轮还相反。
+所以产物名在这一层不能当身份，连"两次同名 ⇒ 同一份源码"这种反方向推都不成立。
+
+修法（判据换尺，不是把红改成不红）：
+- 恢复判据改为 `src_digest()` —— `z-lc-admin-ui/src/**` 逐文件（相对路径 + 字节）的 md5。它管得住旧尺管不住的那一半
+  （`PAGE` 之外的文件被留在变异态），也不管产物名。
+- 产物名**照旧打印**，只是降级成信息：漂移要看得见，但不许当判据。
+- 新增 `--only <Wxx>` 收窄跑，并强制它在日志头上写「⚠ 收窄跑：…**不能**当『W1–W18 整族自证』的账」——
+  收窄跑的 `RESULT` 只证明改过的判据在真 build/真浏览器轮次里跑得通。
+- 新增 `--selftest`（不 build、不抢 5274）：A 动 `WorkflowsPage.tsx` **之外**的一个 src 文件 ⇒ 指纹必须变而 `PAGE` 文本逐字不变
+  （把旧尺的瞎处演出来）；B 撤掉探针 ⇒ 指纹必须回到基线（回不去就是还原步没做完，新判据自己就是空的）；
+  C 造一支"锚点落空"的变异 ⇒ 指纹不变，证明 `main()` 里那条新红支可达。06:0x 实测 `SELFTEST RESULT: 0 problem(s)` / `SELFTEST_EXIT=0`。
+
+收窄跑（`--only W12`，06:09:16 起，`run4_narrow.out`，`NARROW_EXIT=0`）的实际读数：基线 `=> PASS 279 / FAIL 0`、
+W12 红 6 条（与整族第三轮那 6 条**逐字相同** —— 把行尾墙上时钟归一后 `diff` 为空）、恢复轮 `PASS+FAIL 279 / 红 0`，
+而这一轮照样发生了上表那次产物漂移 ⇒ **它没有再红**。这是新尺的第一次实战：旧尺在这一轮会给出第二条假红。
+
+⚠ 别把这条结论外推到 java / 部署层：`_e2e/mutate_collation_guard.py` 那类量具写的
+"每支跑完必比『产物指纹变了 / 还原后回到基线指纹』"（见上一节）在它们那一层是**有牙的** —— 编译件逐字节可复现。
+坏的不是那条判据，是把它搬到一台 rollup 不确定的机器上。
 
 ---
 
