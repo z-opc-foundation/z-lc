@@ -6,6 +6,7 @@ import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowFireMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
@@ -68,7 +69,6 @@ public class WorkflowTriggerDispatcher {
     private WorkflowFireMapper fireMapper;
 
     private long timeoutMs = DEFAULT_TIMEOUT_MS;
-
     /** 2 槽、不排队：宁可当场判"额度用尽"，也不要让一批写请求排在一条挂死的 HTTP 调用后面. */
     private ExecutorService workers = newWorkers();
 
@@ -98,6 +98,13 @@ public class WorkflowTriggerDispatcher {
         this.fireMapper = fireMapper;
     }
 
+    /**
+     * 类注释里那句"配置项 {@code z-lc.workflow.dispatch-timeout-ms} 可覆盖"之前只是写着，没有任何地方
+     * 把它绑进来 —— 这是 #42 那一族的反面（那族是有人绑没人读，这一支是有人写进注释没人绑）。
+     * 契约层 {@code WorkflowTriggerContractTest} 用 250ms 起服务并断言 FAILED 行里点名的就是这个值，
+     * 摘掉下面这个注解会当场红。
+     */
+    @Value("${z-lc.workflow.dispatch-timeout-ms:3000}")
     void setTimeoutMs(long timeoutMs) {
         this.timeoutMs = timeoutMs;
     }
