@@ -1695,7 +1695,14 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 "MySQL 8 的 `tables` 视图里那一列到底叫什么"只有 250 上的闸 4 说得清。**替身能模仿真库，不能代替真库**；
 反过来也一样：这一窗四道闸全绿 ≠ 那 464 条断言证过校对这件事（它们里只在真库上跑的那一层才第一次撞到 #51）。
 
-⚠ **提交状态（16:5x 现数，`git status --porcelain` 当场量的）**：见文末那一格。
+⚠ **提交状态（17:3x 现数，`git status --porcelain` / `git ls-remote` / `git show --stat` 当场量的，不是回忆）**：
+本窗这一批 **16 个路径**已提交并推送 —— HEAD = **`e68104be0ad1ed2a8780b5cb9cf25e40ad36a992`**，
+`git ls-remote origin refs/heads/main` 读回**同一个 sha**（不是"提交了但还在本地"），
+`git show --stat HEAD` = **16 files / +3290 −73**。提交后 `git status --porcelain` = **2 行**，
+逐字是 `?? z-lc-admin-ui/pnpm-lock.yaml` 与 `?? z-lc-admin-ui/pnpm-workspace.yaml` —— 那两份**不是我的**
+（别的会话在飞的改动），所以这个仓**永远禁 `git add -A`，只按路径点名 commit**（本批 16 个路径逐个 `git add --`，
+提交前后各数一次 `git diff --cached --name-only | wc -l` = 16）。
+本格自身是提交**之后**改的，由紧随其后那一笔只动 `_e2e/README.md` 的 docs 提交带走。
 
 **09-26 08:3x – 08:4x 这一窗（#48 权限这一族收线：三层注入自证同轮跑齐）五道闸串行同轮实跑，
 五个退出码一起落在 `~/.cache/zlc48/gates/chain48.status`，日志各自在 `~/.cache/zlc48/gates/{java_full48,boot48,run_api48,npm_check48,browser48}.log`：**
