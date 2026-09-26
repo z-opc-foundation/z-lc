@@ -291,6 +291,38 @@ class LcHttpContractTest {
     }
 
     @Test
+    @DisplayName("缺陷#52：health 的 UP 必须是量出来的 —— 上下文里有几个池就得报几条明细")
+    void healthCarriesOneRealProbePerDataSource() throws Exception {
+        JsonNode node = get("/api/lc/health");
+        assertOk(node, "health");
+        JsonNode data = node.path("data");
+        JsonNode sources = data.path("sources");
+
+        assertTrue(sources.isArray() && sources.size() > 0,
+                "sources 必须是逐池明细，不能只有一句总括: " + data);
+        // 分母不写死：拿上下文里真实的 DataSource bean 数对账，
+        // 把 dataSourceLc 从探活集合里摘掉、或干脆只探主池，这条立刻红。
+        assertEquals(allDataSources.size(), sources.size(),
+                "每一个连接池都要被探到 (上下文里共 " + allDataSources.size() + " 个): " + sources);
+
+        List<String> names = new ArrayList<>();
+        for (JsonNode s : sources) {
+            names.add(s.path("name").asText(""));
+            assertEquals("UP", s.path("status").asText(),
+                    "测试上下文里两个池都真连得上，任何一条 DOWN 都是探活没跑成真: " + s);
+            assertTrue(s.path("latencyMs").isNumber(), "明细要带实测耗时: " + s);
+            assertFalse(s.path("database").asText("").isEmpty(), "明细要带库产品/版本: " + s);
+            assertTrue(s.path("url").asText("").startsWith("jdbc:"),
+                    "url 要取自连接自己读到的元数据 (编不出来), 且凭证已抹掉: " + s);
+        }
+        assertTrue(names.contains("dataSourceLc"),
+                "z-lc 所有业务查询走的都是 LC 池，它不在探活集合里就等于没探: " + names);
+        assertEquals("UP", data.path("status").asText(), "全好才 UP: " + data);
+        assertFalse(node.toString().contains("password"),
+                "健康检查是无需鉴权的公开端点，响应里不许出现任何凭证字段: " + node);
+    }
+
+    @Test
     @DisplayName("缺陷#2 回归：dict JOIN 的占位符不得和 tenant 参数互相绑错")
     void runtimeListWithDictFieldReturnsRowsAndLabels() throws Exception {
         JsonNode node = post("/api/lc/runtime/list", "{\"page\":1,\"size\":20}",

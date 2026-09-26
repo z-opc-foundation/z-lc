@@ -114,6 +114,30 @@ j, s, _ = call("GET", "/api/lc/health")
 ok("health returns Result envelope", j)
 check("health data.status == UP", isinstance(j, dict) and D(j).get("status") == "UP", j)
 
+# 缺陷 #52: 这一族的 `data.status` 从前是 HealthController 里写死的一句 "UP"，
+# 于是"200 UP + 第一条业务查询 500 Connection refused"能同轮共存整整两个版本。
+# 现在它是**逐池真探**的结果，所以门禁要从"读一个常量"改成"数得清探了谁、探到了什么"。
+# 口径: 只认响应体里由 JDBC 元数据现出来的量（database 是 product+version、latencyMs 是
+# 一次真 SELECT 1 的耗时）—— 这些量硬编码不出来，写死 UP 的那一版当场判红。
+sources = D(j).get("sources")
+check("health carries a per-DataSource probe list", isinstance(sources, list) and len(sources) > 0,
+      f"sources={str(sources)[:200]}")
+if isinstance(sources, list) and sources:
+    bad_shape = [one.get("name") for one in sources
+                 if not (isinstance(one, dict)
+                         and one.get("status") == "UP"
+                         and isinstance(one.get("database"), str) and one["database"].strip()
+                         and isinstance(one.get("latencyMs"), (int, float))
+                         and isinstance(one.get("url"), str) and one["url"].startswith("jdbc:"))]
+    check("every health source is UP with database+latencyMs+jdbc url", not bad_shape,
+          f"不合格: {bad_shape} / 全量: {json.dumps(sources, ensure_ascii=False)[:400]}")
+    names = sorted(one.get("name") or "" for one in sources)
+    check("health probes the module pool dataSourceLc", "dataSourceLc" in names, names)
+    check("health probes every pool the app queries with (>= 2 sources)", len(sources) >= 2,
+          f"{len(sources)} 条: {names}")
+check("health payload never carries a password", "password" not in json.dumps(j, ensure_ascii=False).lower(),
+      "响应体里出现了 password 字样")
+
 # ---------------------------------------------------------------- app lifecycle
 print("\n[2] app lifecycle: create -> detail -> list -> update -> publish")
 j, _, _ = call("POST", "/api/lc/app/create", {

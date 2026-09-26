@@ -1671,10 +1671,43 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（最前面那张 16:4x–16:5x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+四层门禁当前状态（最前面那张 18:3x–19:1x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
 **不是当前数**。
 ⚠ 上一版这行写的是"10:4x 一轮实测"，而 19:5x 之后四层又各自重跑过 —— 表里每一行的时间戳才是证据，
 标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-26 18:3x – 19:1x 这一窗（#52 收线：`/api/lc/health` 的 UP 从此每池真探一次、配置不成串就拒起；
+顺带在部署量具自己身上撞出 #59/#60 两支）六层全部同轮重测，日志逐层落在 `~/.cache/zlc52_health_guard/`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**、**4706** 个用例 0 红 0 错 0 跳（`full_install3.log`，surefire 模块汇总行现加 = 2701+525+1276+112+**92**）。4677 → 4706 的 **+29 拆到文件级**：`git show HEAD:<文件>` 与盘上各数一次 `@Test` —— 新支 `DataSourceConfigGuardTest` **0 → 17**、`DataSourceHealthProberTest` **0 → 7**、`LcStartupRefusalTest` **0 → 4**、`LcHttpContractTest` **61 → 62**，加总正好 29，与模块级那条（z-lc-web 63 → 92）逐一对上 |
+| 接口 E2E（本机 H2） | `python3 _e2e/e2e_api_test.py http://localhost:18090` | **469/469**（`api_h2_fresh.log` 末行逐字 `=== E2E RESULT: 469/469 passed ===`），分母双向校验：`^  PASS ` 行数也 = **469**。464 → 469 的 **+5 是标题唯一集量出来的**（与 16:4x 那轮 `~/.cache/zlc57/gates/api_h2_57b.log` 逐条求差：新增 **5**、消失 **0**；5 条全在 health 那一节 —— 每池一条探活、每池 `UP`+`database`+`latencyMs`+`jdbc:` url、`dataSourceLc` 在列、`sources` ≥ 2、payload 不含 password）。打的是本窗 `clean install` 的那份件（`lsof` 现读 18090 的监听者 = pid 22098，那支 16:42 起的旧件已换成它）|
+| 接口 E2E（**真 MySQL 8**，隧道 18099） | `bash _e2e/deploy_250.sh api` | **469/469**（`api_mysql3.log`，`API_RC=0`）—— 同一份门禁脚本、同一个 469 分母，一次打 H2 一次打 MySQL 8；health 那五条在真库上读回的 `database` 是 `MySQL 8.0.26` |
+| 前端 | `cd z-lc-admin-ui && npm run typecheck && npm run lint && npm run test && npm run build` | tsc 0 / `eslint --max-warnings 0` 无输出 / **vitest 252/252（27 个文件）** / build 绿、产物 `index-C4lf5SiW.js`（`ui_gates3.log`）。四步是 `&&` 串的，末步 build 出了产物即前三步全过；252/27 与 16:4x 那轮 `check57b.log` 的 `Test Files 27 passed (27)` / `Tests 252 passed (252)` **逐字同**，#52 这一窗前端一条断言都没加 |
+| 真浏览器 | `E2E_REPEATS=3 node e2e/browser-e2e.mjs` | **三轮各自 `PASS 222 / FAIL 0`**、`全绿轮次: 3/3`、`BROWSER_EXIT=0`，产物指纹 `index-C4lf5SiW.js`（门禁自己那行写的是"比 src 里最新的文件新 6432s"，即测的确实是本轮 build 的产物）。⚠ 222 也是**量出来没动的**：与 16:5x 那轮 `browser57b.log` 各自的 PASS 标题唯一集求差 = 新增 **0** / 消失 **0** |
+| 部署（250 真 MySQL 8） | `bash _e2e/deploy_250.sh sync` → `start` → `verify` → `gates` | sync 回读 `jar 字节一致：bb48651152a723dc2651ecd3aeb28ba4`，另有第三次独立对账（`ssh 250 md5sum` 与本机 `md5 -q` 同值）；`start` 把旧进程收干净（`等了 29s, 端口 18090 空`）才起新件，且"端口上的监听者正是这次起的 pid=8045"；`verify` 读回的 health 是**两池各一条**：`dataSource` 与 `dataSourceLc` 都 `UP`、`database":"MySQL 8.0.26`、`url` 已抹成 `jdbc:mysql://127.0.0.1:33061/z_lc`、`latencyMs` 在。**`gates` 整批 `GATES_RC=0`、14 条 ✓**（`gates4.log`）：闸 1（`%q` / 裸写）、闸 2（`z_lc_misdeploy` 负控）、闸 3（探针表三段式）、闸 4（校对漂移）、healthproof 三档 |
+| 部署层自证（本窗新增，`gates` 的第五道） | `bash _e2e/deploy_250.sh healthproof` | 三档都在 250 上**真起过进程**（自带 pid/log/30 MB 体积保险丝，绝不 pkill）：**D1** 把 `SPRING_DATASOURCE_*` 从环境里真的 `env -u` 掉 ⇒ 进程**自己退出**、日志具名「z-lc 拒绝启动」并点名 `SPRING_DATASOURCE_URL`、端口不监听（修复前这一档实测是 6.656s 起来 + 200 UP + 第一条业务查询 500）；**D2** dev H2 ⇒ 聚合 UP、`sources` 里 `dataSourceLc` 在列、`"database":"H2`；**D3** url 形好而对面没人听 ⇒ **照样起得来**、聚合 `DOWN`、病句点名 `dataSourceLc`、主池仍如实 `UP`。D1/D3 一左一右就是"拒起"与"如实报"的分界线本身，只修一头都会让另一头的场景变错。修复后的写法连跑 **3/3 轮 `rc=0` 且 `✓ D` 计数=3**（`hp_fix_{1,2,3}.log`）|
+| 注入自证（#52 族，java 层） | `_e2e/mutate_health_honesty_guard.py`（**19 支**：H1–H17 + N1–N2） | `RESULT: 缺陷#52 的 19 支注入逐支按预期点名，产物已还原到基线字节`（`~/.cache/zlc52_health_guard/20260926-184508/guard.log`）；基线 `行数=646 具名红=[]`，四支被测文件还原行逐条 `字节相同`，还原后复测 `构建并跑齐 / 具名红=[]`。⚠ **18:39 的第一轮（`mut20.out`）报了 3 处"预期之外"，改的是这本账、不是断言**：H6 摘掉 `mask()` ⇒ `mainPoolRefusesDriverUrlMismatch` 也红（驱动↔url 那条报错里同样带 `mask(url)`，那是第三个漏点，测试写着"异常也是对外面"，红得对是我漏记）；H7/H8 放宽主池判据 ⇒ `guardRunsBeforeAnyDataSourceIsCreated` 也红（那支顺序断言是**双向**的，既要求"池没在闸之前出生"也要求 refresh 真抛）。**逃过 0 支**（两轮日志里 `!! 逃过` 各 0 次）|
+| 注入自证（本窗新加的三支结构性判据各自有牙） | 同上 | `guardRunsBeforeAnyDataSourceIsCreated`（校验挂在 `BeanFactoryPostProcessor` 而不是 `@PostConstruct`：BFPP 在**任何**单例实例化之前跑完 ⇒ "闸在池之前"是结构保证而不是运气；摘掉调用 = H13 红）、`refusesToRunBlindWithoutEnvironment`（`Environment` 走 `EnvironmentAware` 那条接线，因为 BFPP 的实例化发生在 `@Autowired` 基础设施就绪之前，实测 `No default constructor found`；env 为 null 时**拒起**而不是当成"没什么要查的" = H14 红）、`unknownDriverOrSchemeIsLeftAlone`（"认得才判"的让步：误拦会把一个本来能跑的部署挡在门外，所以 shaded 驱动/未知子协议一律不瞎猜 = H17 红，`acceptsRealJdbcUrls` 同红）|
+
+⚠ **这一窗最值钱的一条：闸自己也会撒谎，而且是在"结论对"的时候撒**。#60 —— `healthproof` 三档全 ✓，
+`gates` 整批退出码却是 **1**（`gates3.log`）。机理：`hp_cleanup` 写的是 `[ -n "$HP_ALIVE" ] && kill …`，
+D2/D3 分支已经自己 kill 过并把端口等空了，走到 trap 时那个 pid 早已退出 ⇒ `kill` 回 1 ⇒ 脚本开着
+`set -e`，整个 trap 中止在 `return 0` **之前**；而 bash 在脚本自然结束时**拿 EXIT trap 的最后一条状态
+当退出码**（本机确定性复现：`~/.cache/zlc52_health_guard/hp_trap_repro.sh`，旧写法 `rc=1` / 新写法 `rc=0`，
+两句都照样打印"三档全部 ✓"）。同一条链单独跑 `healthproof` 又常是 0（取决于那个 pid 有没有被回收成僵尸），
+把旧写法注回真实链路跑一轮也读到 rc=0 —— 所以这一支的账是"两轮里红过一轮"，不是"每次都红"。
+**"结论对、退出码随机"的闸比直接红更坏**：它在 CI 里既误报又稀释信任。同窗另一支是同一族：#59 ——
+`healthproof` 的端口我照抄成"我记得没人用的 18095"，实测它被 z-mcp-server（pid=6636）占着、18096/18097
+也是别人的，那道"不跟别人抢端口"的检查一上来就把这一族拦停（检查是对的，写死端口是我编的假设）⇒
+改成 `hp_pick_port` 在 18095–18104 里现挑并打印改用了哪一个（实测改用 18098）。
+
+⚠ **这一窗的边界，别读成"已证"**：闸只管**配置形状**，不管连通性 —— 库暂时起不来时进程要能起来并由
+`DataSourceHealthProber` 如实报 DOWN（D3 就是这条边界的负控）；驱动↔url 那条判据对**没见过的驱动**
+一律不判（H17 钉住的就是这条让步本身），所以拿一个 shaded 驱动配错 url 仍会走到 Druid 去撞；
+`/api/lc/health` 里的 `latencyMs` 是单条 `SELECT 1` 的耗时，不是业务查询的尾延迟。
+
 
 **09-26 14:2x – 16:5x 这一窗（部署演练：把 z-lc 打到 250 的真 MySQL 8 上，撞出 #51/#54/#55/#56/#57/#58；
 本窗动了 java 与部署量具，所以六层全部同轮重测）日志与退出码逐层落在 `~/.cache/zlc57/gates/`：**

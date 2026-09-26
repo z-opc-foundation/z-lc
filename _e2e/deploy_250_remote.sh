@@ -59,6 +59,25 @@ port_pid() {
 }
 port_busy() { [ -n "$(port_pid)" ]; }
 
+# health_aggregate_up —— 只看**聚合**判定，两半落在同一次读取里。
+# 缺陷 #52 之前 data.status 是 HealthController 里写死的一句 "UP"，`grep '"status":"UP"'` 恰好
+# 与它同义；现在 data 是 {status:<逐池真探的聚合>, sources:[{status:UP},…]}，每一池各带一个
+# "status":"UP"，于是那句裸 grep 从「总体好」悄悄退化成「至少一个池好」——主池接得上、模块池
+# Connection refused 的那一版部署（正是 #52 的现场）照样过闸。所以判"含 UP 且不含 DOWN"。
+health_aggregate_up() {
+  local body
+  body=$(curl -s -m 3 "http://127.0.0.1:$APP_PORT/api/lc/health" || true)
+  case "$body" in
+    *'"status":"DOWN"'*) return 1 ;;
+    *'"status":"UP"'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+health_body() {
+  curl -s -m 3 "http://127.0.0.1:$APP_PORT/api/lc/health" || true
+}
+
 count_sql() {
   # 只回一个整数；拿不到整数就当场 fatal（尺子读空会报"0 张表/0 行", 那是假绿）
   local out
@@ -172,8 +191,7 @@ step_start() {
       die "pid=$pid 还活着但应用没起来（端口或上下文冲突, 完整原因在 $LOG）"
     fi
     have=$(port_pid)
-    if [ "$have" = "$pid" ] \
-       && curl -s -m 3 "http://127.0.0.1:$APP_PORT/api/lc/health" | grep -q '"status":"UP"'; then
+    if [ "$have" = "$pid" ] && health_aggregate_up; then
       echo "  ✓ 端口 $APP_PORT 上的监听者正是这次起的 pid=$pid, health UP"
       return 0
     fi
@@ -189,10 +207,21 @@ step_verify() {
 
   local up=""
   for _ in $(seq 1 45); do
-    curl -s -m 3 "http://127.0.0.1:$APP_PORT/api/lc/health" | grep -q '"status":"UP"' && { up=1; break; }
+    health_aggregate_up && { up=1; break; }
     sleep 2
   done
   [ -n "$up" ] || { echo "--- 日志尾 20 行 ---"; tail -20 "$LOG" || true; die "45*2s 内 /api/lc/health 没回 UP"; }
+  # 缺陷 #52 之后 health 的 UP 是**逐池真探**的结果，所以这一道闸第一次能问出"这个进程到底
+  # 接没接上 250 上那台 MySQL 8"。修复前这里是问不出的：health 硬编码 UP，同一进程第一条业务
+  # 查询回 500 Connection refused（实测 Case A）。既然现在问得出，就必须问 —— 否则部署自证
+  # 只到"有个进程在应答"，接不上库的进程也算部署成功。
+  local hb
+  hb=$(health_body)
+  printf '%s' "$hb" | head -c 900 | sed 's/^/      health: /'; echo
+  printf '%s' "$hb" | grep -q '"name":"dataSourceLc"' \
+    || die "health 的 sources 里没有 dataSourceLc —— 模块池压根没被探到，这份 UP 不能算部署自证"
+  printf '%s' "$hb" | grep -q '"database":"MySQL 8' \
+    || die "health 探出的库不是 MySQL 8（真实响应: $(printf '%s' "$hb" | head -c 300)）"
   # health UP 只说明"有个进程在应答", 不说明应答的是**这次部署的那个构件**。先归因再往下：
   # 250 上实测过一次 all —— 旧进程没让出端口, 新进程 "already in use" 自杀, health 却照样 UP
   # (那是上一版构件答的), 再晚一步这个函数就会把它写成"部署自证通过"。
@@ -540,6 +569,186 @@ step_gate4() {
   echo "  ✓ 闸 4 咬得住：同一支实体、同一把尺，漂到 $BAD_COLLATE 时 FAILED 并给 CONVERT TO，搬回 $want 后转绿"
 }
 
+# ---------------------------------------------------------------------------
+# 缺陷 #52 的部署层自证：三档**真实启动**，钉住"配置形状坏 ⇒ 拒起；库暂时不可达 ⇒ 起得来但
+# 如实报 DOWN"。为什么要在这一层再量一次：#52 的三种坏形状全是进程级行为（启动期受不受理、
+# 探活超不超时、聚合算不算数），java 单测里我拿的是替身 Environment 和 Proxy DataSource，
+# "端口上到底有没有起来一个会答话的进程"这个量在单测层结构上拿不到；dev 那套 H2 更是三支都
+# 撞不着（Case A/B/C 全是真 MySQL 现场量出来的）。
+#   D1  环境变量没设上 ⇒ 主池 url 落成 ${SPRING_DATASOURCE_URL:HIDE_IN_REPO} 的字面值（Case A
+#       原样）。修复前实测：6.656s 起来、health 200 "status":"UP"、同进程第一条业务查询
+#       http=500 Connection refused。现在必须**自己退出**，且端口不监听。
+#   D2  两池都配好（dev H2）⇒ 起得来，sources 里两池各一条、dataSourceLc 在列、库产品看得见。
+#   D3  模块池 url 形好而对面的端口没人听 ⇒ **照样起得来**（暂时连不上的库不该拖死进程），
+#       而 health 聚合必须 DOWN 且 detail 点名 dataSourceLc —— D1/D3 这一左一右就是
+#       "拒起"与"如实报"的分界线本身：只修一头（比如一律拒起）都能让另一头的场景变错。
+# 三档一律起在自己的端口（现挑，见 hp_pick_port）+ 自己的 pid/log，绝不 pkill（那会打到 18090 那个实例）。
+# 每一档带日志体积保险丝：Case C 实测过"驱动对不上 url ⇒ Druid 建连线程无退避死循环，
+# 8 分钟刷 13 GB"，所以"日志没爆"本身就是这一族的一条断言，不只是防身。
+HP_PORT="${ZLC_HP_PORT:-18095}"
+HP_LOG_CAP=31457280   # 30 MB
+HP_ALIVE=""
+
+hp_pid() {
+  ss -ltnp 2>/dev/null \
+    | awk -v p=":$HP_PORT" '$4 ~ (p "$") {print; exit}' \
+    | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' || true
+}
+
+# hp_busy <port> → 该端口上的监听者 pid（没有则空）
+hp_busy() {
+  ss -ltnp 2>/dev/null \
+    | awk -v p=":$1" '$4 ~ (p "$") {print; exit}' \
+    | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' || true
+}
+
+# 端口现挑，不许照抄"我记得没人用的那个号"：18095 实测在 09-26 18:23 起被 z-mcp-server
+# (pid=6636) 占着，本轮 healthproof 一上来就被自己那道"不抢端口"的检查挡停 —— 检查是对的，
+# 写死端口是我编的假设。显式给了 ZLC_HP_PORT 时尊重它（那是人要复现某一档）。
+hp_pick_port() {
+  local p
+  if [ -n "${ZLC_HP_PORT:-}" ]; then
+    echo "  healthproof 用端口 $HP_PORT（ZLC_HP_PORT 指定）"
+    return 0
+  fi
+  for p in 18095 18096 18097 18098 18101 18102 18103 18104; do
+    if [ -z "$(hp_busy "$p")" ]; then
+      if [ "$p" != "$HP_PORT" ]; then
+        echo "  端口 $HP_PORT 已被 pid=$(hp_busy "$HP_PORT") 占着，改用 $p"
+      fi
+      HP_PORT="$p"
+      echo "  healthproof 用端口 $HP_PORT"
+      return 0
+    fi
+  done
+  die "18095~18104 全被占着 —— 这一族的三档没法跑，不许借用 18090（那是被验收的实例）"
+}
+
+hp_cleanup() {
+  # 这里原先写成 `[ -n "$HP_ALIVE" ] && kill "$HP_ALIVE" 2>/dev/null`：D2/D3 分支已经自己 kill
+  # 过、也把端口等空了，走到这一步那个 pid 早已退出，kill 回来就是 1 —— 脚本开着 set -e，整个
+  # trap 就在这一句中中止，下面的 `return 0` 根本没跑到。而 **bash 在脚本自然结束时拿 EXIT trap
+  # 的最后一条状态当退出码**（本机实测：`trap 'false' EXIT; echo hi` 的退出码是 1），于是三档
+  # 全部 ✓ 的一轮以 rc=1 收场（09-26 18:5x 跑 gates 整批复现；单独跑 healthproof 又常是 0，
+  # 取决于那个 pid 有没有被回收成僵尸 —— "结论对、退出码随机"的闸比直接红更坏）。
+  if [ -n "$HP_ALIVE" ]; then
+    kill "$HP_ALIVE" 2>/dev/null || true
+    wait "$HP_ALIVE" 2>/dev/null || true
+  fi
+  # 等端口真让出来再走：留着这一档端口上的监听者会让下一次 healthproof 误判"别人占着端口"
+  local i=0
+  while [ -n "$(hp_pid)" ] && [ "$i" -lt 30 ]; do sleep 1; i=$((i + 1)); done
+  return 0
+}
+
+hp_boot() {
+  local log="$1"; shift
+  local have
+  have=$(hp_pid)
+  [ -z "$have" ] || die "端口 $HP_PORT 已被 pid=$have 占着 —— 不跟别人的进程抢端口，先清干净再跑"
+  : > "$log"
+  # env -u：这一族的现场就是"部署时环境变量没设上"，所以 D1 必须真的把 SPRING_DATASOURCE_*
+  # 从环境里拿掉，而不是"我以为它没设"。
+  env -u SPRING_DATASOURCE_URL -u SPRING_DATASOURCE_USERNAME -u SPRING_DATASOURCE_PASSWORD \
+    java -jar "$JAR" --server.port="$HP_PORT" "$@" > "$log" 2>&1 &
+  # pid 走全局 HP_ALIVE，**不走 stdout**：调用方一律 `hp_boot … > /dev/null`，因为
+  # `pid=$(hp_boot)` 会把整段扔进子 shell，那里的 HP_ALIVE 赋值回不到当前 shell（#58 那一族
+  # "在子 shell 里改状态"的另一种现形），后面的 kill/hp_wait 就会拿着空 pid 去操作。
+  HP_ALIVE=$!
+}
+
+# hp_wait <秒> → 打印 exited|blown|up|timeout 四种状态之一
+hp_wait() {
+  local max="$1" i=0 sz
+  while [ "$i" -lt "$max" ]; do
+    if ! kill -0 "$HP_ALIVE" 2>/dev/null; then echo exited; return; fi
+    sz=$(stat -c %s "$HP_LOG_CUR" 2>/dev/null || echo 0)
+    if [ "$sz" -gt "$HP_LOG_CAP" ]; then
+      kill "$HP_ALIVE" 2>/dev/null
+      echo "blown(${sz}B)"
+      return
+    fi
+    if [ "$(hp_pid)" = "$HP_ALIVE" ]; then echo up; return; fi
+    sleep 1; i=$((i + 1))
+  done
+  echo timeout
+}
+
+hp_health() {
+  curl -s -m 8 "http://127.0.0.1:$HP_PORT/api/lc/health" || true
+}
+
+step_healthproof() {
+  [ -f "$JAR" ] || die "$JAR 不存在 —— 先跑 sync"
+  hp_pick_port
+  trap hp_cleanup EXIT
+  local tag state body log
+  for tag in D1 D2 D3; do
+    log="$DIR/logs/healthproof-$(echo "$tag" | tr 'A-Z' 'a-z').log"
+    HP_LOG_CUR="$log"
+    echo "  --- $tag ($log) ---"
+    case "$tag" in
+      D1) # 默认 profile + 环境里没有 SPRING_DATASOURCE_* ⇒ url 解析成 HIDE_IN_REPO
+        hp_boot "$log" > /dev/null
+        state=$(hp_wait 70)
+        ;;
+      D2) hp_boot "$log" --spring.profiles.active=dev > /dev/null
+        state=$(hp_wait 90)
+        ;;
+      D3) hp_boot "$log" --spring.profiles.active=dev \
+              --z.base.db.lc.jdbc-url='jdbc:mysql://127.0.0.1:1/dead?connectTimeout=1000' \
+              --z.base.db.lc.driver-class-name=com.mysql.cj.jdbc.Driver \
+              --z.base.db.lc.username=dead --z.base.db.lc.password=dead > /dev/null
+        state=$(hp_wait 90)
+        ;;
+    esac
+    echo "    状态: $state  pid=${HP_ALIVE:-none}"
+    case "$tag" in
+      D1)
+        [ "$state" = "exited" ] || die "D1: 坏 url 下进程没有拒起（状态=$state）—— #52 的 fail-fast 没生效"
+        grep -q 'z-lc 拒绝启动' "$log" \
+          || die "D1: 进程退了，但日志里没有那句拒绝启动（那不是被闸拦的）：$(tail -5 "$log")"
+        grep -Eq 'SPRING_DATASOURCE_URL|z\.base\.db\.lc\.jdbc-url' "$log" \
+          || die "D1: 拒绝启动却没点名是哪个配置项 —— 运维照着改不了"
+        [ -z "$(hp_pid)" ] || die "D1: 拒起了却还在 $HP_PORT 上监听"
+        echo "    ✓ D1 拒起并点名配置项（修复前这一档是 200 UP + 第一条业务查询 500）"
+        ;;
+      D2)
+        [ "$state" = "up" ] || die "D2: 两池都配好却没起来（状态=$state）：$(tail -8 "$log")"
+        body=$(hp_health)
+        printf '    health: %s\n' "$(printf '%s' "$body" | head -c 700)"
+        if ! printf '%s' "$body" | grep -q '"status":"UP"'; then die "D2: 聚合不是 UP"; fi
+        # 注意这些"含 X 就 die"的每一支都必须写成 if…then，不能写 `grep && die`：
+        # 脚本开着 set -e，`cmd && die` 在 cmd 不成立的**好情况**下整条返回非零，
+        # 会在绿的那一刻静默中止（#58 的 EXIT-vs-RETURN 是同一族的另一种死法）。
+        if printf '%s' "$body" | grep -q '"status":"DOWN"'; then die "D2: 全配好了却有池 DOWN：$body"; fi
+        if ! printf '%s' "$body" | grep -q '"name":"dataSourceLc"'; then die "D2: sources 里没有 dataSourceLc"; fi
+        if ! printf '%s' "$body" | grep -q '"database":"H2'; then die "D2: 没探出库产品（database 不是 H2）"; fi
+        if printf '%s' "$body" | grep -qi 'password'; then die "D2: health 应答里出现了 password"; fi
+        echo "    ✓ D2 两池各被真探一次，sources 里点名 + 库产品 + latencyMs 都在"
+        kill "$HP_ALIVE" 2>/dev/null || true
+        while [ -n "$(hp_pid)" ]; do sleep 1; done
+        ;;
+      D3)
+        [ "$state" = "up" ] || die "D3: 库不可达却把进程一起拖死了（状态=$state）—— 闸管的是配置形状，不是连通性: $(tail -8 "$log")"
+        body=$(hp_health)
+        printf '    health: %s\n' "$(printf '%s' "$body" | head -c 700)"
+        if ! printf '%s' "$body" | grep -q '"status":"DOWN"'; then
+          die "D3: 模块池连的是没人的端口，health 却整个 UP：$body"
+        fi
+        if ! printf '%s' "$body" | grep -q '"name":"dataSourceLc"'; then die "D3: DOWN 了却没点名是哪个池"; fi
+        if ! printf '%s' "$body" | grep -q '"status":"UP"'; then
+          die "D3: 主池明明是好的，也该如实报 UP（逐池可见才对）：$body"
+        fi
+        echo "    ✓ D3 起得来、聚合 DOWN、病句里点名叫出 dataSourceLc（修复前是 200 UP 骗过所有闸）"
+        kill "$HP_ALIVE" 2>/dev/null || true
+        while [ -n "$(hp_pid)" ]; do sleep 1; done
+        ;;
+    esac
+  done
+  echo "  healthproof: D1 拒起 / D2 真探两池 / D3 不可达如实报 DOWN —— 三档都在 $HP_PORT 上真起过进程"
+}
+
 step_status() {
   # 只认 `java -jar …z-lc-admin`：pgrep -af 的 -f 会把我自己这条含字面量的命令行也算进去。
   # awk 无匹配也回 0，所以"有没有 app"要看输出空不空，不能看退出码。
@@ -555,7 +764,7 @@ step_status() {
 }
 
 case "${1:-status}" in
-  db|schema|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair)
+  db|schema|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair|healthproof)
     step="step_$1"; shift; "$step" "$@" ;;
-  *) echo "用法: bash -s -- [db|schema [库名]|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair]"; exit 2 ;;
+  *) echo "用法: bash -s -- [db|schema [库名]|env|start|verify|stop|status|gate1|gate2|gate3|gate4|collate|repair|healthproof]"; exit 2 ;;
 esac

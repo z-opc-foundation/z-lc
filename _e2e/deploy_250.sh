@@ -63,11 +63,21 @@ tunnel() {
   local code body
   code=$(curl -s -m 8 -o /tmp/zlc_tunnel_probe.json -w '%{http_code}' \
     "http://localhost:$LOCAL_TUNNEL/api/lc/health" || echo "000")
-  body=$(head -c 120 /tmp/zlc_tunnel_probe.json 2>/dev/null || true)
+  # 缺陷 #52 之后 health 的 data.status 是**逐池真探**的聚合，响应体里每个池各带一个
+  # "status":"UP"。于是"body 里含 \"status\":\"UP\""从「总体好」退化成「至少一个池好」——
+  # 一个池 DOWN、一个池 UP 也能过这道闸。要求"含 UP 且不含 DOWN"，两半落在同一次读取里。
+  # head -c 也要放宽：sources 会让响应从 ~80 字节涨到几百字节，切太早会连总体判定都看不见。
+  body=$(head -c 4000 /tmp/zlc_tunnel_probe.json 2>/dev/null || true)
   rm -f /tmp/zlc_tunnel_probe.json
   echo "    GET /api/lc/health → $code $body"
   [ "$code" = "200" ] || { echo "!! 隧道对不上 z-lc（$code）—— 别写'连上了'"; exit 5; }
-  case "$body" in *'"status":"UP"'*) ;; *) echo "!! 200 但不是 UP：$body"; exit 5 ;; esac
+  case "$body" in
+    *'"status":"UP"'*'"status":"DOWN"'*|*'"status":"DOWN"'*)
+      echo "!! 有数据源探活是 DOWN（隧道对上的这个进程接不上某个池），不算连上：$(echo "$body" | head -c 600)"
+      exit 5 ;;
+    *'"status":"UP"'*) ;;
+    *) echo "!! 200 但不是 UP：$body"; exit 5 ;;
+  esac
   echo "    隧道自证：http://localhost:$LOCAL_TUNNEL → $HOST:$APP_PORT，health UP"
 }
 
@@ -81,16 +91,19 @@ case "${1:-all}" in
   env)    rssh env ;;
   start)  rssh start ;;
   verify) rssh verify ;;
-  gates)  rssh gate1; rssh gate2; rssh gate3; rssh gate4 ;;
+  gates)  rssh gate1; rssh gate2; rssh gate3; rssh gate4; rssh healthproof ;;
   # 单道闸也要能单独跑：改了一道的判据只重跑那一道（整批 gates 会把 app.env 换来换去并重启三次）。
   gate1)  rssh gate1 ;;
   gate2)  rssh gate2 ;;
   gate3)  rssh gate3 ;;
   gate4)  rssh gate4 ;;
+  # 闸 5（缺陷 #52）：三档真启动自证——坏 url 拒起 / 两池真探 / 库不可达如实报 DOWN。
+  # 只在 18095 上起自己的进程，不碰 18090 那个线上实例。
+  healthproof) rssh healthproof ;;
   collate) rssh collate ;;
   repair)  rssh repair ;;
   api)    tunnel; echo "=== API 层门禁打远程 ==="; \
           python3 -u "$REPO/_e2e/e2e_api_test.py" "http://localhost:$LOCAL_TUNNEL" ;;
   all)    sync; rssh db; rssh schema; rssh env; rssh start; rssh verify; rssh collate; tunnel ;;
-  *) echo "用法: $0 [all|sync|db|schema|env|start|verify|collate|repair|gates|gate1|gate2|gate3|gate4|api|tunnel|status|stop]"; exit 2 ;;
+  *) echo "用法: $0 [all|sync|db|schema|env|start|verify|collate|repair|gates|gate1|gate2|gate3|gate4|healthproof|api|tunnel|status|stop]"; exit 2 ;;
 esac
