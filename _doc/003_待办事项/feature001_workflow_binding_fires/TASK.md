@@ -99,16 +99,35 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 
 ### 2.3 注入自证（缺这一支就不算闭）
 
-- [ ] 新建 `_e2e/mutate_workflow_trigger_guard.py`，沿用既有 18 支 `mutate_*.py` 的形状。
-      至少这几支，**每支都要出红**：
-      ① 摘掉 `RuntimeCrudController` 里的 `afterCreate(...)` 那一行 ⇒ 派发账 0 行（这一支同时是"接线还在"的复证）；
-      ② 把 `WorkflowTriggers` 的 implemented 列表塞进 `AFTER_UPDATE` ⇒ 词表/拒绝面两支同时红；
-      ③ 摘掉 `listByEvent` 的租户条件 ⇒ 外租户越界那支红；
-      ④ 把 `WfAdapter` 的路径改回 `/approval-center/process/start` ⇒ 路径那支红；
-      ⑤ 把状态码闸摘回 `!res.isSuccess()` ⇒ 500-信封那支红；
-      ⑥ 把 `data.processInstanceId` 读回成整个 map 的 `toString()` ⇒ 实例 id 那支红。
-- 量具规则：注入前先 `cp` 副本、还原只从副本 `cp` + `md5` 对账（**不许用 `git checkout --` 当还原步**），
-  复跑期间不改被测源码，台账要记"谁跑的"。
+- [x] 已建 `_e2e/mutate_workflow_trigger_guard.py`，沿用既有 `mutate_*.py` 的形状（在仓内、带 `_mutlock`、
+      台账落 `~/.cache/zlc61/mut/`）。六支 ①–⑥ = 量具里的 M1–M6，**每一支都出具名红**，
+      09-27 01:06 整轮实测（`~/.cache/zlc61/mut/logs/guard-0927-010646.log`）：
+      `RESULT: java-layer falsification done | 本轮 30 条具名红 / 分母 {'core': 68, 'web': 13}`、
+      `restored sources: clean`。逐支读数（core / web）：
+      ① M1 摘掉派发 0/10 —— 派发点在 web，core 层结构上看不见它（那条 0 就是一条判定，不是没跑）；
+      ② M2 塞 `AFTER_UPDATE` 进 implemented 5/2；
+      ③ M3 摘 `listByEvent` 的租户条件 3/1；
+      ④ M4 路径改回 `/approval-center/process/start` 2/1；
+      ⑤ M5 状态码闸摘回 `!res.isSuccess()` 2/1；
+      ⑥ M6 实例 id 读回成 `data.toString()` 2/1。
+      还原后两层复跑 68+13 全绿；每支都核过被改文件的 `.class` 指纹相对基线**变了**（编译器真的量了这份变异）。
+- 两处**实测推翻预期**的地方，按"改账不改软"处理，都记在量具的文件注释里：
+  * M2 第一跑多红一条 `WorkflowBindingServiceTest.updateShouldNotLetAValidRowBeTurnedIntoAnUnhonorableOne`
+    —— create 与 update 共用 `validateForWrite`，写入口的两个门一起漏。按名字认领，没有加白名单。
+  * M5 第一跑 **web 0 红**：契约层的桩只有"200 + success=false"一种拒绝形状，而 `HttpExecutionResult.isSuccess()`
+    对任何完成的响应都为真 ⇒ "判成功看状态码还是看信封"这个决定在运行时无处被检验。
+    这一格不是"注入不干净"，是**被测面缺一整格形状**，于是补了
+    `WorkflowTriggerContractTest.http5xxWithASuccessfulLookingBodyIsNotAFire`
+    （502 + 成功 body ⇒ 必须一行 FAILED、detail 带 `http=502`、不许留下 body 里那个实例号，
+    另配"状态码换回 200、body 一字不动 ⇒ STARTED"的阳性对照），契约层从 12 条变 13 条，
+    复跑 M5 才出上面那条 web 1 红。
+  * 顺带抓出一条**软断言**（已按实测记账，未改）：`WfAdapterTest.httpFailureCarriesStatusAndPath` 里
+    "要说清是 http 几"在 M5 下**假绿** —— 失败消息把整个 body 抄进文案，而那个 body 里正好有 "404"；
+    真红的是同一条方法里"要带上打的是哪条路径"。文案里混入回显内容 = 断言被写软。
+- 量具规则（原文照抄在上）已按实测口径实现：原始字节读进内存、还原只从内存写回 + 逐文件 md5 对账
+  （等价于"从副本还原"，且不受 /tmp 被扫影响；**没有**用 `git checkout --`）；锚点逐字唯一否则 SKIPPED；
+  分母每轮相等；XML 缺失或 0 用例直接抛（空参照集会打印"满分"）；复跑期间不改被测源码；
+  台账 `~/.cache/zlc61/mut/ledger.json` 记 `ran_by`（用户@主机 + pid）与每支 `injected_at`/`mutant_md5`。
 
 ### 2.4 接口层 E2E（部署在跑的那个 jar，不是测试进程）
 

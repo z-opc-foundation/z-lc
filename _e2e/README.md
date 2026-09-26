@@ -43,8 +43,9 @@ bash _e2e/deploy_250.sh gates    # 部署层四道闸，各自带负控，都要
 （收这条链时 5274/5275 都空了：脚本末尾按名字 `pgrep -f 'vite preview --port 5274'` + `kill -9`，把 06:27 那一支一起带走了 ——
 这一族脚本按端口/进程名清理时**会连别人那一支的 preview 一起杀**，用之前先想清楚这一点。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**35 支，后端 17 + 前端 18**
-（这个数不是敲出来的，09-26 16:5x 现敲：`ls _e2e/mutate_*.py | wc -l` = 17、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18）：
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**37 支，后端 19 + 前端 18**
+（这个数不是敲出来的，09-27 00:5x 现敲：`ls _e2e/mutate_*.py | wc -l` = 19、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18。
+上一版记的 17 之后又长了两支：`mutate_health_honesty_guard.py`（#52）与 `mutate_workflow_trigger_guard.py`（#61））：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -64,6 +65,8 @@ python3 _e2e/mutate_provision_contract_guard.py   # #47 的 java 契约层：K1.
 python3 _e2e/mutate_permission_service_guard.py    # 权限 #48 java 层：J1..J14（PermissionServiceTest + LcHttpContractTest，分母每轮钉 75 条，认领 25 条具名断言）
 python3 _e2e/mutate_permission_deployed_guard.py   # #48 打发出去的 fat jar：D1..D14，认领 `[15t]` 那 30 支探针里的 24 支（另 6 支是 ok() 夹具，不进判红账，理由写在该支开头）
 python3 _e2e/mutate_collation_guard.py             # 250 真库撞出的那一族 #51/#54/#57：M1..M13 + N1..N5（共 18 支，跑 SchemaAdminBizServiceTest + UndoServiceSnapshotFormatTest + LcHttpContractTest 那两支）
+python3 _e2e/mutate_health_honesty_guard.py        # #52 的 java 层：H1..H17 + N1..N2（账见「健康探针」那一节）
+python3 _e2e/mutate_workflow_trigger_guard.py      # #61 的 java 层：M1..M6 打 core 四类 + 契约层（分母每轮钉 68 + 13，认领 30 条具名断言）
 cd z-lc-admin-ui && python3 e2e/mutate_provision_report_guard.py # #47 的 vitest 层 M1..M18（DesignerProvision.test.tsx 15 例）
 cd z-lc-admin-ui && python3 e2e/mutate_provision_browser_guard.py # #47 的**浏览器层** P1..P6（自带 build + preview，11d 那 24 条）
 cd z-lc-admin-ui && python3 e2e/mutate_permission_browser_guard.py # #49/#50 的**浏览器层** M1..M9（自带 build + preview，11e 那 39 条静态 check 的账是机器核的：认领 ∪ NOT_COVERED == 扫到的全集）
@@ -89,17 +92,19 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 ⚠ **两支不能同时在飞**：它们都就地改写源文件，A 的"按字节还原"会把 B 正在判定的那份源码换掉。
 本轮实测踩到 —— 后台那支还没收线就前台再开一支，基线报出 1 条红
 （`字段表里不该预置引擎自建列: expected 3 to be 0`），那是**另一支的注入形状**，不是产品坏了。
-假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **30 支共用** `e2e/_mutlock.py`
-（**18 支前端全接**，后端接了 **12** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
+假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **32 支共用** `e2e/_mutlock.py`
+（**18 支前端全接**，后端接了 **14** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
 `mutate_pipeline_wiring_guard.py`、`mutate_pipeline_config_guard.py`、`mutate_replay_guard.py`（本窗补上：它改的
 `SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件）、`mutate_provision_reconcile_guard.py`、
 `mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py`、`mutate_edit_path_deployed_guard.py`，
 `mutate_permission_service_guard.py` / `mutate_permission_deployed_guard.py`
 （后者与前者的 D/J 编号虽不同战役，**改的是同一份 `PermissionService.java`**，不同锁就等于没有），
-以及部署演练这一族新加的 `mutate_collation_guard.py`（它同样就地改 `SchemaAdminBizService.java` + `UndoService.java`）
+以及部署演练这一族新加的 `mutate_collation_guard.py`（它同样就地改 `SchemaAdminBizService.java` + `UndoService.java`），
+#52 的 `mutate_health_honesty_guard.py`，和 #61 这一窗新加的 `mutate_workflow_trigger_guard.py`
+（它就地改 `RuntimeCrudController.java` —— 那正是流水线、权限、provision 那几支也要动的同一个文件）
 —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 18/12 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18 与
-`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 12 数出来的（09-26 16:5x 现敲），不是点的）；
+这个 18/14 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 14 数出来的（09-27 00:5x 现敲），不是点的）；
 仍未接锁的 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
@@ -1690,6 +1695,15 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 | 部署层自证（本窗新增，`gates` 的第五道） | `bash _e2e/deploy_250.sh healthproof` | 三档都在 250 上**真起过进程**（自带 pid/log/30 MB 体积保险丝，绝不 pkill）：**D1** 把 `SPRING_DATASOURCE_*` 从环境里真的 `env -u` 掉 ⇒ 进程**自己退出**、日志具名「z-lc 拒绝启动」并点名 `SPRING_DATASOURCE_URL`、端口不监听（修复前这一档实测是 6.656s 起来 + 200 UP + 第一条业务查询 500）；**D2** dev H2 ⇒ 聚合 UP、`sources` 里 `dataSourceLc` 在列、`"database":"H2`；**D3** url 形好而对面没人听 ⇒ **照样起得来**、聚合 `DOWN`、病句点名 `dataSourceLc`、主池仍如实 `UP`。D1/D3 一左一右就是"拒起"与"如实报"的分界线本身，只修一头都会让另一头的场景变错。修复后的写法连跑 **3/3 轮 `rc=0` 且 `✓ D` 计数=3**（`hp_fix_{1,2,3}.log`）|
 | 注入自证（#52 族，java 层） | `_e2e/mutate_health_honesty_guard.py`（**19 支**：H1–H17 + N1–N2） | `RESULT: 缺陷#52 的 19 支注入逐支按预期点名，产物已还原到基线字节`（`~/.cache/zlc52_health_guard/20260926-184508/guard.log`）；基线 `行数=646 具名红=[]`，四支被测文件还原行逐条 `字节相同`，还原后复测 `构建并跑齐 / 具名红=[]`。⚠ **18:39 的第一轮（`mut20.out`）报了 3 处"预期之外"，改的是这本账、不是断言**：H6 摘掉 `mask()` ⇒ `mainPoolRefusesDriverUrlMismatch` 也红（驱动↔url 那条报错里同样带 `mask(url)`，那是第三个漏点，测试写着"异常也是对外面"，红得对是我漏记）；H7/H8 放宽主池判据 ⇒ `guardRunsBeforeAnyDataSourceIsCreated` 也红（那支顺序断言是**双向**的，既要求"池没在闸之前出生"也要求 refresh 真抛）。**逃过 0 支**（两轮日志里 `!! 逃过` 各 0 次）|
 | 注入自证（本窗新加的三支结构性判据各自有牙） | 同上 | `guardRunsBeforeAnyDataSourceIsCreated`（校验挂在 `BeanFactoryPostProcessor` 而不是 `@PostConstruct`：BFPP 在**任何**单例实例化之前跑完 ⇒ "闸在池之前"是结构保证而不是运气；摘掉调用 = H13 红）、`refusesToRunBlindWithoutEnvironment`（`Environment` 走 `EnvironmentAware` 那条接线，因为 BFPP 的实例化发生在 `@Autowired` 基础设施就绪之前，实测 `No default constructor found`；env 为 null 时**拒起**而不是当成"没什么要查的" = H14 红）、`unknownDriverOrSchemeIsLeftAlone`（"认得才判"的让步：误拦会把一个本来能跑的部署挡在门外，所以 shaded 驱动/未知子协议一律不瞎猜 = H17 红，`acceptsRealJdbcUrls` 同红）|
+
+**09-27 00:5x–01:0x 追加：#61（流程绑定「存了但运行期一个字都不执行」）的 java 层注入自证收线**
+
+| 层 | 命令 | 实测（同一窗现读，`~/.cache/zlc61/mut/logs/guard-0927-010646.log` + 台账 `ledger.json`） |
+|---|---|---|
+| 注入自证（#61 族，java 层） | `python3 _e2e/mutate_workflow_trigger_guard.py`（**6 支** M1–M6，每支 core + web 两层都跑） | 末行逐字 `RESULT: java-layer falsification done \| 本轮 30 条具名红 / 分母 {'core': 68, 'web': 13}` + `restored sources: clean`。基线两层 0 红；逐支 core/web = **M1 0/10、M2 5/2、M3 3/1、M4 2/1、M5 2/1、M6 2/1**；还原后复跑 68+13 全绿；每支的 `.class` 指纹相对基线**都变了**（编译器确实量了这份变异，不是拿旧字节码复述上一轮）。未预期红 0 条、逃过 0 支 |
+| ⇒ 这一支反过来把被测面补宽了一格 | `WorkflowTriggerContractTest.http5xxWithASuccessfulLookingBodyIsNotAFire`（新增，12 → **13** 条） | M5 第一跑 **web 0 红**。查下来不是"运行时不受影响"而是**契约层没有"引擎回非 2xx"这一格形状**（桩只有"200 + `success=false`"，而 `HttpExecutionResult.isSuccess()` 对任何完成的响应恒真，字节码 `iconst_1 → putfield success`）⇒ "判成功看状态码还是看信封"这个决定在真进程边界上无处被检验。补了 502+成功 body（必须是一行 `FAILED`、`detail` 带 `http=502`、body 里那个实例号一个字都不许留下）再加 200 同 body 的阳性对照，M5 才有了第四层的牙 |
+| ⇒ 顺带抓出一条**软断言**（记账，未改） | `WfAdapterTest.httpFailureCarriesStatusAndPath` | M5 下"要说清是 http 几"**假绿** —— 失败消息把整个 body 抄进文案，而那个 body 里正好有 `"404"`；真红的是同一条方法里的"要带上打的是哪条路径"。**断言的文案里混入被回显的内容 = 把它写软了**，这种绿只有注入看得见 |
+| ⇒ 一处**预期红集漏记**（改账不改软） | `WorkflowBindingServiceTest.updateShouldNotLetAValidRowBeTurnedIntoAnUnhonorableOne` | M2 第一跑多红这一条。读下来是真连带：create 与 update 共用 `validateForWrite` ⇒ 名单一混，"先建一条合法的、再把它改成合法的以外"那条绕过创建闸的路一起漏。按名字认领进 M2 的账，**没有**加白名单、也没有把断言改软 |
 
 ⚠ **这一窗最值钱的一条：闸自己也会撒谎，而且是在"结论对"的时候撒**。#60 —— `healthproof` 三档全 ✓，
 `gates` 整批退出码却是 **1**（`gates3.log`）。机理：`hp_cleanup` 写的是 `[ -n "$HP_ALIVE" ] && kill …`，

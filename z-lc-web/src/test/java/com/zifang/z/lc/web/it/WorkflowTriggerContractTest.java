@@ -247,6 +247,40 @@ class WorkflowTriggerContractTest {
     }
 
     @Test
+    @DisplayName("#61 引擎回 5xx 而 body 写着成功：那是没起来，账上不能记成 STARTED")
+    void http5xxWithASuccessfulLookingBodyIsNotAFire() throws Exception {
+        // 这一格形状是量具逼出来的，不是设想出来的：注入 M5（把 `if (!CtcAdapter.httpAccepted(res))`
+        // 摘回 `if (!res.isSuccess())`）在 core 层红两条、在这一层**一条都不红**。查下来是这一族
+        // 此前只有"200 + success=false"一种拒绝形状，而 z-util-http 对任何**完成**的响应都置
+        // success=true（字节码 iconst_1 → putfield success）⇒ "判成功看状态码还是看信封"这个决定
+        // 在运行时无处被检验。补上 5xx+成功 body 这一格，M5 才有第四层（真进程边界）的牙。
+        String app = provisionedApp("fivexx");
+        assertOk(createBinding(app, "{\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"p_5xx\"}"),
+                "绑定登记");
+        // body 仍是那句带 processInstanceId 的成功信封，只有状态码换成 502 ——
+        // 这正是"网关把后端的 200 应答连着 502 一起吐出来"的形态：那一句流程很可能根本没起。
+        STUB.status(502);
+
+        long recordId = writeRecord(app, "{\"ref\":\"HX-1\"}");
+        assertTrue(recordId > 0, "引擎回 5xx，用户这条记录照样要落地");
+        JsonNode fire = fireRow(app, recordId);
+        assertEquals("FAILED", fire.path("status").asText(),
+                "5xx 时 body 里那个 processInstanceId 一个字都不能信: " + fire);
+        assertFalse(fire.path("instanceId").asText().contains("wf-stub-77"),
+                "把一次没发生的发起记成有实例号，等于留下一条查无此单的账: " + fire);
+        assertTrue(fire.path("detail").asText().contains("http=502"),
+                "失败原因要说清是 http 几，只写「发起失败」等于让人去翻日志: " + fire);
+        assertEquals(1, STUB.count(), "这一支测的是「打出去了、引擎用 5xx 说话」: " + STUB.requests());
+
+        // 阳性对照：状态码换回 200、body 一字不动 ⇒ 必须算一次成功发起。少了这一句，上面的
+        // FAILED 就分不开"5xx 判得对"和"这一格恒 FAILED"（#48 收口时"0 要有阳性对照"同一条）。
+        STUB.reset();
+        long ok = writeRecord(app, "{\"ref\":\"HX-2\"}");
+        assertEquals("STARTED", fireRow(app, ok).path("status").asText(),
+                "同一个 body 在 200 下必须算成功，否则上面那三条是常数: " + STUB.requests());
+    }
+
+    @Test
     @DisplayName("#61 引擎回得慢：在配置的 250ms 上被切掉，而不是共享客户端那个 60s 读超时")
     void slowEngineIsCutOffAtTheConfiguredDeadline() throws Exception {
         String app = provisionedApp("slow");
