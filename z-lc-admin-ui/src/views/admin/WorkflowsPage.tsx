@@ -1,37 +1,39 @@
-import { useCallback, useState } from 'react';
-import { Button, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { Button, Drawer, Input, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
-import type { WorkflowBindingEntity } from '@/api/types';
+import type { WorkflowBindingEntity, WorkflowFireEntity } from '@/api/types';
 import {
   createWorkflowBinding,
   deleteWorkflowBinding,
   listWorkflowBindings,
+  listWorkflowFires,
   updateWorkflowBinding,
 } from '@/api/workflowBinding';
 import { DEFAULT_TENANT_CODE } from '@/api/client';
 import { formatTime } from './_scope';
+import { triggerLabel, useWorkflowVocabulary } from './_workflow';
 import { AdminScaffold, ListBanner } from './_shared';
 import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
-const TRIGGERS = [
-  { value: 'AFTER_CREATE', label: '创建后' },
-  { value: 'AFTER_UPDATE', label: '更新后' },
-  { value: 'AFTER_DELETE', label: '删除后' },
-];
-
 export function WorkflowsPage() {
   const { appCode, setAppCode, options, error: appError, reload: reloadApps } = useAppSelection();
   const entitiesSource = useEntityOptions(appCode);
   const entityOptions = entitiesSource.options;
+  const triggers = useWorkflowVocabulary();
   const [editing, setEditing] = useState<WorkflowBindingEntity | null>(null);
+  const [firesOf, setFiresOf] = useState<WorkflowBindingEntity | null>(null);
 
   const { rows, state, error, loading, reload } = useResourceList<WorkflowBindingEntity>(
     () => listWorkflowBindings(appCode),
     appCode || null,
   );
+
+  const implemented = triggers.vocabulary.implemented;
+  const rejectedReasons = new Map(triggers.vocabulary.rejected.map((item) => [item.event, item.reason]));
+  const triggerSelectOptions = implemented.map((event) => ({ value: event, label: triggerLabel(event) }));
 
   const save = useCallback(async () => {
     if (!editing) return;
@@ -47,17 +49,36 @@ export function WorkflowsPage() {
       setEditing(null);
       reload();
     } catch (err) {
-      message.error(err instanceof Error ? err.message : '保存失败');
+      // 这一句不能只留"保存失败"：写入口拒的是兑现不了的形态，原因点名了要改哪一格
+      // （哪个事件没有挂接点、autoSubmit 关掉等于没这条绑定）。用户看不见原因就是白挨一次 400。
+      message.error(err instanceof Error && err.message ? err.message : '保存失败');
     }
   }, [editing, appCode, reload]);
 
   const columns: ColumnsType<WorkflowBindingEntity> = [
-    { title: '实体', dataIndex: 'entityCode', width: 180 },
+    { title: '实体', dataIndex: 'entityCode', width: 160 },
     {
       title: '触发时机',
       dataIndex: 'triggerEvent',
-      width: 120,
-      render: (value: string) => <Tag>{TRIGGERS.find((item) => item.value === value)?.label ?? value}</Tag>,
+      width: 170,
+      render: (value: string, row) => {
+        const event = (value ?? '').trim();
+        if (implemented.includes(event)) {
+          return <Tag data-testid={`workflow-trigger-${row.id ?? event}`}>{triggerLabel(event)}</Tag>;
+        }
+        // 词表读失败时不许把每一行都标成"引擎不兑现" —— 那是把量具的故障说成数据的问题。
+        if (triggers.status !== 'ready') {
+          return <Tag data-testid={`workflow-trigger-${row.id ?? event}`}>{triggerLabel(event)} 时机未校对</Tag>;
+        }
+        const reason = rejectedReasons.get(event);
+        return (
+          <Tooltip title={reason ?? '引擎没有这个事件的挂接点，这条绑定不会发起任何流程'}>
+            <Tag color="red" data-testid={`workflow-trigger-${row.id ?? event}`}>
+              {triggerLabel(event)} 引擎不兑现
+            </Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '流程定义 Key',
@@ -67,16 +88,30 @@ export function WorkflowsPage() {
     {
       title: '自动提单',
       dataIndex: 'autoSubmit',
-      width: 90,
-      render: (value: number | null | undefined) => (Number(value ?? 0) === 1 ? '是' : '否'),
+      width: 120,
+      render: (value: number | null | undefined, row) => {
+        // 运行期按 auto_submit=1 筛绑定（WorkflowBindingService.listByEvent），所以这一格为 0
+        // 的老数据是真的不会发起 —— 标出来，而不是显示一个"否"让人以为只是没开开关。
+        if (Number(value ?? 1) === 1) return '是';
+        return (
+          <Tooltip title="关掉自动提单之后这条绑定没有任何运行时行为：记录创建时不发起流程。写入口现在也拒这种形态。">
+            <Tag color="red" data-testid={`workflow-autosubmit-${row.id ?? 'x'}`}>
+              不会发起
+            </Tag>
+          </Tooltip>
+        );
+      },
     },
     { title: '更新', dataIndex: 'updateTime', width: 150, render: (v: string | number | null | undefined) => formatTime(v) },
     {
       title: '',
       key: 'ops',
-      width: 110,
+      width: 170,
       render: (_v, row) => (
         <Space size={0}>
+          <Button size="small" type="link" onClick={() => setFiresOf(row)} data-testid={`workflow-fires-${row.id ?? 'x'}`}>
+            发起记录
+          </Button>
           <Button size="small" type="link" onClick={() => setEditing({ ...row })}>
             编辑
           </Button>
@@ -98,10 +133,12 @@ export function WorkflowsPage() {
     },
   ];
 
+  const canDraft = triggers.status === 'ready' && implemented.length > 0;
+
   return (
     <AdminScaffold
       title="流程绑定"
-      description="把实体事件挂到工作流定义上（由 z-wf 承载流程引擎），记录变更时自动提单或触发审批。"
+      description="把实体事件挂到工作流定义上（由 z-wf 承载流程引擎）：记录创建之后自动向审批中心发起一个流程实例。边界：只有新建单条记录会发起，批量导入与撤销/重做都不会。"
       appCode={appCode}
       onAppCode={setAppCode}
       appOptions={options}
@@ -109,28 +146,43 @@ export function WorkflowsPage() {
       onRefresh={() => {
         reloadApps();
         reload();
+        triggers.reload();
       }}
       actions={
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          disabled={!appCode}
-          onClick={() =>
-            setEditing({
-              entityCode: entityOptions[0]?.value ?? '',
-              appCode,
-              triggerEvent: 'AFTER_CREATE',
-              processDefinitionKey: '',
-              autoSubmit: 0,
-              tenantCode: DEFAULT_TENANT_CODE,
-            })
-          }
-        >
-          新建绑定
-        </Button>
+        <Tooltip title={canDraft ? undefined : '触发时机词表没有读到，先重试右上方的刷新'}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!appCode || !canDraft}
+            data-testid="workflow-new-binding"
+            onClick={() =>
+              setEditing({
+                entityCode: entityOptions[0]?.value ?? '',
+                appCode,
+                triggerEvent: implemented[0] ?? '',
+                processDefinitionKey: '',
+                // 送 1 而不是留空也不是 0：这条绑定真要发起流程，而关掉它的绑定现在写不进去。
+                autoSubmit: 1,
+                tenantCode: DEFAULT_TENANT_CODE,
+              })
+            }
+          >
+            新建绑定
+          </Button>
+        </Tooltip>
       }
     >
       <ListBanner state={state} error={error} onRetry={reload} label="流程绑定" />
+      {triggers.status === 'error' ? (
+        <div style={{ marginBottom: 12 }}>
+          <ListBanner
+            state="error"
+            error={triggers.error}
+            onRetry={triggers.reload}
+            label="触发时机词表"
+          />
+        </div>
+      ) : null}
       <Table<WorkflowBindingEntity>
         size="small"
         rowKey={(row) => String(row.id ?? `${row.entityCode}-${row.triggerEvent}`)}
@@ -163,8 +215,17 @@ export function WorkflowsPage() {
               />
               <Select
                 style={{ minWidth: 150 }}
-                value={editing.triggerEvent}
-                options={TRIGGERS}
+                data-testid="workflow-trigger-select"
+                value={editing.triggerEvent || undefined}
+                placeholder="触发时机"
+                options={triggerSelectOptions}
+                notFoundContent={
+                  triggers.status === 'loading'
+                    ? '触发时机正在读取'
+                    : triggers.status === 'error'
+                      ? `触发时机没有读到：${triggers.error instanceof Error ? triggers.error.message : String(triggers.error)}`
+                      : '引擎没有报告任何可兑现的触发时机'
+                }
                 onChange={(triggerEvent) => setEditing({ ...editing, triggerEvent })}
               />
             </Space>
@@ -174,17 +235,104 @@ export function WorkflowsPage() {
               placeholder="例如 leave_approval"
               onChange={(event) => setEditing({ ...editing, processDefinitionKey: event.target.value })}
             />
-            <Space size={6}>
-              <Switch
-                size="small"
-                checked={Number(editing.autoSubmit ?? 0) === 1}
-                onChange={(checked) => setEditing({ ...editing, autoSubmit: checked ? 1 : 0 })}
-              />
-              <Text>记录创建后自动提交流程</Text>
-            </Space>
+            {triggers.vocabulary.rejected.length ? (
+              <div data-testid="workflow-rejected" style={{ color: 'rgba(0,0,0,0.45)', fontSize: 12 }}>
+                引擎现在还不兑现这些时机，选了也发不出流程：
+                {triggers.vocabulary.rejected.map((item) => (
+                  <div key={item.event} data-testid={`workflow-rejected-${item.event}`}>
+                    <Text code>{item.event}</Text> —— {item.reason}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </Space>
         ) : null}
       </Modal>
+
+      <WorkflowFiresDrawer binding={firesOf} onClose={() => setFiresOf(null)} />
     </AdminScaffold>
+  );
+}
+
+/**
+ * 一条绑定的发起账：绑定存在 ≠ 流程发起过。这一格是 #61 那一族里"配置与运行之间那段路"的
+ * 唯一用户可见证据 —— 之前它只活在日志和库里。
+ */
+function WorkflowFiresDrawer({ binding, onClose }: { binding: WorkflowBindingEntity | null; onClose: () => void }) {
+  const [fires, setFires] = useState<WorkflowFireEntity[]>([]);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'done'>('idle');
+  const [reason, setReason] = useState<string>('');
+
+  useEffect(() => {
+    if (!binding) {
+      setStatus('idle');
+      setFires([]);
+      return;
+    }
+    let stale = false;
+    setStatus('loading');
+    void (async () => {
+      try {
+        const next = await listWorkflowFires(binding.appCode, binding.entityCode);
+        if (stale) return;
+        if (!Array.isArray(next)) {
+          setStatus('error');
+          setReason('接口没有返回发起记录列表');
+          return;
+        }
+        setFires(next);
+        setStatus('done');
+      } catch (err) {
+        if (stale) return;
+        setStatus('error');
+        setReason(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      stale = true;
+    };
+  }, [binding]);
+
+  const columns: ColumnsType<WorkflowFireEntity> = [
+    { title: '记录', dataIndex: 'recordId', width: 110 },
+    {
+      title: '结果',
+      dataIndex: 'status',
+      width: 100,
+      render: (value: string) => <Tag color={value === 'STARTED' ? 'green' : 'red'} data-testid={`fire-status-${value}`}>{value}</Tag>,
+    },
+    { title: '流程实例', dataIndex: 'instanceId', width: 150, render: (v: string | null | undefined) => v || '—' },
+    {
+      title: '为什么',
+      dataIndex: 'detail',
+      render: (v: string | null | undefined) => (v ? <Text style={{ fontSize: 12 }}>{v}</Text> : '—'),
+    },
+    { title: '时间', dataIndex: 'createTime', width: 150, render: (v: string | number | null | undefined) => formatTime(v) },
+  ];
+
+  return (
+    <Drawer
+      open={Boolean(binding)}
+      width={720}
+      title={binding ? `${binding.entityCode} 的发起记录` : '发起记录'}
+      onClose={onClose}
+    >
+      {status === 'error' ? (
+        <div data-testid="fire-load-error">发起记录没有读到：{reason}</div>
+      ) : (
+        <Table<WorkflowFireEntity>
+          size="small"
+          rowKey={(row) => String(row.id ?? `${row.recordId}-${row.status}`)}
+          loading={status === 'loading'}
+          columns={columns}
+          dataSource={fires}
+          pagination={{ pageSize: 20 }}
+          locale={{
+            // 读失败走上面那一格（带原因），所以这里只剩"真的没有记录"这一句 —— 两者不能混成一句空态。
+            emptyText: '这个实体还没有发起记录 —— 新建一条记录，流程才会在这里出现',
+          }}
+        />
+      )}
+    </Drawer>
   );
 }

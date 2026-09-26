@@ -42,17 +42,17 @@ grep -rln workflow-binding --include='*.java' z-lc-web/src/test z-lc-admin/src  
 
 要补的断言（一条都不能少，且每条要有反向猎物）：
 
-- [ ] 起服务时带 `--z-lc.adapter.wf.base-url=<本地桩>`，**走真 HTTP**：`/api/lc/workflow-binding/create` 存下绑定
+- [x] 起服务时带 `--z-lc.adapter.wf.base-url=<本地桩>`，**走真 HTTP**：`/api/lc/workflow-binding/create` 存下绑定
       → 运行时 `/create` 写一条记录 → 桩确实收到那一句话（路径逐字 `/api/approval-center/processes/start`、
       body 里 `processKey`/`businessKey`/`initiator`/`title` 四格齐）
       → `GET /api/lc/workflow-binding/fires` 回读出一行 `STARTED` 且 `instanceId` 就是桩给的那个 id。
-- [ ] 拒绝面逐个回读：`AFTER_UPDATE` / `AFTER_DELETE` / `status_change` / 空 `processDefinitionKey` /
+- [x] 拒绝面逐个回读：`AFTER_UPDATE` / `AFTER_DELETE` / `status_change` / 空 `processDefinitionKey` /
       `autoSubmit=0` / 重复绑定 / 外租户绑定 ⇒ 400 且 reason 说清是哪一格；**运行时随后写记录 ⇒ 桩收到 0 次**。
-- [ ] `GET /vocabulary` 的形状：可兑现事件列表 == `WorkflowTriggers` 的 implemented 列表（不是常量表）。
-- [ ] 边界：批量导入、撤销/重做 **不发起**流程 —— 这三条是 §3 第 2 问的既成事实，先钉成守卫再说要不要改。
-- [ ] 两份 schema 对账：`z_lc_workflow_fire` 在 `z-lc-admin/src/main/resources/db/schema-h2.sql`
+- [x] `GET /vocabulary` 的形状：可兑现事件列表 == `WorkflowTriggers` 的 implemented 列表（不是常量表）。
+- [x] 边界：批量导入、撤销/重做 **不发起**流程 —— 这三条是 §3 第 2 问的既成事实，先钉成守卫再说要不要改。
+- [x] 两份 schema 对账：`z_lc_workflow_fire` 在 `z-lc-admin/src/main/resources/db/schema-h2.sql`
       和 `z-lc-web/src/test/resources/schema.sql` 里列集合一致（缺陷 #51/#57 那族"只在真库才红"的前置）。
-- [ ] `@MapperScan` 覆盖 `com.zifang.z.lc.mapper.workflow` —— 这条只能在契约层量（`WorkflowFireMapper`
+- [x] `@MapperScan` 覆盖 `com.zifang.z.lc.mapper.workflow` —— 这条只能在契约层量（`WorkflowFireMapper`
       在 `z-lc-core` 里被 `LcModuleDataSource` 的扫描名单漏掉时，单测不会红，只有真起服务才红）。
 
 ### 2.2 前端：界面还在给三个兑现不了的选项，且两个回读口零调用
@@ -67,17 +67,35 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 
 要改的：
 
-- [ ] 触发时机下拉改成**从 `/vocabulary` 派生**（照 `src/api/pipelineVocabulary.test.ts` 的路子，
+- [x] 触发时机下拉改成**从 `/vocabulary` 派生**（照 `src/api/pipelineVocabulary.test.ts` 的路子，
       新建 `workflowVocabulary.test.ts`）；`AFTER_UPDATE`/`AFTER_DELETE` 若仍在词表里就显示成"无挂接点"，
       不许当可选项 —— 参照 #41 流水线那一族已定形状（`PipelinesPage.test.tsx:193` 断言的正是 `'AFTER_CREATE 无挂接点'`）。
-- [ ] 列表里的 `autoSubmit` 开关（`WorkflowsPage.tsx:180-181`，默认 `editing.autoSubmit ?? 0`）
+- [x] 列表里的 `autoSubmit` 开关（`WorkflowsPage.tsx:180-181`，默认 `editing.autoSubmit ?? 0`）
       和 `:124` 的 `autoSubmit: 0` 初始值 ⇒ 引擎侧对 `autoSubmit=0` 的判定见 §3 第 3 问，先别自便。
-- [ ] 写后回读：绑定保存成功但 400 时要把 reason 显示出来（现在 `workflowBinding.ts` 的 4 个口
+- [x] 写后回读：绑定保存成功但 400 时要把 reason 显示出来（现在 `workflowBinding.ts` 的 4 个口
       只有 list/create/update/delete，**没有** `/fires`、没有 `/vocabulary`）⇒ 补一个"发起账"抽屉。
-- [ ] 页面文案要写清边界：只有"新建单条记录"会发起，导入/撤销/重做不会。
-- [ ] 以上都要配 vitest 覆盖。实测：`ls z-lc-admin-ui/src/views/admin/ | grep -i workflow` ⇒ 只有
+- [x] 页面文案要写清边界：只有"新建单条记录"会发起，导入/撤销/重做不会。
+- [x] 以上都要配 vitest 覆盖。实测：`ls z-lc-admin-ui/src/views/admin/ | grep -i workflow` ⇒ 只有
       `WorkflowsPage.tsx` 一个文件，**没有 `WorkflowsPage.test.tsx`**；
       阳性对照同一条命令口径下 `PipelinesPage.test.tsx` 在（#41 那一族配过）。
+
+本窗实测（09-27 00:16–00:31；首次 vitest "Start at 00:16:28"、mvn 起点 00:28:14、注入台账落盘 00:30:56，都是当轮读到的）：
+
+- 契约层 12 条 = `z-lc-web/.../WorkflowTriggerContractTest`，注入自证 4 支（I1–I4）全出点名红，
+  台账在 `~/.cache/zlc_probe/inject61.out`；这一批已随 `3632a59` 推送。
+- 界面层新增两份文件 + 一个拆出来的词表模块：
+  `src/api/workflowVocabulary.test.ts`（4 条，跨语言对 `WorkflowTriggers.java` 逐字对表）、
+  `src/views/admin/WorkflowsPage.test.tsx`（3 条真渲染）、
+  `src/views/admin/_workflow.ts`（中文名表 + `useWorkflowVocabulary`，从页面拆出以满足 `react-refresh`）。
+  接口层补 `getWorkflowVocabulary` / `listWorkflowFires` / `readVocabulary`（形状不对**抛**，不降级成空清单）。
+- 注入自证 9 支（U1–U9）全部出点名红，量具 `~/.cache/zlc_probe/inject61ui.py`、台账 `inject61ui.ledger.json`：
+  U1 手抄时机清单复活 / U2 草稿 autoSubmit 退回 0 / U3 400 原因不回显 / U4 摘掉"词表没读到"那道分级 /
+  U5 发起记录读失败走空表 / U6 `readVocabulary` 降级成空词表 / U7 中文名表塞进不兑现的事件 /
+  U8 词表 hook 咽掉读失败 / U9 删掉边界文案。每支还原后 md5 与原文件逐字节一致。
+- 四道闸同轮读数：`tsc --noEmit` rc=0；`eslint src --max-warnings 0` rc=0（改前该条 rc=1、两条
+  `react-refresh` 告警，是这条闸的阳性对照）；`vitest run` 全量 **29 文件 / 259 测试 / 259 绿 / 0 红 / 0 跳过**
+  （workflow 那两份 7 条在其中）；`vite build` rc=0（3181 modules）；`mvn -o test` rc=0，
+  surefire 443 份报告 **4768 测试 / 0 失败 / 0 错误 / 0 跳过**（core 1326 + web 104 与上一窗逐格相同）。
 
 ### 2.3 注入自证（缺这一支就不算闭）
 

@@ -408,6 +408,38 @@ export interface WorkflowBindingEntity {
   deleted?: number | null;
 }
 
+/**
+ * `z_lc_workflow_fire` 的一行：某条绑定在某条记录上**实际**发起的结果。
+ *
+ * 界面以前没有这一格：绑定存下来之后，发没发、为什么没发只能去翻日志 —— 而写后触发是一次
+ * 用户看不见的调用，看不见就等于没发生。
+ */
+export interface WorkflowFireEntity {
+  id?: number | null;
+  tenantCode?: string | null;
+  appCode: string;
+  entityCode: string;
+  recordId: number;
+  bindingId?: number | null;
+  triggerEvent: string;
+  processDefinitionKey: string;
+  /** STARTED / FAILED —— 只有这两个值由写入方产生，别按它猜"在跑"。 */
+  status: string;
+  /** z-wf 返回的实例 id；失败行为空。 */
+  instanceId?: string | null;
+  /** 失败原因（引擎那句原话或"超过 Nms 没有回话"）；成功行为空。 */
+  detail?: string | null;
+  createTime?: string | number | null;
+  updateTime?: string | number | null;
+  deleted?: number | null;
+}
+
+/** `/workflow-binding/vocabulary`：引擎真正兑现的事件 + 兑现不了的那几个各自为什么。 */
+export interface WorkflowVocabulary {
+  implemented: string[];
+  rejected: { event: string; reason: string }[];
+}
+
 export interface PermissionEntity {
   id?: number | null;
   appCode: string;
