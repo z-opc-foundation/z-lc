@@ -65,6 +65,8 @@ class WorkflowTriggerContractTest {
     private static final String ENTITY = "case";
     private static final String FIRES = "/api/lc/workflow-binding/fires";
     private static final String BINDING_CREATE = "/api/lc/workflow-binding/create";
+    private static final String BINDING_UPDATE = "/api/lc/workflow-binding/update";
+    private static final String BINDING_LIST = "/api/lc/workflow-binding/list";
 
     /** 静态初始化 ⇒ 端口在 Spring 上下文创建之前就存在，@DynamicPropertySource 才拿得到。 */
     private static final StubWf STUB = newStub();
@@ -223,6 +225,72 @@ class WorkflowTriggerContractTest {
         assertEquals(1, STUB.count(), "重复绑定没能进去 ⇒ 只该发一句: " + STUB.requests());
         assertEquals("STARTED", fireRow(app, recordId).path("status").asText(),
                 "发出去那一句的结局: " + fireRow(app, recordId) + " 桩收到: " + STUB.requests());
+    }
+
+    /**
+     * 缺陷 #66：查重那一句在 {@code /update} 这条路上**结构上打不到任何行** —— 控制器进门先把
+     * {@code tenantCode} 抹成 null（它自己的注释写着"service 负责"），而 service 把补租户排在查重之后。
+     * <p>
+     * core 层那条 {@code updateShouldRefuseDuplicates} 一直是绿的，因为它候选行的租户是
+     * {@code edit()} 从库里抄来的（带着 {@code default}），不是接口真送进来的形状。
+     * ⇒ 这一条只能打在真进程边界上：走 {@code /update}，走完还要把清单读回来，
+     * 再写一条记录数桩收到几句 —— "两条同 KEY 的绑定都活着"这件事只有从运行结果才看得见。
+     */
+    @Test
+    @DisplayName("#66 把第二条绑定改成与第一条同 KEY：/update 就得在写入口拒，且一个 KEY 只发一句")
+    void updateIntoADuplicateIsRefusedAtTheHttpDoorAndNoKeyFiresTwice() throws Exception {
+        String app = provisionedApp("dupupdate");
+        assertOk(createBinding(app, "{\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"p_first\"}"),
+                "第一条绑定登记");
+        JsonNode second = createBinding(app,
+                "{\"triggerEvent\":\"AFTER_CREATE\",\"processDefinitionKey\":\"p_second\"}");
+        assertOk(second, "KEY 不同的第二条登记得下来");
+        String secondId = second.path("data").path("id").asText();
+
+        JsonNode collide = refused(BINDING_UPDATE, "{\"id\":" + secondId + ",\"appCode\":\"" + app
+                + "\",\"entityCode\":\"" + ENTITY + "\",\"triggerEvent\":\"AFTER_CREATE\","
+                + "\"processDefinitionKey\":\"p_first\"}");
+        assertTrue(collide.path("message").asText().contains("已经绑定过"),
+                "这一句要撞在查重那道上，而不是撞在别的闸上: " + collide);
+        assertTrue(collide.path("message").asText().contains("id="),
+                "拒绝要说清是被哪一条挡的，否则只能把两条都删了试: " + collide);
+
+        JsonNode list = get(BINDING_LIST, "appCode", app);
+        assertOk(list, "回读绑定清单");
+        JsonNode stillSecond = null;
+        for (JsonNode row : list.path("data")) {
+            if (secondId.equals(row.path("id").asText())) {
+                stillSecond = row;
+            }
+        }
+        assertNotNull(stillSecond, "被拒的那一条不能从清单里消失: " + list.path("data"));
+        assertEquals("p_second", stillSecond.path("processDefinitionKey").asText(),
+                "被拒的改动不能已经落到那一行上: " + stillSecond);
+        assertEquals(TENANT, stillSecond.path("tenantCode").asText(),
+                "拒一次不能顺带把租户搬走: " + stillSecond);
+
+        long recordId = writeRecord(app, "{\"ref\":\"DUPUP-1\"}");
+        // 库里活着两条互不重复的绑定（p_first、p_second），一条记录写成功该发两句、一个 KEY 一句。
+        // #66 放行后的病灶形状是"两句都是 p_first"：update 把第二条改成了第一条的 KEY，于是同一个流程
+        // 对同一条记录被发起两次（两个并行实例）—— 数总句数抓不到它（照样是 2），只有数 KEY 抓得到。
+        assertEquals(2, STUB.count(), "两条各不重复的绑定各发一句: " + STUB.requests());
+        assertEquals(1, occurrences(STUB.allBodies(), "\"processKey\":\"p_first\""),
+                "同一个 KEY 对一条记录只能发一句，发两句说明库里留了两行同 KEY 的绑定: " + STUB.allBodies());
+        assertEquals(1, occurrences(STUB.allBodies(), "\"processKey\":\"p_second\""),
+                "被拒的那一条不该顺带丢掉自己原来的 KEY: " + STUB.allBodies());
+        JsonNode rows = get(FIRES, "appCode", app, "entityCode", ENTITY, "recordId", String.valueOf(recordId));
+        assertOk(rows, "回读发起账");
+        assertEquals(2, rows.path("data").size(),
+                "两条各不重复的绑定该留下两行发起账: " + rows.path("data"));
+    }
+
+    /** {@code needle} 在 {@code haystack} 里出现几次（重叠不算）。 */
+    private static int occurrences(String haystack, String needle) {
+        int n = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + needle.length())) {
+            n++;
+        }
+        return n;
     }
 
     /* ------------------------------------------------------------------ */

@@ -180,6 +180,17 @@ public class WorkflowBindingServiceTest {
                 Arrays.asList("auto-submit-off", "foreign-event", "foreign-entity", "keep"), appKeys);
         assertEquals("夹具: orderByDesc(id) 没生效（最后种下的那行该在最前）: " + appKeys,
                 "auto-submit-off", appKeys.get(0));
+
+        // 替身自己的两条对偶判据（缺陷 #66 就是因为少了第一条而在全绿套件底下活着）：
+        // 「绑了 null 的谓词」与「这一列上没有谓词」在 SQL 上是两种完全不同的东西。
+        assertEquals("夹具: `tenant_code = NULL` 在 SQL 上对任何行都是 UNKNOWN ⇒ 绑 null 的谓词该筛掉一切；"
+                        + "把 null 当成\"不筛\"，#66 那一族在 core 层就永远绿",
+                Collections.emptyList(),
+                keysOf(service.listByEvent(null, APP, ENTITY, WorkflowTriggers.AFTER_CREATE)));
+        seedFire(TENANT, ENTITY, 5L, "STARTED");
+        assertEquals("夹具: 反方向也要成立 —— 没有谓词的那一列（这里 entityCode 传 null 就是不拼这一句）"
+                        + "不许被当成\"筛掉一切\"",
+                1, service.listFires(TENANT, APP, null, null).size());
     }
 
     private static WorkflowBindingEntity autoSubmitOff(WorkflowBindingEntity e) {
@@ -389,6 +400,71 @@ public class WorkflowBindingServiceTest {
         collide.setProcessDefinitionKey(PROCESS);
         expectBadRequest(newUpdate(collide), "已经绑定过这个流程");
         assertEquals("被拒的改动不能已经落到那一行上: ", "second", storedRow(1).getProcessDefinitionKey());
+    }
+
+    /**
+     * 缺陷 #66 的正身。上面那条候选是 {@code edit()} 造出来的，它带着 {@code TENANT} ——
+     * 而 {@code /update} 的真实接线不是这个形状：控制器进门第一件事是
+     * {@code entity.setTenantCode(null)}（注释还写着"service 负责"），service 却把补租户排在查重之后，
+     * 于是那句 {@code eq("tenant_code", null)} 在 SQL 上恒不匹配 ⇒ 查重恒查 0 行恒不拒。
+     * ⇒ 这一条按调用方**真的送进来的形状**送 null，钉的是"service 自己把租户补上"这句话兑现没有。
+     */
+    @Test
+    public void updateShouldRefuseDuplicateEvenWhenTheCallerSendsNoTenant() {
+        service.create(validBinding());
+        service.create(binding(TENANT, APP, ENTITY, WorkflowTriggers.AFTER_CREATE, "second"));
+        WorkflowBindingEntity collide = edit(storedRow(1));
+        collide.setTenantCode(null);
+        collide.setProcessDefinitionKey(PROCESS);
+        expectBadRequest(newUpdate(collide), "已经绑定过这个流程");
+        assertEquals("被拒的改动不能已经落到那一行上: ", "second", storedRow(1).getProcessDefinitionKey());
+        assertEquals("拒一次不能顺手动租户那一格（库里那条还该是自己的租户）: ",
+                TENANT, storedRow(1).getTenantCode());
+    }
+
+    /**
+     * 同一处的二阶形状：查重用的是**未剪空白**的值，落库用的却是剪过的 ⇒
+     * " AFTER_CREATE " 这种送法能从查重那条路走过去，走过去就是两条都满足 {@code listByEvent} 的绑定。
+     */
+    @Test
+    public void updateShouldRefuseDuplicateAcrossWhitespaceInTheEventAndKey() {
+        service.create(validBinding());
+        service.create(binding(TENANT, APP, ENTITY, WorkflowTriggers.AFTER_CREATE, "second"));
+        WorkflowBindingEntity collide = edit(storedRow(1));
+        collide.setTenantCode(null);
+        collide.setTriggerEvent("  " + WorkflowTriggers.AFTER_CREATE + "  ");
+        collide.setProcessDefinitionKey("  " + PROCESS + "  ");
+        expectBadRequest(newUpdate(collide), "已经绑定过这个流程");
+        assertEquals("被拒的改动不能已经落到那一行上: ", "second", storedRow(1).getProcessDefinitionKey());
+    }
+
+    /** create 那一路同一条归一化入口：KEY 只差空白的重复登记也拒。 */
+    @Test
+    public void createShouldRefuseADuplicateWhoseKeyOnlyDiffersByWhitespace() {
+        service.create(validBinding());
+        expectBadRequest(newCreate(binding(TENANT, APP, ENTITY, WorkflowTriggers.AFTER_CREATE,
+                "  " + PROCESS + " ")), "已经绑定过这个流程");
+        assertEquals("拒了就不能留第二行: ", 1, bindingRows.size());
+    }
+
+    /**
+     * 上面那两条靠的是 service 自己补租户；这一支钉的是**没补上之后必须响**：
+     * 一旦有人把顺序退回"先查重后补租户"，走到查重那一句时 {@code tenantCode} 就是 null，
+     * 而 {@code eq("tenant_code", null)} 恒 0 行 ⇒ 查重复存在但结构上抓不到任何猎物。
+     * 响在响的地方，比静悄悄地说"没有重复"值钱。
+     * <p>
+     * ⚠ 这一支的可达性要说清，别把它当成"生产上会走到"：{@code tenant_code} 在 DDL 上是
+     * {@code NOT NULL}（{@code schema-h2.sql} 的 {@code z_lc_workflow_binding}），而两个调用方
+     * （控制器的 create/update）送进来的都不是 null ⇒ 这个形状只有这里造得出来，因为本层的
+     * 替身不查 DDL。⇒ 它钉的是"哨兵会响、报的是这一句"，不钉"生产上有这条路径"。
+     */
+    @Test
+    public void requireNotDuplicateRefusesToJudgeWithoutATenant() {
+        WorkflowBindingEntity legacy = seed(binding(null, APP, ENTITY, WorkflowTriggers.AFTER_CREATE, "legacy"));
+        WorkflowBindingEntity doomed = edit(legacy);
+        doomed.setProcessDefinitionKey("other");
+        expectBadRequest(newUpdate(doomed), "查重前必须先确定这条绑定属于哪个租户");
+        assertEquals("响过之后那一行不能被改掉: ", "legacy", legacy.getProcessDefinitionKey());
     }
 
     @Test
@@ -703,24 +779,32 @@ public class WorkflowBindingServiceTest {
         }
     }
 
-    /** wrapper 里 {@code column = #{ew.paramNameValuePairs.X}} 绑的那个值；谓词不存在返回 null。 */
-    private static Object predicateValue(Object wrapper, String column) {
+    /** 这一列上到底**有没有** {@code col = #{...}} 谓词（有、但绑的是 null，也算有）。 */
+    private static String predicateKey(Object wrapper, String column) {
         if (!(wrapper instanceof AbstractWrapper)) {
             return null;
         }
         AbstractWrapper<?, ?, ?> aw = (AbstractWrapper<?, ?, ?>) wrapper;
         Matcher m = Pattern.compile(column + "\\s*=\\s*#\\{ew\\.paramNameValuePairs\\.(\\w+)\\}")
                 .matcher(String.valueOf(aw.getSqlSegment()));
-        if (!m.find()) {
-            return null;
-        }
-        return aw.getParamNameValuePairs().get(m.group(1));
+        return m.find() ? m.group(1) : null;
     }
 
-    /** 这一列上没有谓词就等于不筛这一列。 */
+    /**
+     * 这一列上没有谓词 = 不筛；**有谓词而绑的是 null = 谁都筛不掉也谁都不留**（SQL 上
+     * {@code col = NULL} 对任何行都是 UNKNOWN，不是"等于没写"）。
+     * <p>
+     * 早先这一句把两种形状混成一个（{@code wanted == null} 一律当"不筛"），代价就是缺陷 #66 在
+     * core 层测不出来：真接线上 {@code update} 的候选租户是 null，替身却按"不筛租户"放行了查重，
+     * 于是"替身比真库宽松"这一族又多一格（同 {@code fixtureReallyAppliesWrapperPredicates} 的存在理由）。
+     */
     private static boolean eq(Object wrapper, String column, Object actual) {
-        Object wanted = predicateValue(wrapper, column);
-        return wanted == null || String.valueOf(wanted).equals(String.valueOf(actual));
+        String key = predicateKey(wrapper, column);
+        if (key == null) {
+            return true;
+        }
+        Object wanted = ((AbstractWrapper<?, ?, ?>) wrapper).getParamNameValuePairs().get(key);
+        return wanted != null && String.valueOf(wanted).equals(String.valueOf(actual));
     }
 
     private static void sort(List<Object> rows, Object wrapper) {

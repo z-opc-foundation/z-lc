@@ -542,12 +542,14 @@ HEAD=`ce81f49` 那版第 9–10 行仍是 `| sed "s/\$/APP_PORT/$APP_PORT/"`）�
 的绑定，一条记录写成功 ⇒ 发 N 个并行流程实例 —— 正是这支守卫声称要挡的那件事。
 
 下一批要做的（顺序即判据，别跳）：
-- [ ] **先证机制再改**：拿本机 H2（18090，跑完那一轮之后）或契约层，登记 A、再 `update` B 成同 KEY ⇒
-      看今天是不是**放行**。这一跑同时回答"`eq(col,null)` 出不出条件"这一问 —— 别用读代码的结论当结论。
-      ⚠ 不要在浏览器层那一轮在飞的时候做（新建一个 app 会动到界面下拉的顺序，那一轮 40 分钟白跑）。
-      ⇒ 06:3x 现状：**改动与测试已经写进工作树，但一条都还没跑**（整族那一跑占着 CPU，
-      跑 mvn 会把它脚下的浏览器轮次撞成 15s 定位超时那种假红）。下面三格同一扇窗一起量，别分窗。
-- [x] 修法已落工作树（**未跑，未绿**）：`WorkflowBindingService` 新增
+- [x] **先证机制再改** —— 07:2x 已在运行时证完，机制照原假设成立：把 B 改成 A 的 KEY 这一句 `update`
+      在改之前**放行**，应答逐字是 `{"data":{"id":4,…,"processDefinitionKey":"p_first",…},"success":true,"code":200}`
+      （日志 `~/.cache/zlc66/web_66_injected.log`，那一支测试红在"HTTP 状态应当是 400"上，把这条应答整份带了出来）。
+      ⇒ `eq(col, null)` 那一问也一并答了：**条件照拼，值绑的是 null** ⇒ 恒不匹配（不是我先前担心的
+      "MyBatis-Plus 把 null 当'不加条件'"，那样反而是安全的）。
+      ⚠ 06:3x 那一句"改动与测试已写进工作树但一条都没跑"到 07:1x 为止是真的（整族注入占着 CPU）；
+      07:2x 起全部跑完，读数在下面两张表里。
+- [x] 修法已落工作树（07:2x 已跑已绿）：`WorkflowBindingService` 新增
       `normalizeBeforeJudgement(entity)`（只剪 `triggerEvent` / `processDefinitionKey` 的空白，null 留给
       `validateForWrite` 去指名），create 与 update **都排在 `validateForWrite` + `requireNotDuplicate` 之前**；
       update 里 `entity.setTenantCode(existing.getTenantCode())` 从原来的第 134 行（查重之后）提到**查重之前**；
@@ -569,17 +571,53 @@ HEAD=`ce81f49` 那版第 9–10 行仍是 `| sed "s/\$/APP_PORT/$APP_PORT/"`）�
       两条*不重复*的绑定（`p_first`、`p_second`），派发器对每条绑定各发一句 ⇒ 正确的句数就是 2；
       病灶形状不是"两句"而是"两句都是 `p_first`"（同一 KEY 两行 ⇒ 同一条记录把同一个流程起两个并行实例）。
       数总句数在修法前后都是 2，**结构上抓不到这个缺陷** —— 这就是"判据要问哪个 KEY 被发了两次"而不是"发了几次"。
-- [ ] 成对注入自证（**这一格没跑就不算闭**）：把上面那个修法还原成"改之前"的形状
-      （补租户 + 剪空白挪回查重之后，并摘掉那道 null 守卫 —— 两步一起，缺一就不是历史形状）⇒
-      上述新增那几支必须**具名红**；再还原回来 ⇒ 绿。
-      ⚠ 两个方向落在不同支上，记账时别混：只摘 null 守卫 ⇒ `requireNotDuplicateRefusesToJudgeWithoutATenant` 红；
-      只退回顺序（守卫还在）⇒ 那一支照旧绿（它种的那行本来就 null 租户），红的是
-      `…EvenWhenTheCallerSendsNoTenant`（消息变成哨兵那句而不是「已经绑定过这个流程」）；
-      两步一起摘 ⇒ 那两支 + HTTP 那一条同时红（HTTP 那条第一关就撞在"应当 400 而拿到 200"上）。
-      命令（跑法照本仓既有口径，串行、去 `-q` 留日志）：
-      `mvn -o -pl z-lc-core -am -Dtest=WorkflowBindingServiceTest test`
-      `mvn -o -pl z-lc-web -am -Dtest=WorkflowTriggerContractTest test`
-      ⚠ 备份用 `cp`，还原用 `cp`，**不许拿 `git checkout --` 当还原步**（这一窗工作树里还有别人/别的批的未提交改动）。
+- [x] 成对注入自证（**07:2x 跑完了，四跑一台账**）：注入方式是"拿 `git show HEAD:` 的那份字节整份 `cp` 上去"，
+      不是手改 —— 那样得到的才是历史形状本身。备份/还原全用 `cp` 逐字节对账（`~/.cache/zlc66/WBS.java.fixed`
+      = 修好的那份，md5 `e2936acb…`；`WBS.java.head` = 历史那份，md5 `e5102180…`），
+      **一次都没有用 `git checkout --`**（工作树里还有别的批的未提交改动）。
+
+      | 跑 | `WorkflowBindingService`（main） | core 那层的替身 | core 结果 | HTTP 契约层结果 |
+      |---|---|---|---|---|
+      | b | 修好的 | 宽松的（旧写法） | **29/0 绿** | — |
+      | I1 | 历史的（`HEAD` 那份字节） | 宽松的 | **2 支具名红**：`requireNotDuplicateRefusesToJudgeWithoutATenant`、`…AcrossWhitespaceInTheEventAndKey` | **1 支红**：`updateIntoADuplicateIsRefusedAtTheHttpDoorAndNoKeyFiresTwice` 撞在 `HTTP 状态应当是 400`，应答逐字 `{"data":{"id":4,…,"processDefinitionKey":"p_first",…},"success":true,"code":200}` |
+      | a | 修好的 |  faithful（新写法） | **29/0 绿** | **14/0 绿**（整类 14 条） |
+      | I3 | 历史的 | faithful | **3 支具名红** = I1 那两支 + `…EvenWhenTheCallerSendsNoTenant` | — |
+      | I2 | 修好的 | 把 `eq()` 换回宽松写法 | **1 支红** = `fixtureReallyAppliesWrapperPredicates`，读数 `expected:\<[]> but was:\<[keep, foreign-tenant]>` | — |
+      | restored | 修好的（`cp` 回来，md5 对上） | faithful | **29/0 绿** | — |
+
+      **我上面对 I1 的预测被实测否掉了一部分，这就是"跑一遍"的价值**：我写的是"两步一起摘 ⇒ 那两支 + HTTP 同时红"，
+      实测 I1 只有 **2** 支红，`…EvenWhenTheCallerSendsNoTenant` 在历史代码上**照样绿**。
+      查下去不是测试写错，是**量具（core 那层的替身）自己比真库宽松**：`eq()` 旧写法拿
+      `predicateValue(...) == null` 同时表示"这一列上没有谓词"和"谓词绑的是 null"，于是
+      `tenant_code = NULL` 在替身里被当成"不筛租户"，跨租户的行照抄出来（I2 那一条读数就是它）。
+      ⇒ 真库里那句恒不匹配、替身里恒全通过 —— **这就是 #66 在 4677 条全绿底下活着的第三层原因**
+      （前两层：单测候选自带租户、控制器抹租户；这一层是"替身连 null 语义都不对"）。
+      修法：`eq()` 拆成"有没有谓词"（`predicateKey`）与"绑的是什么"两问，绑 null ⇒ 谁都别想通过；
+      并在 `fixtureReallyAppliesWrapperPredicates` 里给它配上**对偶的自证**（绑 null 该 0 行 + 没有谓词不许筛空），
+      于是 I2 这一跑就是量具自己的阳性对照。
+
+      ⚠ 还有一格要如实记：**新增那支 `createShouldRefuseADuplicateWhoseKeyOnlyDiffersByWhitespace` 在 I1/I3 下都是绿的**
+      —— 历史代码的比较两侧本来就 `.trim()` 过（`git show HEAD:` 那份 `requireNotDuplicate` 里逐字看得见）。
+      ⇒ 它不是这一支缺陷的猎物，是一根防"以后有人把比较里的 trim 摘掉"的回归桩。记账时不许把它算进"具名红"。
+      ⚠ 但"回归桩"不等于"空桩"：07:5x 那一支 **I5**（只摘 `create()` 里的 `requireNotDuplicate` 调用）把它**测成红**了
+      （见上面 ② 那段）—— 所以它对 create 这一路是真有牙的，只是它的牙不咬 update 那一族的缺陷。
+
+      复算命令（**`-Dsurefire.failIfNoSpecifiedTests=false` 是必需的**：`-am` 会把 `z-lc-common`/`z-lc-sdk`
+      一起拉进 reactor，那里没有同名测试，早先我写在这格的那两条命令会在 `z-lc-common` 直接 BUILD FAILURE，
+      报 `No tests matching pattern "WorkflowBindingServiceTest" were executed!`）：
+      `mvn -o -pl z-lc-core -am -Dtest=WorkflowBindingServiceTest -Dsurefire.failIfNoSpecifiedTests=false test`
+      `mvn -o -pl z-lc-web -am -Dtest=WorkflowTriggerContractTest -Dsurefire.failIfNoSpecifiedTests=false test`
+      日志（07:2x 本轮全在盘上）：`core_66_b.log`(修好/宽松·绿) `core_66_injected.log`(I1) `web_66_injected.log`(I1·HTTP)
+      `core_66_injected_faithful.log`(I3) `core_66_faithful.log`(a) `core_66_loose_eq.log`(I2) `core_66_restored.log`，
+      都在 `~/.cache/zlc66/`。
+- [x] **07:2x 四层同轮复测**（跑 #66 这批改动之后重量，逐层现读）：
+      java `mvn -o -B clean install` = **4774 例 / 0 失败 / 0 错误 / 0 跳过**（7 模块全 SUCCESS，
+      总耗时 16.9s；分模块 2701 + 525 + 1330 + 112 + 106，`install_full.log`）；
+      前端 `npm run check` rc=0 = **28 文件 / 252 例**，产物 `index-ruBdvAdn.js`（⚠ 名字不是身份，见 #69）；
+      接口层 `python3 _e2e/e2e_api_test.py http://localhost:18090` = **532/532**（`API_RC=0`，
+      分母双向：`^  PASS ` 行数也 532；打的是 07:24:32 那支新 jar —— 旧常驻 72030 已 `kill -TERM`、
+      等端口真释放后由 pid **64499**（`ps -o lstart` = 07:26:08）起新件，`lsof` 现读监听者就是它，#55 那一族的口径）；
+      浏览器层 = **279 / 0**（`BROWSER_RC=0`，一轮，07:27:31→07:30:19；`INFO 非 2xx 2 个` 是那两条故意的负控）。
 
 **06:2x 现读，补两条"为什么它在全绿测试底下活着"**（都不改上面那句"待运行时证"，只是把嫌疑收窄）：
 
@@ -595,13 +633,29 @@ HEAD=`ce81f49` 那版第 9–10 行仍是 `| sed "s/\$/APP_PORT/$APP_PORT/"`）�
    （另有一处二阶：`WorkflowBindingService.java:135` 的 `setTriggerEvent(….trim())` 也在第 130 行之后，
    带空白的 event 同样会让那一句 `eq("trigger_event", …)` 打空；这条不是主因，一起收进同一个归一化入口就行。）
 
-- [ ] 修法：把第 134 行那三句"取库里那份"的归一化**提到第 130 行之前**（查重必须按将被写入的那条记录所属的租户查），
-      并让 create/update 走同一条归一化入口，别再靠调用方各自记得。
-- [ ] 成对注入自证：① 把归一化再挪回查重之后 ⇒ 新增那条测试必须红（否则测试是空的）；
-      ② 摘掉 `requireNotDuplicate` ⇒ 同一支必须红在具名那一句（对照 create 那一路 W 系列已有的形状）。
-- [ ] 契约层补一条正向：`/update` 改成重复 KEY ⇒ 400 且 `message` 说清是哪条 id 挡的
-      （今天 `WorkflowTriggerContractTest` 里 `grep -n "Duplicate\|duplicate"` **0 命中**，
-      `"/update"` 只出现在 `AFTER_UPDATE` 被拒那一条 —— 即这一路测试零覆盖，缺陷才活得下来）。
+- [x] 修法（**07:2x 已落盘并跑绿**，见上面那张六跑矩阵）：`normalizeBeforeJudgement(entity)` 提到 `validateForWrite` +
+      `requireNotDuplicate` 之前，`setTenantCode(existing.getTenantCode())` 提到查重之前，create/update 走同一条归一化入口；
+      另加一条 null 哨兵（`tenantCode == null` ⇒ 拒判而不是"查不到就当没重复"）。
+      ⚠ 上面 620–632 那段里的行号（`:385` `:132` `:76` `:135` `:130` `:44`）是 **06:2x 现读的**，本批改动之后已经位移 ——
+      按名字找，别按号找（这条也是本仓既有纪律：票面与台账都不钉静态行号）。
+- [x] 成对注入自证（07:2x 六跑 + **07:5x 补 I5**，日志全在 `~/.cache/zlc66/`）：
+      ① 归一化 + 租户两句一起退回历史形状 = **I1**（core 2 支具名红 + web 1 支红，实测把预测的"是哪两支"否了一半，见上面那段）；
+      同一历史形状配 faithful 尺 = **I3**（core 3 支）；只把尺退回宽松、生产码仍是修好的 = **I2**
+      （`fixtureReallyAppliesWrapperPredicates` 红 = 量具自己的阳性对照）。
+      ② **摘掉 `requireNotDuplicate`（只摘 `create()` 里那一处调用，`update()` 那句不动）= I5** —— 原工单点的就是这一支，
+      先前那六跑没有打过它，07:5x 补跑：
+      core `core_66_no_dedupe.log` **Failures: 2** = `createShouldRefuseADuplicateOfTheSameEventAndProcessKey`
+      + `createShouldRefuseADuplicateWhoseKeyOnlyDiffersByWhitespace` ⇒ **那根"回归钉"是有猎物的，不是空桩**；
+      web `web_66_no_dedupe.log` **Failures: 1** = `duplicateBindingIsRefusedWhileTheFirstOneStillFires`
+      撞在 `HTTP 状态应当是 400`（应答里 `"id":2` 就是那条本该被拒的重复绑定）；
+      还原只从 `~/.cache/zlc66/WBS.java.fixed` `cp` 回来 ⇒ md5 逐字节对回 `e2936acb…`、`grep -c "MUT(I5)"` = **0**，
+      复跑 `core_66_restored_i5.log` **29/0、BUILD SUCCESS、rc=0**。
+      ⚠ 顺序也要认下来：I5 是在下面那条"07:2x 四层同轮复测**之后**"跑的，所以四层那几个数（4774 / 532 / 252 / 279）
+      量的不是 I5 那一份树 —— 靠的正是上面那次 `cp` + md5 对账把它逐字节退回被量过的那份；下一窗若要引用那几个数，
+      先 `md5 -q` 比一下 `e2936acbdc7e52ac34037cdf67d54b5c`。
+- [x] 契约层那条正向：`/update` 改成重复 KEY ⇒ 400 且 `message` 说清是哪条 id 挡的
+      （就是 `updateIntoADuplicateIsRefusedAtTheHttpDoorAndNoKeyFiresTwice`；本窗实测历史形状下这一口回的是
+      `expected: <400> but was: <200>` 而 body 里 `"processDefinitionKey":"p_first"` —— 缺陷本体在 HTTP 层的形状）。
 
 ### 2.9 新撞到的欠账：绑定钉在 `default`，派发却按记录自己的租户查（缺陷 **#67**，静态读出）
 

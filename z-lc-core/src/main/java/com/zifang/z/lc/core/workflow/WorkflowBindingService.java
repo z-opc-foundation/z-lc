@@ -95,14 +95,13 @@ public class WorkflowBindingService {
     }
 
     public WorkflowBindingEntity create(WorkflowBindingEntity entity) {
+        normalizeBeforeJudgement(entity);
         WorkflowTriggers.validateForWrite(entity);
         requireNotDuplicate(entity, null);
 
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
-        entity.setTriggerEvent(entity.getTriggerEvent().trim());
-        entity.setProcessDefinitionKey(entity.getProcessDefinitionKey().trim());
         if (entity.getAutoSubmit() == null) {
             entity.setAutoSubmit(1);
         }
@@ -126,20 +125,39 @@ public class WorkflowBindingService {
         if (existing == null || Integer.valueOf(1).equals(existing.getDeleted())) {
             throw new IllegalArgumentException("流程绑定不存在或已删除: id=" + entity.getId());
         }
+        entity.setTenantCode(existing.getTenantCode());
+        normalizeBeforeJudgement(entity);
         WorkflowTriggers.validateForWrite(entity);
         requireNotDuplicate(entity, entity.getId());
 
         entity.setUpdateTime(new Date());
         entity.setCreateTime(existing.getCreateTime());
-        entity.setTenantCode(existing.getTenantCode());
-        entity.setTriggerEvent(entity.getTriggerEvent().trim());
-        entity.setProcessDefinitionKey(entity.getProcessDefinitionKey().trim());
         if (entity.getAutoSubmit() == null) {
             entity.setAutoSubmit(1);
         }
         entity.setDeleted(existing.getDeleted());
         workflowBindingMapper.updateById(entity);
         return entity;
+    }
+
+    /**
+     * 把"用来判定的那几格"剪到它们在库里的形状，且必须排在任何按值判定之前（缺陷 #66）。
+     * <p>
+     * 顺序不是风格问题：{@code /update} 的控制器在进门前把 {@code tenantCode} 抹成 null
+     * （{@code WorkflowBindingController} 里那句"归一化而不是覆盖"），而
+     * {@link #requireNotDuplicate} 是按 (租户, 应用, 实体, 事件) 去查库的 ——
+     * 先查重后补租户，那一句 SQL 里带的就是 {@code tenant_code = NULL}，对任何行都是 UNKNOWN
+     * ⇒ 查重恒查 0 行恒不拒 ⇒ 界面上"把第二条改成和第一条同 KEY"走得通，
+     * 库里留下两条都满足 {@link #listByEvent} 的绑定，一条记录写成功发 N 个并行流程实例。
+     * 空白同理：{@code trigger_event} 落库前会被剪，判定时拿未剪的值去查也是对不上。
+     */
+    private void normalizeBeforeJudgement(WorkflowBindingEntity entity) {
+        if (entity.getTriggerEvent() != null) {
+            entity.setTriggerEvent(entity.getTriggerEvent().trim());
+        }
+        if (entity.getProcessDefinitionKey() != null) {
+            entity.setProcessDefinitionKey(entity.getProcessDefinitionKey().trim());
+        }
     }
 
     /**
@@ -165,6 +183,11 @@ public class WorkflowBindingService {
      * 而它们全都满足 {@link #listByEvent} ⇒ 一条记录写成功会发起 N 个并行流程实例。
      */
     private void requireNotDuplicate(WorkflowBindingEntity candidate, Long selfId) {
+        if (candidate.getTenantCode() == null) {
+            // 没有租户的查重在 SQL 上是 `tenant_code = NULL` ⇒ 恒 0 行 ⇒ 恒不拒，而它自己不知道。
+            // 与其信调用方记得补，不如把这种"看着做了其实什么都没做"的形状当场说响。
+            throw new IllegalArgumentException("查重前必须先确定这条绑定属于哪个租户（tenantCode 为 null）");
+        }
         for (WorkflowBindingEntity other : listByEvent(candidate.getTenantCode(), candidate.getAppCode(),
                 candidate.getEntityCode(), candidate.getTriggerEvent())) {
             if (selfId != null && selfId.equals(other.getId())) {

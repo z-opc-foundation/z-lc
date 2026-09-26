@@ -1726,12 +1726,101 @@ W12 红 6 条（与整族第三轮那 6 条**逐字相同** —— 把行尾墙�
 
 ---
 
+### ⚠ 缺陷 #66：`/update` 的查重跑在租户归一化之前 ⇒ `tenant_code = NULL` 恒筛不到行，同 KEY 的第二条照样落库（2026-09-27，java 层）
+
+**机制（这一条不是"忘了判"，是结构上判不到）**：`WorkflowBindingController` 的 `/update` 照 #48 那批的口径把请求带来的租户钉成 `null`
+（写入口不许自带租户，归属只能由库里那一行决定），而 `WorkflowBindingService.update()` 里
+`entity.setTenantCode(existing.getTenantCode())` 写在 `requireNotDuplicate(...)` **之后** ⇒ 查重那条 wrapper 的 `tenant_code` 绑的是 **null**。
+MyBatis-Plus 的 `eq(col, null)` **不是**"这一列不加条件"，它照样生成 `tenant_code = #{...}` 并把 NULL 绑上去；
+而 SQL 里 `col = NULL` 对任何行都是 UNKNOWN ⇒ 那一列**把全表筛光，也把自己那条筛掉** ⇒ 恒 0 行 ⇒ **恒不拒，而它自己不知道**。
+落库的后果是同一 `(tenant, app, entity, triggerEvent, processDefinitionKey)` 真的有两行，
+而 `WorkflowTriggerDispatcher.afterCreate(...)` 是**按绑定逐条发单**的 ⇒ 界面上"一条流程"实际对外发两句。
+
+**修法**（`z-lc-core/.../WorkflowBindingService.java`，三处，缺一不成立）：
+1. `normalizeBeforeJudgement(entity)`（只剪 `triggerEvent` / `processDefinitionKey` 两端空白）在 `create()` 与 `update()` 里都提到
+   `WorkflowTriggers.validateForWrite` + `requireNotDuplicate` **之前** —— 判定必须用归一之后的值，这是 #61 那一族的同一课；
+2. `entity.setTenantCode(existing.getTenantCode())` 挪到查重**之前**；
+3. `requireNotDuplicate` 开口一条哨兵：`candidate.getTenantCode() == null` ⇒ **拒判**（抛「查重前必须先确定这条绑定属于哪个租户」），
+   而不是"查不到就当没重复"。⚠ 这支哨兵钉的是"以后再接一个不带租户的调用方时它必须响"，**不是**"线上现在会走到这里"
+   （现在两个调用方都给非 null、DDL 也是 `NOT NULL`）—— 这个区别写在那支测试的注释里，别让下一窗把它读成线上事故复现。
+
+**它为什么能从四道闸里全绿走出来（三层原因，比缺陷本身值钱）**：
+1. **HTTP 门没打过这条路**：`git show HEAD:` 那份 `WorkflowTriggerContractTest` 里 `binding/update` 出现 **0** 次（工作树 = 1 次，就是这一支加的门）
+   —— #61 那一族测的是 `create` 查重，`/update` 改成同 KEY 这条路径一次都没请求过。
+2. **core 那几行夹具没有猎物**：历史代码在 update 这条路上查不到行 ⇒ "应当拒"的断言红不了，不是因为断言软，是因为没有一条用例把
+   "调用方不带租户 + 撞已有 KEY" 这个形状种出来（`updateShouldRefuseDuplicateEvenWhenTheCallerSendsNoTenant` 就是那个猎物）。
+3. **测试替身自己也有病**（07:2x 现挖出来的，也是我对 I1 的预测被实测否掉的原因）：
+   `WorkflowBindingServiceTest` 里模拟 MyBatis-Plus wrapper 的 `eq()` 写的是 `wanted == null || String.valueOf(wanted).equals(...)`，
+   即"绑的是 null 就算这一列不筛" —— 而真 SQL 的语义**正好相反**（绑 null ⇒ 全筛掉）。
+   后果是"跨租户的行照抄出来"，症状是 `expected:\<[]> but was:\<[keep, foreign-tenant]>`。
+   修法是**把尺改严**并让它自己带猎物/反对照，两条都写进 `fixtureReallyAppliesWrapperPredicates`：
+   `predicateKey()` 先问"这一列到底有没有谓词"，有就必须取到的值相等；
+   - 正向：`listByEvent(null, APP, ENTITY, AFTER_CREATE)` 必须回 **空**（绑 null = 筛掉一切）；
+   - 反向：`listFires(TENANT, APP, null, null)` 必须回 **1 行**（没有谓词的那一列不许被当成"筛掉一切"）。
+   两支方向相反，只改一头都会红 —— 这条尺同时是 `#61`/`#48` 那两族以后所有 wrapper 断言的地基，
+   ⚠ 另外 5 个用 `getSqlSegment()` 的测试类（relation/app/schema/permission/dict）当时都还是"只看列名不看绑值"的宽松写法，
+   只有 workflow 这一族真在值上绑 `eq()`，所以那 5 族目前**没有**这个病，但也**没有**这把尺。
+
+**成对注入自证（七跑矩阵：07:1x–07:2x 六跑 + 07:5x 补 I5；备份 `cp` 到 `~/.cache/zlc66/`、还原也只 `cp`，没拿 `git checkout --` 当还原步）**：
+
+| 跑 | 生产码 | 测试替身 | core 读数（`~/.cache/zlc66/`） | web 读数 |
+|---|---|---|---|---|
+| b | 修好的（工作树那份） | 宽松 `eq()` + 本批新增断言 | **29/0** BUILD SUCCESS（`core_66_b.log:125`）| — |
+| I1 | 历史的（`git show HEAD:` 那份字节 `e510218…`） | 同上 | **Failures: 2**（`core_66_injected.log:195`）= `requireNotDuplicateRefusesToJudgeWithoutATenant`、`updateShouldRefuseDuplicateAcrossWhitespaceInTheEventAndKey` | **Failures: 1**（`web_66_injected.log:816`）= `updateIntoADuplicateIsRefusedAtTheHttpDoorAndNoKeyFiresTwice`，逐字 `expected: <400> but was: <200>`，而 body 里 `"processDefinitionKey":"p_first"` —— **缺陷本体在 HTTP 层的形状**（同 KEY 的第二条被收下了，且行已被改写） |
+| a | 修好的 | faithful（绑 null = 全筛掉） | **29/0** BUILD SUCCESS（`core_66_faithful.log:125`）| **14/0**（`web_66_a.log:475`）|
+| I3 | 历史的 | faithful | **Failures: 3**（`core_66_injected_faithful.log:229`）= I1 那两支 + `updateShouldRefuseDuplicateEvenWhenTheCallerSendsNoTenant` | — |
+| I2 | 修好的 | 只把 `eq()` 换回宽松写法 | **Failures: 1**（`core_66_loose_eq.log:162`）= `fixtureReallyAppliesWrapperPredicates`，`expected:\<[]> but was:\<[keep, foreign-tenant]>` | — |
+| I5 | 修好的，**只摘 `create()` 里那一处 `requireNotDuplicate` 调用**（`update()` 那句不动） | 同 a | **Failures: 2**（`core_66_no_dedupe.log:197`）= `createShouldRefuseADuplicateOfTheSameEventAndProcessKey`、`createShouldRefuseADuplicateWhoseKeyOnlyDiffersByWhitespace` | **Failures: 1**（`web_66_no_dedupe.log:726`）= `duplicateBindingIsRefusedWhileTheFirstOneStillFires` 撞 `HTTP 状态应当是 400`（应答 body 里 `"id":2` 正是那条本该被拒的重复绑定） |
+| 还原 | 从 `~/.cache/zlc66/WBS.java.fixed` `cp` 回工作树（逐字节对账 `e2936a…`） | 同 a | **29/0** BUILD SUCCESS（`core_66_restored.log:118`）；I5 之后又 `cp` 还原一次并复跑：**29/0、BUILD SUCCESS、rc=0**（`core_66_restored_i5.log:125`），`grep -c "MUT(I5)"` = **0** | — |
+
+⚠ 四格要如实记的账：
+- **预测被实测否掉了一半**：工单上写的是"两步一起摘 ⇒ `requireNotDuplicateRefusesToJudgeWithoutATenant` +
+  `…EvenWhenTheCallerSendsNoTenant` 这两支 + HTTP 那一条同时红"。实测 HTTP 与第一支如约，
+  但 **I1 红的第二支是 `…AcrossWhitespaceInTheEventAndKey`，而 `…EvenWhenTheCallerSendsNoTenant` 在历史代码上照样绿**
+  —— 支数对上了（core 2 + web 1），**是哪两支对不上**，这种差只有真跑一遍才暴露。
+  查下去不是测试写错，是上面第 3 层那把病尺把 `tenant_code = NULL` 当成了"不筛租户"，于是跨租户那一行被"查"了出来、
+  查重"成功"拒了一次 —— **病尺把这个缺陷反向掩盖成了正常行为**（真库里恒 0 行、恒不拒）。挖出它才有 I3/I2 这两跑。
+- `createShouldRefuseADuplicateWhoseKeyOnlyDiffersByWhitespace` 在 **I1/I3 下都是绿的**：历史那份 `requireNotDuplicate` 自己在比较 KEY 时对两边都调了 `.trim()`
+  （现读命令：`git show HEAD:z-lc-core/src/main/java/com/zifang/z/lc/core/workflow/WorkflowBindingService.java | grep -n "\.trim()"` —— 别在账里钉静态行号，
+  这一族改一次代码那些号就位移一次），所以 create 那条路的空白早就被处理了。这一支**不是 #66 的猎物**，不许算进"具名红"，也不算"逃过 0 支"里的那一支。
+  ⚠ 但"不是猎物"不等于"空桩"：**I5**（只摘 `create()` 那一处查重调用）把它**测成红**了 ⇒ 它对 create 这一路真有牙，
+  只是那支牙不咬 update 这一族的缺陷。这一支是 07:5x 补跑的，因为原工单 ② 点名的就是"摘掉 `requireNotDuplicate`"，
+  而先头那六跑一支都没打过它 —— **我先把那格勾成"已跑"，回读时才发这里少一支，于是补跑而不是改账**。
+- **数总句数抓不到这个缺陷**：`STUB.count()` 在修法前后都是 **2**（两条各不重复的绑定各发一句本来就是 2）。
+  所以那一支 HTTP 断言钉的是"每个 KEY 各出现 1 次 + 账上 2 行各指各的记录"，不是总数。
+- **命令本身有坑，工单那两条当时跑不出来**：`mvn -o -pl z-lc-core -am -Dtest=WorkflowBindingServiceTest test` 会在 `z-lc-common` 上
+  `BUILD FAILURE: No tests matching pattern "WorkflowBindingServiceTest" were executed!`（`core_66_a.log:46` 逐字留着）。
+  `-am` 带上游模块就必须加 `-Dsurefire.failIfNoSpecifiedTests=false`，TASK.md 里那两条已按实测改写。
+
+⚠ **覆盖缺口（认下来，不当已闭）**：#66 这一族**没有仓内永久注入器**。`_e2e/` 里打流程绑定的注入器只有
+`mutate_workflow_trigger_guard.py`（M1–M6，摘的是 #61"存了但一个字都不执行"那几个写入口），本窗这七跑是手工成对自证。
+也就是说：#66 现在靠 3 支 core 断言 + 1 支 HTTP 断言钉住，回归由全量门禁（本窗 4774）兜，**不由注入兜**。
+下一支要补的话，形状照 `mutate_health_honesty_guard.py`：注入"把 `setTenantCode(...)` 挪回查重之后"与"摘掉 null 哨兵"两支，
+预期红集就是上表 I1/I3 那三支（并把 faithful 的 `eq()` 钉进量具，否则第二层原因会复发）。
+
+---
+
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（最前面那张 18:3x–19:1x 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+四层门禁当前状态（最前面那张 **09-27 07:2x** 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
 **不是当前数**。
-⚠ 上一版这行写的是"10:4x 一轮实测"，而 19:5x 之后四层又各自重跑过 —— 表里每一行的时间戳才是证据，
-标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+⚠ 上一版这行指的是 18:3x–19:1x 那张。09-27 07:2x 这一窗 java / 接口(H2) / 前端 / 真浏览器 **本地四层**同轮重测过，
+而**打真 MySQL 8 的那两格这一窗量不了**（250 不可达，rc 现读在下面表里，别把 09-26 那两个 469/469 当当前数）。
+表里每一行的时间戳才是证据，标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-27 07:1x – 07:3x 这一窗（#66 收线：`/update` 的查重跑在租户归一化之前 ⇒ `tenant_code = NULL` 恒筛不到行、同 KEY 的第二条照样落库；
+顺带挖出 core 那个测试替身把"绑 null"当成"不筛租户"——那是 #66 能从四道闸里全绿走出来的第三层原因）本地四层全部同轮重测，日志逐层落在 `~/.cache/zlc66/`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**（`install_full.log:4386`，`:4388` `Total time: 16.894 s`）、**4774** 个用例 0 红 0 错 0 跳（模块汇总行现加 = 2701+525+**1330**+112+**106**）。⚠ 16.9s 这个耗时不像"跑了 4774"，所以数**不是从体感推的**：`[INFO] Building z-lc-*` 现数 7 个模块、5 条不带 `-- in` 的汇总行逐条取（`:706/:1052/:2660/:2983/:4326`），另有 07:24:32 落盘的 81 MB `z-lc-admin` jar 作证这局真走完了。**4706 → 4774 的 +68 拆到文件级，且两把尺互证**：`git ls-tree` + `git show` 逐文件数 `@Test` ⇒ `4fee620`（上一窗 18:3x 那批件所在的提交）树 core **1276** / web **92**，与上一窗 surefire 的模块数**逐字同**（分母可信）；`HEAD` 树 core 1326 / web 105（= **+63**：`WorkflowTriggerDispatcherTest` +17、`WorkflowBindingServiceTest` +15、`WfAdapterTest` +10、`WorkflowTriggersTest` +8、09-26 23:28 `3b05b73` 新增的 `WorkflowTriggerContractTest` +13）；工作树 1330 / 106 = 本批 #66 只贡献 `WorkflowBindingServiceTest` **25 → 29**（+4）与 `WorkflowTriggerContractTest` **13 → 14**（+1）。**剩下那 +63 一条都不许记到 #66 这一支账上** |
+| 接口 E2E（本机 H2） | `python3 _e2e/e2e_api_test.py http://localhost:18090` | **532/532**（`api_66.log` 末行逐字 `=== E2E RESULT: 532/532 passed ===`），分母双向校验：`^  PASS ` 行数也 = **532**。469 → 532 的 **+63 / 消失 0** 是标题唯一集量出来的（与 `~/.cache/zlc52_health_guard/api_h2_fresh.log` 逐条求差，469 条distinct对 532 条 distinct）；新增那 63 条全在流程绑定那一节（`/fires` 回读、`/vocabulary` 两栏、z-wf 桩绑 8888、引擎不可达 / 回 5xx / 挂死 7s …），**本批 #66 在接口层一条没加**。打的是本窗 07:24:32 那份件（`md5 -q` = `8f268420f01b1e8933f5f2a2d2ebdaf8`；`lsof` 现读 18090 监听者 = pid 64499、`ps -o lstart` = `Sun Sep 27 07:26:08 2026` ⇒ 起的是这一窗新装的件，不是早先那支）|
+| 接口 E2E（**真 MySQL 8**，隧道 18099） | `bash _e2e/deploy_250.sh api` | **这一格这一窗没重测 —— 不是绿，是没量。** 上一窗（09-26 19:0x）那个 469/469 是老数。07:3x 现读：`ssh 250` ⇒ `kex_exchange_identification: read: Connection reset by peer` / `Connection reset by 192.168.31.250 port 22`、**rc=255**；本机 18099 上还挂着一条 ssh 隧道（pid 70952）而 `curl --max-time 8 http://localhost:18099/api/lc/health` ⇒ `HTTP_CODE=000`、rc=56 ⇒ **本地端口在听 ≠ 对面活着**，要复测得先重起隧道。⚠ 这一窗只敲了这一次 ssh，没反复重试 |
+| 前端 | `cd z-lc-admin-ui && npm run typecheck && npm run lint && npm run test && npm run build` | tsc 0 / `eslint --max-warnings 0` 无输出 / **vitest `Tests 252 passed (252)`、`Test Files 28 passed (28)`**（`check_0727.log:9609/:9610`）/ build `✓ built in 2.74s`、产物 `dist/assets/index-ruBdvAdn.js`。⚠ **252 这个总数与上一窗逐字同，但集合换了**，"同数"不等于"没动"：逐文件对账（`✓ <file> (N tests)` 行现取，机械加总 = 252）对 `zlc52_health_guard/ui_gates3.log` 求差 = `WorkflowsPage.test.tsx` **+3**、`workflowVocabulary.test.ts` **+4**、`src/fields/registry.contract.test.ts` **−7** —— 那 7 条所在的 `src/fields/` 整棵子树（13 个文件）是 09-24 `e3a80c8`「字段类型注册表改用 @yuku123/render 正式版」删的，经 01:5x 那次 rebase 才进到 `HEAD`，所以上一窗跑的那棵树里它还在。**+7 与 −7 恰好抵消**，纯巧合。本批 #66 前端一条断言没加 |
+| 真浏览器 | `E2E_BASE=http://localhost:5274 E2E_API=http://localhost:18090 node e2e/browser-e2e.mjs` | **`=> PASS 279 / FAIL 0`**、`全绿轮次: 1/1`（`browser_66.log`）。⚠ **这一窗跑的是 1 轮，不是上一窗那 3 轮**（`REPEATS=1`）。222 → 279 的 **+57 / 消失 0** 同样是 PASS 标题唯一集量出来的；新增那 57 条全是 #61 §2.5 那一族（发起账抽屉、词表长出来的下拉、FAILED 不许留实例号…），`git log` 现读 `e2e/browser-e2e.mjs` 最后一次改动 = `1ff9e83`（07:18 那批），与本批 #66 无关。产物指纹 `index-ruBdvAdn.js`（与本窗 `npm run check` 那个同名）—— 按 #69 那条**名字不是身份**，这一格只能说门禁自己报的是"比 src 里最新的文件新 767s" |
+| 部署（250 真 MySQL 8） | `bash _e2e/deploy_250.sh sync` → `start` → `verify` → `gates` | **这一格这一窗同样没重测**（250 不可达，rc 见上面那行）。上一窗那批 `GATES_RC=0` / 14 条 ✓ / jar 字节对账 `bb4865…` / healthproof 三档全是**老数**。⚠ 另有一格从来没有在任何窗跑成过：闸 6 `fireprobe` 的**正向 23 条读数**（250 一挂就再没打过），这一窗仍然只能是"没量" |
+| 注入自证（#66 族，java 层） | 手工七跑矩阵（跑法与逐支读数见上面 `### ⚠ 缺陷 #66` 那一节） | b / a / 还原三跑 **BUILD SUCCESS、core 29/0**，web a **14/0**；I1 **core Failures: 2** + **web Failures: 1**、I3 **core Failures: 3**、I2 **core Failures: 1**、I5 **core 2 + web 1** —— 每支的具名红逐字抄在上一节那张表里。⚠ 我对 I1 的**预测**（"两步一起摘 ⇒ 那两支 + HTTP 同时红"）被实测否掉一半（红的第二支换了一支），根因是量具有病而不是断言软，那条发现就是 I2 那一跑。**这一族没有永久量具**：`_e2e/` 里覆盖流程绑定的注入器只有 `mutate_workflow_trigger_guard.py`（M1–M6，打的是 #61"存了不执行"那一族），按**覆盖缺口**记账，见上一节末 |
+| ⚠ 时序（这一窗真发生过，别当成脏数据） | I5 是在上面 java/接口/前端/浏览器 那四个数**量完之后**才补跑的 | 四个数（4774 / 532 / 252 / 279）量的都是 `md5 = e2936acb…` 那棵树；I5 注入完 `cp` 还原后现读 md5 仍是 `e2936acb…`、`grep -c "MUT(I5)"` = 0、复跑 `core_66_restored_i5.log` **29/0 BUILD SUCCESS** ⇒ 那四个数的有效性靠这一次对账兜住。下一窗要引用它们，先 `md5 -q` 比这个值 |
 
 **09-26 18:3x – 19:1x 这一窗（#52 收线：`/api/lc/health` 的 UP 从此每池真探一次、配置不成串就拒起；
 顺带在部署量具自己身上撞出 #59/#60 两支）六层全部同轮重测，日志逐层落在 `~/.cache/zlc52_health_guard/`：**
