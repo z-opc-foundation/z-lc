@@ -43,9 +43,10 @@ bash _e2e/deploy_250.sh gates    # 部署层四道闸，各自带负控，都要
 （收这条链时 5274/5275 都空了：脚本末尾按名字 `pgrep -f 'vite preview --port 5274'` + `kill -9`，把 06:27 那一支一起带走了 ——
 这一族脚本按端口/进程名清理时**会连别人那一支的 preview 一起杀**，用之前先想清楚这一点。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**37 支，后端 19 + 前端 18**
-（这个数不是敲出来的，09-27 00:5x 现敲：`ls _e2e/mutate_*.py | wc -l` = 19、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18。
-上一版记的 17 之后又长了两支：`mutate_health_honesty_guard.py`（#52）与 `mutate_workflow_trigger_guard.py`（#61））：
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**38 支，后端 20 + 前端 18**
+（这个数不是敲出来的，09-27 01:4x 现敲：`ls _e2e/mutate_*.py | wc -l` = 20、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18。
+上一版记的 17 之后又长了三支：`mutate_health_honesty_guard.py`（#52）、`mutate_workflow_trigger_guard.py`（#61 java 层）
+与 `mutate_workflow_deployed_guard.py`（#61 部署件层，见下文「#61 的第六层：发出去的 jar」一节））：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -67,6 +68,7 @@ python3 _e2e/mutate_permission_deployed_guard.py   # #48 打发出去的 fat jar
 python3 _e2e/mutate_collation_guard.py             # 250 真库撞出的那一族 #51/#54/#57：M1..M13 + N1..N5（共 18 支，跑 SchemaAdminBizServiceTest + UndoServiceSnapshotFormatTest + LcHttpContractTest 那两支）
 python3 _e2e/mutate_health_honesty_guard.py        # #52 的 java 层：H1..H17 + N1..N2（账见「健康探针」那一节）
 python3 _e2e/mutate_workflow_trigger_guard.py      # #61 的 java 层：M1..M6 打 core 四类 + 契约层（分母每轮钉 68 + 13，认领 30 条具名断言）
+python3 _e2e/mutate_workflow_deployed_guard.py     # #61 的**部署件层**：W1..W6 各重新 build fat jar、重启 18090 再跑 `[15w]`（分母每轮钉 63/532）
 cd z-lc-admin-ui && python3 e2e/mutate_provision_report_guard.py # #47 的 vitest 层 M1..M18（DesignerProvision.test.tsx 15 例）
 cd z-lc-admin-ui && python3 e2e/mutate_provision_browser_guard.py # #47 的**浏览器层** P1..P6（自带 build + preview，11d 那 24 条）
 cd z-lc-admin-ui && python3 e2e/mutate_permission_browser_guard.py # #49/#50 的**浏览器层** M1..M9（自带 build + preview，11e 那 39 条静态 check 的账是机器核的：认领 ∪ NOT_COVERED == 扫到的全集）
@@ -92,8 +94,8 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 ⚠ **两支不能同时在飞**：它们都就地改写源文件，A 的"按字节还原"会把 B 正在判定的那份源码换掉。
 本轮实测踩到 —— 后台那支还没收线就前台再开一支，基线报出 1 条红
 （`字段表里不该预置引擎自建列: expected 3 to be 0`），那是**另一支的注入形状**，不是产品坏了。
-假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **32 支共用** `e2e/_mutlock.py`
-（**18 支前端全接**，后端接了 **14** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
+假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **33 支共用** `e2e/_mutlock.py`
+（**18 支前端全接**，后端接了 **15** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
 `mutate_pipeline_wiring_guard.py`、`mutate_pipeline_config_guard.py`、`mutate_replay_guard.py`（本窗补上：它改的
 `SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件）、`mutate_provision_reconcile_guard.py`、
 `mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py`、`mutate_edit_path_deployed_guard.py`，
@@ -102,9 +104,11 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 以及部署演练这一族新加的 `mutate_collation_guard.py`（它同样就地改 `SchemaAdminBizService.java` + `UndoService.java`），
 #52 的 `mutate_health_honesty_guard.py`，和 #61 这一窗新加的 `mutate_workflow_trigger_guard.py`
 （它就地改 `RuntimeCrudController.java` —— 那正是流水线、权限、provision 那几支也要动的同一个文件）
+与 `mutate_workflow_deployed_guard.py`（改的是同一个 `RuntimeCrudController.java` + `WfAdapter.java` +
+`WorkflowTriggerDispatcher.java` + `WorkflowTriggers.java`，而且它还要**重启 18090**，两支同时在飞一定互相抹）
 —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 18/14 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18 与
-`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 14 数出来的（09-27 00:5x 现敲），不是点的）；
+这个 18/15 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 15 数出来的（09-27 01:4x 现敲），不是点的）；
 仍未接锁的 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
@@ -1704,6 +1708,25 @@ mock 的口径也记一下：`respond()` 必须给 `text()`（`client.ts` 读的
 | ⇒ 这一支反过来把被测面补宽了一格 | `WorkflowTriggerContractTest.http5xxWithASuccessfulLookingBodyIsNotAFire`（新增，12 → **13** 条） | M5 第一跑 **web 0 红**。查下来不是"运行时不受影响"而是**契约层没有"引擎回非 2xx"这一格形状**（桩只有"200 + `success=false`"，而 `HttpExecutionResult.isSuccess()` 对任何完成的响应恒真，字节码 `iconst_1 → putfield success`）⇒ "判成功看状态码还是看信封"这个决定在真进程边界上无处被检验。补了 502+成功 body（必须是一行 `FAILED`、`detail` 带 `http=502`、body 里那个实例号一个字都不许留下）再加 200 同 body 的阳性对照，M5 才有了第四层的牙 |
 | ⇒ 顺带抓出一条**软断言**（记账，未改） | `WfAdapterTest.httpFailureCarriesStatusAndPath` | M5 下"要说清是 http 几"**假绿** —— 失败消息把整个 body 抄进文案，而那个 body 里正好有 `"404"`；真红的是同一条方法里的"要带上打的是哪条路径"。**断言的文案里混入被回显的内容 = 把它写软了**，这种绿只有注入看得见 |
 | ⇒ 一处**预期红集漏记**（改账不改软） | `WorkflowBindingServiceTest.updateShouldNotLetAValidRowBeTurnedIntoAnUnhonorableOne` | M2 第一跑多红这一条。读下来是真连带：create 与 update 共用 `validateForWrite` ⇒ 名单一混，"先建一条合法的、再把它改成合法的以外"那条绕过创建闸的路一起漏。按名字认领进 M2 的账，**没有**加白名单、也没有把断言改软 |
+
+**09-27 01:0x–01:4x 追加：#61 的第六层 —— 打进「发出去的那个 jar」，不是测试进程**
+
+| 层 | 命令 | 实测（同一窗现读，`~/.cache/zlc61/deployed-guard-0927-013839.log` + 台账 `deployed_ledger.json`） |
+|---|---|---|
+| 部署件接口层（新增一节 `[15w]`） | `python3 _e2e/e2e_api_test.py`（对着 18090 上真跑的 fat jar） | 逐字 `=== baseline deployed: 532/532 全量、本节 63 条，artifact fp=5a0564136514，一轮 4.5s`。分母 63 = 532−469，469 正是加这一节之前的全量。**这一节自己起 z-wf 桩**（`http.server` 指 8888，模式 ok/reject/http5xx/hang），断言的是报文形状（路径 / 剪过空白的 `processKey` / `businessKey` 能回指这条记录 / `title` / `initiator` 是这次请求的人 / variables 带 `lc*` 坐标）+ `/fires` 回读 STARTED 与实例号 + 登记本身不发单 + 未登记实体一句不发 + 6 次写入口被拒且**一行都没落库** + 引擎说不了/5xx 装成功/不可达 三种结局各落一行 FAILED 带原话 + 挂死 7s 撞默认 3000ms 预算（实测 3003ms）+ 一次超时不传染下一次 + 批量导入不发单。⚠ **开局量的第一件事是"18090 上跑的是哪一个件"**：nested `z-lc-core` 时间戳 09-26 18:51、`WfAdapter.class` 4969B、**根本没有 `WorkflowTriggerDispatcher`** —— 那是 #61 之前的 jar。从 HEAD 重打（`78aeba1b…`、`WfAdapter.class` 7794B）并**先按字节比对 fat jar 里那个 class 与 `target/classes/` 的**，之后才信任何读数 |
+| 注入自证（#61 族，部署件层） | `python3 _e2e/mutate_workflow_deployed_guard.py`（**6 支** W1–W6，每支重新 build fat jar、用它重启 18090、再跑整份接口层） | 末行逐字 `RESULT: deployed-layer falsification done`，台账 `bad=0 / restored=true / rerun_green=true / ran_by zifang@0927-013839`。基线 532/532；逐支 = **W1 501（红 31）、W2 531（1）、W3 530（2）、W4 531（1）、W5 528（4）、W6 529（3）**，六支的"本节之外的红"全是 `(none)`；每轮证明 fat jar 里**恰好一个 `.class` 变了**（`changed=1` + 点名是哪个，六支分别是 `RuntimeCrudController` / `WfAdapter`×3 / `WorkflowTriggerDispatcher` / `WorkflowTriggers`）；还原轮 `artifact 回到基线字节: True` + `e2e = 532/532 本节 63 failures=(none)` + `restored sources: clean` |
+| ⇒ 一支**编译器替洞上闸**的读法（记账，非缺陷） | W5 原样打"无上限的 `future.get()`" | **javac 直接拒**：`exception java.util.concurrent.TimeoutException is never thrown in body of corresponding try statement`（01:32 那一轮整场崩在这里）⇒ "摘掉超时"这种变异在 java 层根本编不出来，**编译不过不等于没覆盖**，换一个编得过的形状。改成"预算放大 60 倍（180s）"后："到点判 FAILED 并点名预算"红，而"写入口在默认预算内返回"**没红** —— 因为它另有独立的一根桩（`WfAdapter` 传输层 socket = `timeoutMs + 500ms`，W5 碰不到）。"有界等待"这一族本来就有**两道界**，各名下各的检查，不是量具漏判 |
+| ⇒ 两层闸各管一件事（同一支注入读出来的） | W6 摘 `WorkflowTriggers` 的 `autoSubmit != 1` | 红的是"autoSubmit=0 的绑定被拒"两条 + "上面这 6 次被拒的提交一行都没落库"；而"写 case 仍然正好一句"**没红** —— 落库那行 `auto_submit=0` 被 `listByEvent` 的 `auto_submit = 1` 挡在发起之外。⇒ 写入口那道管"别让装饰进库"、读侧那道管"别让它发单"，两层各有名，摘一层另一层还在 |
+
+⚠ **这一窗量具层面得到的一条通则：检查的名字必须是稳定身份。** 头两轮（`deployed-guard-0927-012438` / `-012821`）有两条名字里插了本轮才有的值（一个时间后缀、一个实测毫秒数），
+"预期红集"就没法逐字比对 —— 每跑一轮名字就变，账永远对不上，而这看起来像"注入逃过了"。修法是把值挪进 `detail`、名字常量化，
+**不是**把比对放宽成前缀匹配。同窗另两条量具层面的账：① 连带红（打到本节之外的红）早先挂在同一串 `elif` 的最后一支上，
+于是"预期非空"的那些轮（= 抄完实测之后的全部轮次）**根本走不到那一句**，注入打到别处也不会红 ⇒ 改成无条件判定；
+② 每一支注入的"预期红集"是从 Transcript 里 `json.dumps` 机械抄进来的，不是手敲的（手敲必臆造，这一族已经错过三次）。
+
+⚠ **接口层这一节不托管的东西，写清楚免得读成"已证"**：跨租户绑定那支造不出来 —— `WorkflowBindingController`
+把租户归一成 `default`，从这个口根本写不进 foreign 行（已写进代码注释而不是假造一条）；`latencyMs` 类的话题与本节无关；
+以及本节测的是 **18090 这台上的 jar**，250 那条腿另有 §2.6 的未闭缺口（`z_lc_workflow_fire` 在 250 真库里还不存在）。
 
 ⚠ **这一窗最值钱的一条：闸自己也会撒谎，而且是在"结论对"的时候撒**。#60 —— `healthproof` 三档全 ✓，
 `gates` 整批退出码却是 **1**（`gates3.log`）。机理：`hp_cleanup` 写的是 `[ -n "$HP_ALIVE" ] && kill …`，

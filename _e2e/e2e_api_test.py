@@ -6,8 +6,11 @@ JSON contract the frontend depends on. Exits non-zero on any failure.
 
 Usage: python3 e2e_api_test.py [base_url]
 """
+import http.server
 import json
+import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -2103,6 +2106,382 @@ for row in perm_list(appCode=PM_APP):
 check("收尾: 本租户这一侧的探针行全部回收干净（留在库里会让下一轮的分母漂）",
       perm_list(appCode=PM_APP) == [], str(perm_list(appCode=PM_APP))[:200])
 call("POST", "/api/lc/app/delete", {"appCode": PM_APP})
+
+# -------------------------------------------------- 流程绑定（缺陷 #61，打的是在跑的那个 fat jar）
+print("\n[15w] 缺陷 #61: 一条绑定在部署件上真的换出一次发起（桩就是它默认指向的那个端口）")
+# 这一节存在的理由：core 单测与契约层证明的是"这些类自己会这么做"，证明不了"shipped 的那个 jar 里
+# 有一个人调它"。#61 的原始形状恰恰是 listByEvent + startProcess 在生产代码里零调用者而全套测试绿。
+# 所以这里量的必须是 18090 上那个进程：真 HTTP、真发一句到桩、真从 /fires 回读结局。
+#
+# 桩为什么打在 8888：WfAdapter 的默认值就是 http://localhost:8888，而全仓没有任何一处 yml/properties
+# 覆盖它（09-27 实测 grep `adapter.wf` 只命中 WfAdapter.java:66 与测试里那句 @DynamicPropertySource）
+# —— 也就是"部署起来什么都没配"时这条链真正会去的地方。指默认值而不是自己塞一个端口，量的才是
+# 一个真实存在的部署形状。
+#
+# ⚠ 本节凡是"一条都没发"的负断言都走 wfc()：桥没通（桩没起来，或 jar 压根没打过来）时它们一律判**红**,
+#   因为那种 0 既可能是"闸管用"也可能是"这条链根本没接"，分不开（#48 收口时踩过同一件事）。
+#   同理，被引擎形状影响的正断言也走 wfc —— 宁可得罪分母，不得到假绿。
+
+WF_APP = "e2ewf_" + SUF
+WF_TABLE = f"e2e_wf_{SUF}"
+# 三个实体各有各的用处，不是随手多建的：
+#   case   —— 本节所有"发得出去/发不出去"的判定都挂在它身上（一条绑定 ⇒ 一条记录正好一句）
+#   plain  —— 不登记绑定，专门给「没有绑定的实体一句都不发」当猎物
+#   second —— 第二条绑定。"登记绑定本身不发单"和"换一条记录又发一句"要在它身上分开数，
+#             否则同一个实体上挂两条绑定，"正好一句"这种计数断言从结构上就不成立。
+WF_ENT, WF_NONE, WF_TWO = "case", "plain", "second"
+WF_KEY = "expense_deployed"          # 登记时故意两端带空白，见 wf_bind 那一句
+WF_PORT = int(os.environ.get("LC_WF_STUB_PORT", "8888"))
+WF_PATH = "/api/approval-center/processes/start"
+WF_INSTANCE = "wf-deployed-77"
+WF_ACTOR = "wf_e2e_" + SUF
+WF_OK_BODY = json.dumps({"success": True, "code": 200, "message": None,
+                         "data": {"processInstanceId": WF_INSTANCE}})
+WF_REJECT_BODY = json.dumps({"success": False, "code": 500, "message": "流程启动失败: business key 已存在"})
+WF_BIND = "/api/lc/workflow-binding"
+
+
+class _WfHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n) if n else b""
+        srv = self.server
+        srv.requests.append((self.command, self.path, raw.decode("utf-8", "replace")))
+        if srv.mode == "hang":
+            time.sleep(srv.hang_seconds)
+        body = WF_REJECT_BODY.encode() if srv.mode == "reject" else WF_OK_BODY.encode()
+        status = 502 if srv.mode == "http5xx" else 200
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        pass
+
+
+class _WfStub(http.server.ThreadingHTTPServer):
+    """只记请求 + 四种回法（成功 / success=false / 5xx+成功 body / 睡住不回）。
+
+    用 ThreadingHTTPServer 而不是单线程：派发池有 2 个槽，"挂死那一条"不能顺手把别的探针也按住 ——
+    那会把量具自己的排队冒充成被测方的排队。
+    """
+
+    daemon_threads = True
+    allow_reuse_address = True
+    mode = "ok"
+    hang_seconds = 0.0
+
+    def __init__(self, port):
+        super().__init__(("127.0.0.1", port), _WfHandler)
+        self.requests = []
+        threading.Thread(target=self.serve_forever, kwargs={"poll_interval": 0.05},
+                         daemon=True).start()
+
+    def stop(self):
+        self.shutdown()
+        self.server_close()
+
+
+WF = None
+WF_LIVE = False           # 桥通了没有：桩起得来 **且** jar 真打过来过一句
+_bridge_err = ""
+try:
+    WF = _WfStub(WF_PORT)
+except OSError as ex:
+    _bridge_err = str(ex)
+check(f"z-wf 桩绑得上 {WF_PORT}（jar 的默认 base-url 就去这里；绑不上则本节全部没有判定）",
+      WF is not None, _bridge_err)
+
+
+def wfc(name, cond, detail=""):
+    """本节所有依赖"那条链真的接着"的断言都走这里 —— 桥没通就没有绿。"""
+    return check(name, bool(cond) and WF_LIVE,
+                 detail if WF_LIVE else "桥没通（桩没起来或 jar 没打过来）⇒ 这一条没有判定，不算绿")
+
+
+def wf_count():
+    return len(WF.requests) if WF else 0
+
+
+def wf_reset(mode="ok", hang=0.0):
+    if WF:
+        WF.requests = []
+        WF.mode = mode
+        WF.hang_seconds = hang
+
+
+def wf_bind(entity, process_key, **extra):
+    return call("POST", WF_BIND + "/create",
+                {"appCode": WF_APP, "entityCode": entity, "tenantCode": TENANT,
+                 "triggerEvent": "AFTER_CREATE", "processDefinitionKey": process_key, **extra})[0]
+
+
+def wf_rejected(name, body, want):
+    """写入口那道闸：既钉 400 也钉文案点名（只拒不给原因 = 用户只能翻源码）。"""
+    j, s, _ = call("POST", WF_BIND + "/create", body)
+    msg = str((j or {}).get("message") or "")
+    check(name, isinstance(j, dict) and s == 400 and j.get("code") == 400 and j.get("success") is False,
+          f"http={s} body={str(j)[:200]}")
+    check(f"{name}：点名为什么兑现不了", want in msg, msg[:220])
+
+
+def wf_write(values, entity=WF_ENT, actor=None):
+    body = {"entityCode": entity, "appCode": WF_APP, "tenantCode": TENANT, "fieldValues": values}
+    j = call_as(actor, "POST", "/api/lc/runtime/create", body, params={"entityCode": entity}) \
+        if actor else call("POST", "/api/lc/runtime/create", body, params={"entityCode": entity})[0]
+    return (j or {}).get("data"), j
+
+
+def wf_fires(entity=WF_ENT, record_id=None):
+    params = {"appCode": WF_APP, "entityCode": entity}
+    if record_id is not None:
+        params["recordId"] = record_id
+    j, s, _ = call("GET", WF_BIND + "/fires", params=params)
+    if not isinstance(j, dict) or j.get("success") is not True:
+        return None, s, j
+    data = D(j)
+    return (data if isinstance(data, list) else []), s, j
+
+
+def wf_bindings(entity=WF_ENT):
+    j, _, _ = call("GET", WF_BIND + "/list", params={"appCode": WF_APP, "entityCode": entity})
+    data = D(j)
+    return data if isinstance(data, list) else []
+
+
+def wf_row(record_id, entity=WF_ENT):
+    rows, s, j = wf_fires(entity=entity, record_id=record_id)
+    return (rows or [{}])[0] if isinstance(rows, list) else {}, f"http={s} body={str(j)[:160]}"
+
+
+def wf_bridge(name, entity=WF_ENT, tag="BR"):
+    """把本节重新钉回"链是通的"：清桩 → 写一条 → 桩正好收到一句。
+
+    这一条走普通 check 而不是 wfc —— 它自己就是 WF_LIVE 的来源，用 wfc 会首尾相咬。
+    每个依赖"一句都没发"的负断言组之前都要先跑一次它，否则"闸管用"和"链断了"分不开。
+    """
+    global WF_LIVE
+    wf_reset()
+    rid, env = wf_write({"ref": tag + "-" + SUF}, entity=entity)
+    WF_LIVE = bool(WF) and wf_count() == 1
+    check(name, WF_LIVE,
+          f"桩收到 {wf_count()} 句（应为 1）: {str(WF.requests if WF else [])[:180]} 信封: {str(env)[:140]}")
+    return rid
+
+
+ok("POST /admin/app/create (流程绑定探针应用)",
+   call("POST", "/api/lc/admin/app/create",
+        {"tenantCode": TENANT, "appCode": WF_APP, "appName": "流程绑定探针"})[0])
+WF_FIELDS = [{"fieldCode": "ref", "fieldName": "编号", "fieldType": "STRING", "sortOrder": 1}]
+for _ent, _table in ((WF_ENT, WF_TABLE), (WF_NONE, WF_TABLE + "_2"), (WF_TWO, WF_TABLE + "_3")):
+    je, _, _ = call("POST", "/api/lc/admin/app/entity/create",
+                    {"tenantCode": TENANT, "appCode": WF_APP, "entityCode": _ent,
+                     "entityName": "流程绑定探针表", "tableName": _table, "description": "e2e",
+                     "fields": WF_FIELDS},
+                    params={"appCode": WF_APP, "tenantCode": TENANT})
+    ok(f"探针实体 {_ent} 建成", je)
+    ok(f"POST /admin/entity/provision ({_ent})",
+       call("POST", "/api/lc/admin/entity/provision", params={"id": D(je).get("id")})[0])
+
+# ---- 词表：界面那三份手抄清单的替身，从部署件里问出来 ----------------------------------------
+jv, sv, _ = call("GET", WF_BIND + "/vocabulary")
+voc = D(jv) if isinstance(jv, dict) else {}
+check("/vocabulary 回的是 implemented + rejected 两栏",
+      isinstance(jv, dict) and sv == 200 and "implemented" in voc and "rejected" in voc, str(jv)[:200])
+check("implemented 只有 AFTER_CREATE（引擎今天真有挂接点的那一档）",
+      voc.get("implemented") == ["AFTER_CREATE"], str(voc.get("implemented"))[:160])
+_rejected = voc.get("rejected") or []
+check("被拒的每个事件都带着自己的原因（界面不必手抄，也不能只说「不支持」）",
+      all(isinstance(r, dict) and r.get("event") and (r.get("reason") or "").strip() for r in _rejected)
+      and {"AFTER_UPDATE", "AFTER_DELETE", "status_change", "BEFORE_CREATE"}
+          <= {r.get("event") for r in _rejected},
+      str(_rejected)[:260])
+
+# ---- 桥：登记绑定 → 写记录 → 桩收到那一句 → /fires 读回 STARTED -------------------------------
+jb = wf_bind(WF_ENT, f"  {WF_KEY} ")
+ok("登记一条 AFTER_CREATE 绑定（KEY 两端带空白，落库要剪掉）", jb)
+_binding_id = D(jb).get("id")
+check("create 就把 KEY 的空白剪掉（存 " + repr(f"  {WF_KEY} ") + " 会让查重形同虚设）",
+      D(jb).get("processDefinitionKey") == WF_KEY, str(D(jb))[:200])
+check("autoSubmit 没给时补 1，而不是留一列空（listByEvent 拿它当硬条件）",
+      D(jb).get("autoSubmit") == 1, str(D(jb))[:200])
+wf_reset()
+rid, env = wf_write({"ref": "WF-1"}, actor=WF_ACTOR)
+WF_LIVE = bool(WF) and wf_count() == 1
+wfc("写一条记录 ⇒ 桩正好收到一句（这一条是整节的桥：它不成立，本节其余没有判定）",
+    wf_count() == 1, f"桩收到 {wf_count()} 句: {str(WF.requests if WF else [])[:220]} 信封: {str(env)[:160]}")
+_sent = WF.requests[0] if WF and WF.requests else ("", "", "")
+_body = _sent[2]
+wfc("打的必须是 z-wf 真映射的那条路径（少 /api 或 process 少个 s 都是 404）",
+    _sent[1] == WF_PATH, f"path={_sent[1]!r}")
+wfc("body 里是 DTO 真读的 processKey（不是 processDefKey），且空白剪掉",
+    f'"processKey":"{WF_KEY}"' in _body, _body[:260])
+wfc("businessKey 能定位回这条记录",
+    f'"businessKey":"{WF_APP}:{WF_ENT}:{rid}"' in _body, _body[:260])
+wfc("title 在（缺席时审批中心里那一单没有名字）",
+    f'"title":"{WF_ENT}#{rid}"' in _body, _body[:260])
+# ⚠ 名字里不许带**每次运行都会变**的量（这一条原先写着 `（{WF_ACTOR}）`，而 WF_ACTOR 含时间后缀，
+#   于是部署件层的注入量具 `mutate_workflow_deployed_guard.py` 拿"检查名"当身份比对时，
+#   同一支检查每轮都换一个名字 —— 预期红集根本没法钉。具体是谁，写在 detail 里。
+wfc("initiator 用的是这次请求的那个人，不是让 z-wf 兜底成常量 \"1\"",
+    f'"initiator":"{WF_ACTOR}"' in _body, f"actor={WF_ACTOR} body={_body[:260]}")
+wfc("字段值整份当流程变量带走，并且留了低代码这一侧的坐标",
+    '"ref":"WF-1"' in _body and f'"lcRecordId":{rid}' in _body
+    and f'"lcAppCode":"{WF_APP}"' in _body and f'"lcEntityCode":"{WF_ENT}"' in _body, _body[:300])
+rows, srow, jrow = wf_fires(record_id=rid)
+wfc("/fires 读回这一条：正好一行", isinstance(rows, list) and len(rows) == 1,
+    f"http={srow} body={str(jrow)[:200]} rows={str(rows)[:200]}")
+_row = (rows or [{}])[0]
+wfc("那一行是 STARTED，实例 id 就是 z-wf data.processInstanceId 那一格（不是整个 data 的 toString）",
+    _row.get("status") == "STARTED" and _row.get("instanceId") == WF_INSTANCE, str(_row)[:240])
+wfc("成功行不带失败原因，但带上它是哪条绑定的兑现",
+    not (_row.get("detail") or "").strip() and str(_row.get("bindingId")) == str(_binding_id)
+    and _row.get("triggerEvent") == "AFTER_CREATE" and _row.get("processDefinitionKey") == WF_KEY,
+    str(_row)[:240])
+
+# ---- 登记绑定不等于发单；换一条记录要再发一句（计数只在"一个实体一条绑定"上才成立）--------------
+wf_reset()
+j2 = wf_bind(WF_TWO, "p_second")
+ok(f"给实体 {WF_TWO} 再登记一条绑定", j2)
+wfc("登记绑定这件事本身不发单（只有写记录才发）", wf_count() == 0,
+    str(WF.requests if WF else [])[:200])
+rid2, _ = wf_write({"ref": "WF-2"}, entity=WF_TWO)
+wfc(f"{WF_TWO} 上第一条记录发一句", wf_count() == 1, str(WF.requests if WF else [])[:220])
+rid2b, _ = wf_write({"ref": "WF-3"}, entity=WF_TWO)
+wfc("同一实体第二条记录又发一句：逐条新建各自发起，不复用上一条", wf_count() == 2,
+    f"桩收到 {wf_count()} 句")
+_rows_2, _, _ = wf_fires(entity=WF_TWO)
+wfc(f"{WF_TWO} 的账上有两行，且 recordId 各指各的记录",
+    isinstance(_rows_2, list) and len(_rows_2) == 2
+    and {str(r.get("recordId")) for r in _rows_2} == {str(rid2), str(rid2b)}, str(_rows_2)[:240])
+
+# ---- 没有登记的实体一句都不发（先复证链还通，否则这条 0 说明不了任何事）--------------------------
+wf_bridge(f"复证链还通：写 {WF_ENT} 仍然正好一句")
+wf_reset()
+rid_none, _ = wf_write({"ref": "NB-1"}, entity=WF_NONE)
+wfc("没有登记的实体一句都不发（否则「绑定决定发不发」这句是假的）",
+    wf_count() == 0, str(WF.requests if WF else [])[:220])
+_rows_none, _, _ = wf_fires(entity=WF_NONE)
+wfc("没发单的实体在账上也没有行", isinstance(_rows_none, list) and not _rows_none,
+    str(_rows_none)[:200])
+
+# ---- 拒绝面：400 是表象，"一条都不发 + 一行都没落库"才是牙齿 ----------------------------------
+wf_reset()
+wf_rejected("AFTER_UPDATE 在写入口就被拒",
+            {"appCode": WF_APP, "entityCode": WF_ENT, "tenantCode": TENANT,
+             "triggerEvent": "AFTER_UPDATE", "processDefinitionKey": "p_up"}, "更新后")
+wf_rejected("status_change 在写入口就被拒",
+            {"appCode": WF_APP, "entityCode": WF_ENT, "tenantCode": TENANT,
+             "triggerEvent": "status_change", "processDefinitionKey": "p_sc"}, "状态")
+wf_rejected("BEFORE_CREATE（写前挂接点属于 #41 那一族）在写入口就被拒",
+            {"appCode": WF_APP, "entityCode": WF_ENT, "tenantCode": TENANT,
+             "triggerEvent": "BEFORE_CREATE", "processDefinitionKey": "p_bc"}, "流水线")
+wf_rejected("空 processDefinitionKey 被拒且指名是哪一格",
+            {"appCode": WF_APP, "entityCode": WF_ENT, "tenantCode": TENANT,
+             "triggerEvent": "AFTER_CREATE", "processDefinitionKey": "   "}, "processDefinitionKey")
+wf_rejected("autoSubmit=0 的绑定被拒（没有任何运行时行为的开关就是装饰）",
+            {"appCode": WF_APP, "entityCode": WF_ENT, "tenantCode": TENANT,
+             "triggerEvent": "AFTER_CREATE", "processDefinitionKey": "p_off", "autoSubmit": 0}, "自动提单")
+wf_rejected("同一实体同一 KEY 重复登记被拒（带空白也算重复）",
+            {"appCode": WF_APP, "entityCode": WF_ENT, "tenantCode": TENANT,
+             "triggerEvent": "AFTER_CREATE", "processDefinitionKey": f" {WF_KEY} "}, "已经绑定过")
+check("上面这 6 次被拒的提交一行都没落库（闸在写入之前）",
+      [b.get("processDefinitionKey") for b in wf_bindings(WF_ENT)] == [WF_KEY],
+      str(wf_bindings(WF_ENT))[:260])
+_rid_ok = wf_bridge(f"复证：被拒 6 次之后写 {WF_ENT} 仍然正好一句")
+_rows_refused, _, _ = wf_fires(record_id=_rid_ok)
+wfc("发出去那一句在账上留下一行 STARTED",
+    isinstance(_rows_refused, list) and len(_rows_refused) == 1
+    and _rows_refused[0].get("status") == "STARTED", str(_rows_refused)[:220])
+
+# ---- 引擎侧任何意外都不许把用户的写入带走 ------------------------------------------------------
+wf_reset("reject")
+rid_rej, _ = wf_write({"ref": "RJ-1"})
+_rows_rej, _, _ = wf_fires(record_id=rid_rej)
+wfc("引擎说不了（success=false）：记录照样落地", isinstance(rid_rej, int) and rid_rej > 0, str(rid_rej))
+wfc("并且账上是一行 FAILED 带引擎那句原话",
+    isinstance(_rows_rej, list) and len(_rows_rej) == 1 and _rows_rej[0].get("status") == "FAILED"
+    and "business key 已存在" in str(_rows_rej[0].get("detail") or ""), str(_rows_rej)[:260])
+wf_reset("http5xx")
+rid_5xx, _ = wf_write({"ref": "HX-1"})
+_rows_5xx, _, _ = wf_fires(record_id=rid_5xx)
+wfc("引擎回 5xx 而 body 写着成功：仍是 FAILED（这一格形状是 §2.3 的 M5 逼出来的）",
+    isinstance(_rows_5xx, list) and len(_rows_5xx) == 1 and _rows_5xx[0].get("status") == "FAILED",
+    str(_rows_5xx)[:260])
+wfc("5xx 时 body 里那个实例号一个字都不许留下，且失败原因说清是 http 几",
+    isinstance(_rows_5xx, list) and _rows_5xx
+    and WF_INSTANCE not in str(_rows_5xx[0].get("instanceId") or "")
+    and "http=502" in str(_rows_5xx[0].get("detail") or ""), str(_rows_5xx)[:260])
+
+# 引擎不可达：把监听 socket 关掉（不是"回得慢"）。这一组**不**依赖桥还通 —— 它要的就是"没人接电话"，
+# 所以走普通 check；写入口能不能照常落地、账上有没有 FAILED 行，两样都归 j-侧判。
+if WF:
+    WF.stop()
+rid_dn, env_dn = wf_write({"ref": "DN-1"})
+_rows_dn, s_dn, j_dn = wf_fires(record_id=rid_dn)
+check("引擎不可达：写入口不是一句 500，记录照样写成功",
+      isinstance(rid_dn, int) and rid_dn > 0 and s_dn == 200, f"http={s_dn} env={str(env_dn)[:160]}")
+check("引擎不可达：账上留一行 FAILED 并说得出为什么",
+      isinstance(_rows_dn, list) and len(_rows_dn) == 1 and _rows_dn[0].get("status") == "FAILED"
+      and str(_rows_dn[0].get("detail") or "").strip(), str(_rows_dn)[:260])
+WF = None
+_rebind_err = ""
+try:
+    WF = _WfStub(WF_PORT)
+except OSError as ex:
+    _rebind_err = str(ex)
+check("桩能重新绑上（下一句的阳性对照要有猎物）", WF is not None, _rebind_err)
+wf_bridge(f"把桩换回来：同一条绑定立刻发得出去（阳性对照，{WF_ENT} 正好一句）")
+_rows_after, _, _ = wf_fires(entity=WF_ENT, record_id=None)
+wfc("账上累积的行数与发出去的句子一样多（每一次尝试都留痕，成功的也不例外）",
+    isinstance(_rows_after, list) and len(_rows_after) >= 4, str(_rows_after)[:180])
+
+# 回得慢：这一支量的是**部署件的默认预算**（契约层那个 250ms 是自己塞的配置键，这里什么都没配）。
+# 默认 DEFAULT_TIMEOUT_MS = 3000，而共享 z-util-http 客户端的读超时是 60s —— 没有上限的话
+# 用户的"新建记录"会被一条挂死的 z-wf 按住 60 秒。
+wf_reset("hang", hang=7.0)
+_began = time.time()
+rid_slow, _ = wf_write({"ref": "SL-1"})
+_elapsed = int((time.time() - _began) * 1000)
+_rows_slow, _, _ = wf_fires(record_id=rid_slow)
+wfc("引擎挂死 7s：写入口在默认预算内就返回了（不是等它自己回话）",
+    _elapsed < 5000 and isinstance(rid_slow, int) and rid_slow > 0,
+    f"实测 {_elapsed}ms（上限 5000ms，默认预算 3000ms）")
+wfc("到点判 FAILED，而且原因点名的是那个默认预算本身",
+    isinstance(_rows_slow, list) and len(_rows_slow) == 1 and _rows_slow[0].get("status") == "FAILED"
+    and "3000ms" in str(_rows_slow[0].get("detail") or ""), str(_rows_slow)[:260])
+wf_reset("ok")
+rid_next, _ = wf_write({"ref": "SL-2"})
+_rows_next, _, _ = wf_fires(record_id=rid_next)
+wfc("一次超时不许传染下一次：紧接着的一条又发得出去（2 槽池的槽位要在有上限之后自己回来）",
+    isinstance(_rows_next, list) and len(_rows_next) == 1
+    and _rows_next[0].get("status") == "STARTED", str(_rows_next)[:220])
+
+# ---- 边界口径：批量导入不发单（改了这条要同时改文档）-------------------------------------------
+wf_bridge(f"复证链还通：批量导入之前 {WF_ENT} 仍然正好一句")
+wf_reset()
+jim, _, _ = call("POST", "/api/lc/runtime/import/commit",
+                 {"records": [{"ref": "IM-1"}, {"ref": "IM-2"}]},
+                 params={"entityCode": WF_ENT, "appCode": WF_APP, "tenantCode": TENANT})
+check("批量导入本身要成功（不然下面的「没发单」是空跑）",
+      isinstance(jim, dict) and jim.get("success") is True and (D(jim).get("insertedCount") or 0) == 2,
+      str(jim)[:220])
+wfc("批量导入今天不发单（发就是 N 条记录一次外部调用，且没有回滚路径）",
+    wf_count() == 0, str(WF.requests if WF else [])[:220])
+
+# ---- 收尾：探针自己留下的东西要收干净，否则下一轮的分母会漂------------------------------------
+for _b in wf_bindings(WF_ENT) + wf_bindings(WF_NONE) + wf_bindings(WF_TWO):
+    call("POST", WF_BIND + "/delete", {"id": _b.get("id")})
+check("收尾：本探针的绑定全部删掉（库里留着会让下一轮的「一行都没落库」数错）",
+      wf_bindings(WF_ENT) == [] and wf_bindings(WF_TWO) == [] and wf_bindings(WF_NONE) == [],
+      str(wf_bindings(WF_ENT))[:200])
+if WF:
+    WF.stop()
+call("POST", "/api/lc/app/delete", {"appCode": WF_APP})
 
 # ---------------------------------------------------------------- cleanup
 

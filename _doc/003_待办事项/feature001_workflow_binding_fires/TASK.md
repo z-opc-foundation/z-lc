@@ -131,8 +131,48 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 
 ### 2.4 接口层 E2E（部署在跑的那个 jar，不是测试进程）
 
-- [ ] `_e2e/e2e_api_test.py` 目前 `grep -c workflow` ⇒ **0**。要补：真 jar 上 create 绑定 → 写记录 →
-      `/fires` 回读 STARTED；桩指向本机一个端口，验证"桩不可达时 FAILED 行落得下来、而记录仍然写成功"。
+- [x] `_e2e/e2e_api_test.py` 的 `[15w]` 一节（09-27 01:0x–01:3x 写完并量过）。
+      开局实测：**18090 上跑的 jar 是 #61 之前的**（nested `z-lc-core` 09-26 18:51、`WfAdapter.class` 4969B、
+      根本没有 `WorkflowTriggerDispatcher`）⇒ 从 HEAD 重打（`78aeba1b…`、`WfAdapter.class` 7794B），
+      并且**先按字节比对 fat jar 里那个 class 与 `target/classes/` 的**，再信任何读数。
+      分母：全量 **532**（其中 `[15w]` **63**，63 = 532−469 与加这一节之前的基线逐条对齐）。
+      这一节自己起 z-wf 桩（`http.server` 指 8888，模式 ok/reject/http5xx/hang），断言的形状：
+      桥（写一条 ⇒ 桩正好收到一句）+ 报文（路径 / 剪过空白的 processKey / businessKey / title /
+      initiator / variables 带 lc* 坐标）+ `/fires` 回读 STARTED 与实例号 + 登记本身不发单 +
+      未登记实体一句不发 + 6 次写入口被拒（每次带"点名为什么兑现不了"，且**一行都没落库**）+
+      引擎说不了（success=false）/ 5xx 而 body 写成功 / 不可达 三种结局各落一行 FAILED 带原话 +
+      换回桩的阳性对照 + 挂死 7s 撞默认 3000ms 预算（实测 3003ms 判 FAILED 且原因点名预算）+
+      一次超时不传染下一次 + 批量导入不发单。
+      **"桥没通"与"桥通了但断言红"分开记账**：依赖那条链的断言一律走 `wfc()`，桥断了它们打的是
+      "这一条没有判定"，不算绿 —— 否则桩起不来时那 30 条会集体开绿灯。
+      接口层不托管"跨租户绑定"那一支：`WorkflowBindingController` 把租户归一成 `default`，
+      从这个口根本造不出 foreign 行（写进注释，不假造）。
+- [x] 同轮注入自证 `_e2e/mutate_workflow_deployed_guard.py`（新量具，第 38 支）。每支都重新 build fat jar、
+      用**它**重启 18090、再跑整份接口层；台账 `~/.cache/zlc61/deployed_ledger.json`：
+      基线 532/532、分母钉 `e2e_total=532 / section=63`、`bad=0`、`restored=true`、`rerun_green=true`。
+
+      | 注入 | 摘掉的是什么 | 实测红（全部落在 `[15w]` 内） |
+      |---|---|---|
+      | W1 `RuntimeCrudController` | `afterCreate(...)` 调用点 ⇒ `int fired = 0` | 501/532，**31 条** |
+      | W2 `WfAdapter.START_PATH` | 退回 #61 之前那条路径 | 531/532，**1 条**（只红路径那一条：形状对、门牌错） |
+      | W3 `CtcAdapter.httpAccepted(res)` | 退回 `res.isSuccess()`（任意完成的响应都算成功） | 530/532，**2 条**（5xx 被当成功那一族） |
+      | W4 `data.getString("processInstanceId")` | 退回 `data.toString()` | 531/532，**1 条**（实例号那一格） |
+      | W5 派发预算 `future.get(timeoutMs)` | 放大 60 倍（180s） | 528/532，**4 条**（"到点判 FAILED 并点名预算"那一族） |
+      | W6 `WorkflowTriggers` 的 `autoSubmit != 1` | 摘成 `if (false)` | 529/532，**3 条**（含"一行都没落库"） |
+
+      两支**记账而非缺陷**的读法：
+      ① W5 原本要打的形状是"无上限的 `future.get()`"，**javac 直接拒**（`catch (TimeoutException)`
+      变不可达，01:32 那一轮整场战役崩在这里）⇒ 语言替这个洞上了一道闸；改成"预算放大 60 倍"之后
+      "到点判 FAILED"红，而"写入口在预算内返回"**没红** —— 因为它另有一根独立的桩（`WfAdapter`
+      传输层 socket = `timeoutMs + 500ms`，W5 碰不到）。两道界各名下各的检查，不是量具漏判。
+      ② W6 摘闸后落库那行 `auto_submit=0` 被 `listByEvent` 的 `auto_submit = 1` 挡在发起之外 ⇒
+      写入口那道管"别让装饰进库"、读侧那道管"别让它发单"，两层各有名。
+      量具规则照 §2.3 那份：字节快照 + md5 对账（**不用** `git checkout --` 当还原步）、anchor 逐字唯一、
+      每轮先证明 fat jar 里**恰好一个 `.class` 变了**（指纹没变=这一轮什么都证明不了，记坏账）、
+      分母漂了当场判"没红"不成立、还原轮必须回到基线字节并 532/532 回绿、`_mutlock` 全局互斥、
+      崩溃走 `except` 记账而不是被 `finally` 洗成 "RESULT: done"。
+      一个新量的到的教训（写进 README）：**检查的名字必须是稳定身份** —— 头两轮有两条名字里插了
+      本轮才有的值（时间后缀、实测毫秒数），"预期红集"就没法逐字比对；把值挪进 detail，名字常量化。
 
 ### 2.5 浏览器层
 
