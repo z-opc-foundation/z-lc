@@ -28,7 +28,7 @@ vitest 那份喂的是它自己 stub 的词表（`DeploymentsPage.test.tsx:28` �
   D8  部署完不重读列表                    → 「读回来不是乐观追加」+ 底下五格各自一条（{14,15,16,17,19,20,21}）
   D9  成功那一下说「部署已创建」          → 「说的是部署完成并抄服务器那句第一行」
   D10 摘掉「新建部署」的词表闸            → 「词表读不到时按钮收住」
-  D11 词表闸写反（ready 才禁用）          → 「正常态是 enabled」+「读不到收住」+「换回立刻松开」
+  D11 词表闸写反（ready 才禁用）          → 粗筛不判别：整节 19 条一起塌（见 runs() 里的注释）
   D12 词表读失败的横幅整块摘掉            → 「报的是部署方式词表没有读到并给重试入口」
   D13 空态退回通用「暂无数据」            → 「一条都没有时说的是该应用还没有部署记录」
   D14 空态不分读失败，恒说「还没有」      → 「读不到那一屏报的是没有读到」（这一条要读占位话，见套件里那句注释）
@@ -38,29 +38,37 @@ vitest 那份喂的是它自己 stub 的词表（`DeploymentsPage.test.tsx:28` �
   D18 「日志」那颗按钮永远禁用            → 标题 + 原话两条（详情根本读不回来）
   D19 「方式」列画裸编码                  → 「那一格画的是中文标签，ID 就是服务器那行的 id」
   D20 挂载时多读一次列表                  → 「一次挂载只发一次部署列表请求」
-  D21 点一次发两个 create                 → 「只发一个 create」+「界面行数 = 服务器行数」
+  D21 点一次发两个 create                 → 「只发一个 create」+「界面行数 = 服务器行数」+ 收尾那一句（实测 3 条）
 
-⚠ 有三条检查这一支**不**注入，按未覆盖记账（写成"全都能抓到"是谎），逐条在 `NOT_COVERED` 里
-由 validate() 对着源码核名字。理由各不一样，都留了可复核的凭据：
-  · 「节前对账 / 节前的词表读得到 / 应用收掉了」是夹具与收尾，设计上不许有注入红它们；
-  · 「默认落在服务器清单的第一种」在当前词表下**结构上不可注入** —— `executable` 只有一种，
+上面每支箭头后面是**这一支想摘掉哪一句保证**；每支的**实测红集**以 `runs()` 里那份名单为准 ——
+run1 跑完按实测改过两处（D11 从 3 条改 19 条、D21 从 2 条改 3 条），断言一个字没动。
+
+⚠ 有七条检查这一支**没有专属猎物注入**，按未覆盖记账（写成"全都能抓到"是谎），逐条在
+`not_covered()` 里由 validate() 对着源码核名字。理由各不一样，都留了可复核的凭据：
+  · 「节前对账 / 节前的词表读得到 / 应用收掉了」是夹具与收尾，实测在 run1 的 22 轮里一条都没红过；
+  · 「默认落在服务器清单的第一种」在当前词表下**结构上打不出专属注入** —— `executable` 只有一种，
     于是 `executable[0]` ↔ 钉死 `'HOT_LOAD'` ↔ 取最后一种，三种写法画出来逐字节相同。
-    它的牙在 vitest（那边的 fixture 是 `['HOT_LOAD','BLUE_GREEN']` 两种，钉的是原序）；
+    它的牙在 vitest（那边的 fixture 是两种，钉的是原序）；
   · 「点了部署之后库里真的长出那张表」要红它只能改**送出去**的那个 deployType，而写入口现在
     把非 executable 的拒成 `success:false / code:400`（09-27 13:2x 实测 curl：
     「部署方式 [DOCKER] 服务器执行不了…当前可登记的只有 [HOT_LOAD]」）⇒ 一次注入连着塌
     「toast」「状态格」「服务器行数」等九条并带走整节，那是造一个新缺陷不是摘一句守卫；
   · 「读不到那一屏不留下上一份账的行」的清账那一句在共享的 `_scope.ts`（六个管理页共用，
-    别的注入族的基线也读它），不在本支的被测文件里 —— 摘它是跨族改动，另开一族量。
+    别的注入族的基线也读它），不在本支的被测文件里 —— 摘它是跨族改动，另开一族量；
+  · 「恢复之后再读一次：那一行回来了」同样没有专属注入，但它 D11、D21 两支里都连带红过。
+    「没有专属猎物」≠「从来没红过」：这四格混过一次，所以 validate() 现在要求 —— 既进某支预期红集
+    又留在记账名单上的名字，理由里必须原样写「连带红过」，少了这四个字当场拒绝开火。
 
 判据同 `mutate_workflow_browser_guard.py`（`FAIL <名字>   << <读数>` 先剥读数再比集合），
-外加这一支自己的四条：
+外加这一支自己的五条：
   1) 每轮 PASS+FAIL 总数 == 基线那轮（少一条 = 某一节中途没跑完，"没红"是"没跑到"）；
   2) 每轮开始前 `src/` 指纹必须与基线**不同**（相同 = 锚点静默落空，那一轮是基线的回声）；
      产物名只记不判 —— 本机 rollup 不逐字节可复现（缺陷 #69 量过：同一棵 src 树出过两个名字）；
   3) 恢复轮必须回到基线的 src 指纹；
   4) 11x 的检查名由**源码扫**出来（不抄清单）：整节之内不许重名，且每一条要么被某支注入覆盖、
-     要么出现在记账名单里 —— 新增一条检查而两边都没登记，validate() 当场拒绝开跑。
+     要么出现在记账名单里 —— 新增一条检查而两边都没登记，validate() 当场拒绝开跑；
+  5) 红在 29 条分母之外（run1 实测 3/22 轮被 11w 的桩计数波及）⇒ **这一轮归因不成立，点名重跑**，
+     既不写成预期也不加白名单 —— 我的注入只改 `DeploymentsPage.tsx`，别的节的红不该由这一轮的账承担。
 """
 import hashlib
 import os
@@ -79,7 +87,10 @@ PAGE = UI / "src/views/admin/DeploymentsPage.tsx"
 E2E = UI / "e2e/browser-e2e.mjs"
 DIST_INDEX = UI / "dist/index.html"
 PORT = 5274
-LOG_DIR = Path.home() / ".cache/zlc73/browser_guard"
+# 每轮日志按 `NN_<tag>.log` 落这里，重跑同一族会逐字覆盖上一轮的日志 —— 而票面/README 要引某一轮
+# 的原始日志当出处，所以给每一跑单独开目录：`ZLC73_GUARD_RUN=run2` ⇒ browser_guard_run2/。
+LOG_DIR = Path(str(Path.home() / ".cache/zlc73/browser_guard") + (
+    f"_{os.environ['ZLC73_GUARD_RUN']}" if os.environ.get("ZLC73_GUARD_RUN") else ""))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 BUILD_TIMEOUT = 900
@@ -255,10 +266,30 @@ def runs() -> list[tuple[str, list[tuple[str, str]], list[str]]]:
         ("D10 摘掉「新建部署」的词表闸", [(D10_A, D10_R)], [
             _name('词表读不到时「新建部署」收住'),
         ]),
+        # 实测（run1 的 11_D11.log）：这一支一红就是 19 条 —— 闸写反把「新建部署」永久按住，
+        # 本节后面每一条"点一次部署"的动作都做不了 ⇒ 整节塌下去。它是**粗筛**，不是判别：
+        # 真正把这一处闸分开的还是 D10（只摘闸 ⇒ 恰好 1 条红）。记账照实测，不许为了"看着精确"
+        # 把连带红删出预期 —— 那等于把 19 条真红当成噪声。
         ("D11 词表闸写反（ready 才禁用）", [(D10_A, D11_R)], [
-            _name('是 enabled 的（下一条的阳性对照'),
+            _name('词表读得到的时候「新建部署」'),
+            _name('下拉里的选项个数 = 词表里'),
+            _name('兑现得了的那几种是可选中的，'),
+            _name('兑现不了的那几种在列表里是灰'),
+            _name('每一种不执行的理由原样摆在这'),
+            _name('没选过的时候默认落在服务器清'),
+            _name('点一次「开始部署」只发一个 '),
+            _name('成功那一下界面说的是「部署完'),
+            _name('表里那一行的状态格写的是服务'),
+            _name('方式那一格画的是中文标签（不'),
+            _name('没记版本、没挂物化批次的那两'),
+            _name('列表里那一行是读回来的，不是'),
+            _name('点了部署之后运行时库里真的长'),
+            _name('抽屉标题认领的是哪一行的账（'),
+            _name('日志那一格里是服务器原话（界'),
+            _name('关掉抽屉不带走那一行（表格还'),
             _name('词表读不到时「新建部署」收住'),
-            _name('把词表换回来：同一颗按钮立刻松开'),
+            _name('把词表换回来：同一颗按钮立刻'),
+            _name('恢复之后再读一次：那一行回来'),
         ]),
         ("D12 词表读失败的横幅整块摘掉", [(D12_A, D12_R)], [
             _name('词表读不到时页面报的是「部署方式词表没有读到」'),
@@ -289,35 +320,51 @@ def runs() -> list[tuple[str, list[tuple[str, str]], list[str]]]:
         ("D20 挂载时多读一次列表", [(D20_IMPORT_A, D20_IMPORT_R), (D20_A, D20_R)], [
             _name('一次挂载只发一次部署列表请求'),
         ]),
+        # 实测（run1 的 21_D21.log）三条：除了"只发一个 create""列表是读回来的"，
+        # 「恢复之后再读一次」也跟着塌 —— 双发在库里多留了一行，收尾那一句读的已经不是同一份账。
         ("D21 点一次发两个 create", [(D21_A, D21_R)], [
-            _name('只发一个 create 请求'),
-            _name('列表里那一行是读回来的'),
+            _name('点一次「开始部署」只发一个 '),
+            _name('列表里那一行是读回来的，不是'),
+            _name('恢复之后再读一次：那一行回来'),
         ]),
     ]
 
 
 # ---- 未覆盖记账：名字逐字取自套件（由 _name 现扫），理由各自可复核 -------------------------------
+# 「没有专属猎物注入」与「在注入轮里一条都没红过」是两件事，之前被我混成一格：run1 实测
+# D11（把词表闸写反）连带红 16 条、D21 连带红 1 条，其中三条正是这里记过账的名字。
+# 于是记账口径改成可机械查的一条：凡既进某支预期红集、又留在未覆盖账上的名字，理由里必须原样
+# 写「连带红过」—— 少这四个字就是矛盾，体检不许过（也不许拿这句话把没牙的格子悄悄混进覆盖）。
 def not_covered() -> dict[str, list[str]]:
     return {
-        "(a) 夹具/收尾：红了说明环境坏了而不是守卫坏了，设计上不许有注入红它": [
+        "(a) 夹具/收尾的读点：没有一支注入以它们为猎物，红了说明环境坏了而不是守卫坏了。"
+        "实测这三条在 run1 的 22 轮里一条都没红过 —— 复算："
+        "`for t in 节前对账 节前的词表 这一节的应用收掉了; do grep -c \"FAIL.*$t\" "
+        "~/.cache/zlc73/browser_guard/*.log; done` 三跑全 0 命中": [
             _name('节前对账：这张物理表还不存在'),
             _name('节前的词表读得到'),
             _name('这一节的应用收掉了'),
-            _name('恢复之后再读一次：那一行回来了'),
         ],
-        "(b) 结构上不可注入：当前词表的 executable 只有一种，`executable[0]` / 钉死 'HOT_LOAD' / "
-        "取最后一种 画出来逐字节相同（等价变异）。牙在 vitest —— 那边的 fixture 是 "
-        "['HOT_LOAD','BLUE_GREEN'] 两种，钉的就是原序（DeploymentsPage.test.tsx:28 + 第 220 行那条断言）": [
+        "(b) 结构上无专属猎物可打：当前词表的 executable 只有一种，`executable[0]` / 钉死 'HOT_LOAD' / "
+        "取最后一种 画出来逐字节相同（等价变异）。牙在 vitest —— 那边的 fixture 是两种"
+        "（复算：`grep -n 'BLUE_GREEN' src/views/admin/DeploymentsPage.test.tsx`）"
+        "且钉的是原序。但它没有专属注入：现在它在 D11（词表闸写反、整屏塌）里连带红过，实测": [
             _name('没选过的时候默认落在服务器清单的第一种'),
         ],
         "(c) 要红它只能改**送出去**的那个 deployType，而写入口现在把非 executable 的拒成 "
         "success:false/400（09-27 13:2x 实测 curl：部署方式 [DOCKER] 服务器执行不了…当前可登记的只有 "
-        "[HOT_LOAD]）⇒ 一次注入连着塌 toast/状态格/服务器行数等九条并带走整节，那是造新缺陷不是摘守卫": [
+        "[HOT_LOAD]）⇒ 一次注入连着塌 toast/状态格/服务器行数等九条并带走整节，那是造新缺陷不是摘守卫。"
+        "它同样在 D11 里连带红过，实测": [
             _name('点了部署之后运行时库里真的长出了那张表'),
         ],
         "(d) 清账那一句在共享的 `_scope.ts`（六个管理页共用、别的注入族的基线也读它），不在本支的"
         "被测文件里 —— 摘它是跨族改动，本支不许动别人的尺": [
             _name('读不到那一屏不留下上一份账的行'),
+        ],
+        "(e) 收尾那一句读的是「恢复之后再看一眼」，本族没有一支的猎物是它 —— 但它 D11、D21 两支里都"
+        "连带红过（实测），说明它对「库里的账被写脏」确有反应。这份证据记在那两支的账上，"
+        "不许再按它单开一格记分": [
+            _name('恢复之后再读一次：那一行回来了'),
         ],
     }
 
@@ -415,10 +462,16 @@ def validate() -> int:
             booked[name] = reason
 
     covered = {n for _, _, expected in runs() for n in expected}
-    both = covered & set(booked)
-    if both:
-        print(f"!! 这些名字既被注入覆盖又被记为未覆盖（账本自相矛盾）: {sorted(both)}")
-        return 1
+    # 一个名字既可以「没有专属猎物注入」（记在未覆盖账上），又可以在别人的粗暴注入里连带红。
+    # 这不是矛盾，但必须被写明 —— 没写明的就是账本自相矛盾，不许悄悄拿连带红当覆盖。
+    for name in sorted(covered & set(booked)):
+        reason = booked[name]
+        if "连带红过" not in reason:
+            print(f"!! {name} 既进了某支的预期红集、又被记为未覆盖，而理由里没写「连带红过」"
+                  f"（{reason[:36]}…）—— 要么它真有专属猎物（从没覆盖账上划掉），"
+                  "要么它只是连带红（理由里点明是哪一支）")
+            return 1
+    prey = covered - set(booked)
     orphans = [n for n in names if n not in covered and n not in booked and n != T_SECTION_CRASH]
     if orphans:
         print(f"!! {len(orphans)} 条检查既没被注入覆盖、也没记在未覆盖账上（新增检查要两边都登记）:")
@@ -426,7 +479,8 @@ def validate() -> int:
             print(f"   - {one}")
         return 1
     print(f"  静态体检通过：11x 分母 {len(names)} 条（扫自源码）、{len(runs())} 支注入、"
-          f"覆盖 {len(covered)} 条、按未覆盖记账 {len(booked)} 条、兜底标题 1 条")
+          f"有专属猎物的覆盖 {len(prey)} 条、无专属猎物但被别的注入连带红过 {len(covered & set(booked))} 条、"
+          f"纯记账 {len(booked) - len(covered & set(booked))} 条、兜底标题 1 条")
     return 0
 
 
@@ -505,6 +559,14 @@ def run_round(label: str) -> tuple[list[str], int]:
     return failed, total
 
 
+def foreign_titles(failed: list[str]) -> list[str]:
+    """红在 11x 这一节之外 —— 我的注入只改 DeploymentsPage.tsx，而分母是扫 browser-e2e.mjs 得到的，
+    所以「不属于这 29 条」是机械可判的。它说明这一轮被别的节（11w 的桩计数）污染了，
+    而不是别的节有了缺陷 —— 别把它写成白名单，也别把它当成通过。"""
+    mine = set(section_names())
+    return [t for t in failed if t not in mine]
+
+
 def judge(label: str, expected: list[str], failed: list[str]) -> int:
     for title in failed:
         print(f"    RED ({'预期' if title in expected else '未预期'}) {title}")
@@ -513,6 +575,15 @@ def judge(label: str, expected: list[str], failed: list[str]) -> int:
     if T_SECTION_CRASH in failed:
         print(f"  !! {label}: 整节中途抛错（{T_SECTION_CRASH} 红了）—— 这一轮的归因不成立，"
               "后面那些「没红」是「没跑到」")
+        return 1
+    foreign = foreign_titles(failed)
+    if foreign:
+        tag = label.split("_", 1)[1]
+        print(f"  !! {label}: 这 {len(foreign)} 条红不属于 11x 这一节（它们来自别的节，逐条见上）—— "
+              f"这一轮的归因不成立（不是那一节有缺陷，也不是这里加了白名单），"
+              f"重跑：--only {tag}")
+        for one in foreign:
+            print(f"     · 外来红 {one}")
         return 1
     if not hard and not extra:
         print(f"  OK  {label}: 预期 {len(expected)} 条全红，无一条连带红")
@@ -621,13 +692,24 @@ def main(only: str | None = None) -> int:
         if preview is not None:
             stop_preview(preview)
 
-    n_covered = len({n for _, _, expected in runs() for n in expected})
-    n_booked = sum(len(v) for v in not_covered().values())
+    covered = {n for _, _, expected in runs() for n in expected}
+    booked = {n for v in not_covered().values() for n in v}
+    prey = covered - booked
+    collateral = covered & booked
+    # 三堆必须正好铺满分母（外加整节兜底那一条）。这条加和是量具自己的账 ——
+    # run2 之前它印的是「24 条覆盖 + 7 条记账」= 31，比 29 多出来的正是被重复计的那三条连带红。
+    n_names = len(section_names())
+    if len(prey) + len(collateral) + len(booked - covered) + 1 != n_names:
+        print(f"\nRESULT: 记账的加和对不上分母（专属 {len(prey)} + 连带 {len(collateral)} + "
+              f"纯记账 {len(booked - covered)} + 兜底 1 ≠ {n_names}）—— 有名字被重复计或漏计")
+        return 1
     if bad:
         print(f"\nRESULT: {bad} problem(s)")
         return 1
-    print(f"\nRESULT: 11x 的 {n_covered} 条各自钉住一件事（{len(runs())} 支注入）；"
-          f"{n_booked} 条按未覆盖记账（四类理由在文档与 NOT_COVERED 里）")
+    print(f"\nRESULT: {len(runs())} 支注入把 11x 的 {len(prey)} 条各自钉住一件事；"
+          f"另 {len(collateral)} 条没有专属猎物、只在别人的粗暴注入里连带红过；"
+          f"{len(booked - covered)} 条从没红过的格按未覆盖记账"
+          f"（合计 {len(booked)} 条、{len(not_covered())} 类理由在文档与 not_covered() 里）")
     return 0
 
 
