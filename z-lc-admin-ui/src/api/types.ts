@@ -99,9 +99,18 @@ export const TRIGGER_EVENTS = [
 ] as const;
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number];
 
-/** `DeploymentDTO.deployType`. */
-export const DEPLOY_TYPES = ['HOT_LOAD', 'DOCKER', 'GIT_PUSH'] as const;
-export type DeployType = (typeof DEPLOY_TYPES)[number];
+/**
+ * `DeploymentDTO.deployType` 的取值<b>不在前端钉</b>（缺陷 #70）：原先这里抄了一份三种方式的清单，
+ * 而服务器一种都不执行。可选清单的唯一来源改成 `/deployment/vocabulary`
+ * （服务器那一份 `DeploymentTypes.java`），见 {@link DeploymentVocabulary}。
+ */
+export type DeployType = string;
+
+/** `/deployment/vocabulary`：服务器会执行哪几种、不会执行哪几种以及为什么。 */
+export interface DeploymentVocabulary {
+  executable: string[];
+  rejected: { type: string; reason: string }[];
+}
 
 /** `DeploymentDTO.status`. */
 export const DEPLOYMENT_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED'] as const;

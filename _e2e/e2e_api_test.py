@@ -9,6 +9,7 @@ Usage: python3 e2e_api_test.py [base_url]
 import http.server
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -57,7 +58,7 @@ def D(j):
 
 
 
-def call(method, path, body=None, params=None, raw=False, expect_http=200):
+def call(method, path, body=None, params=None, raw=False):
     url = BASE + path
     if params:
         url += "?" + "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
@@ -402,6 +403,84 @@ j, _, _ = call("POST", "/api/lc/deployment/create",
 ok("POST /deployment/create", j)
 j, _, _ = call("GET", "/api/lc/deployment/list", params={"appCode": APP})
 ok("GET /deployment/list", j)
+
+# ── 缺陷 #70 的部署件层证据 ─────────────────────────────────────────────────
+# 上面那两句 ok() 是这一格原本的全部内容：532 条里没有一条说过"界面给的方式服务器会不会执行、
+# 拒绝的有没有留账、返回的状态是不是真跑出来的"。词表、门、当场跑完这三件事都在真 jar 上量一遍。
+DEP = "/api/lc/deployment"
+
+
+def dep_rows():
+    """本 app 当前的部署账 —— 拒绝类探针要证的是"一行都不留"，只看返回值红一下不够。"""
+    jj, ss, _ = call("GET", DEP + "/list", params={"appCode": APP})
+    if ss != 200 or not isinstance(jj, dict) or jj.get("success") is not True:
+        return None
+    return jj.get("data") if isinstance(jj.get("data"), list) else None
+
+
+jv, sv, _ = call("GET", DEP + "/vocabulary")
+if check("GET /deployment/vocabulary 回 200 + success（界面下拉项的唯一来源）",
+         sv == 200 and (jv or {}).get("success") is True, f"HTTP {sv} {str(jv)[:180]}"):
+    _vocab = D(jv)
+    exe = _vocab.get("executable") or []
+    rej = _vocab.get("rejected") or []
+    check("词表的可执行面是非空数组（空就等于这台服务器连一种部署都不会做）",
+          isinstance(exe, list) and len(exe) >= 1, _vocab)
+    check("词表的不执行面每条都带 type + 一句说清为什么的原因（>12 字，不许是一句空的「不支持」）",
+          isinstance(rej, list) and len(rej) >= 1 and all(
+              isinstance(x.get("type"), str) and x.get("type")
+              and isinstance(x.get("reason"), str) and len(x.get("reason", "").strip()) > 12
+              for x in rej), rej)
+    check("可执行与不执行两面不许有交集（同一方式既可选又被拒 ⇒ 界面自相矛盾）",
+          not (set(exe) & {x.get("type") for x in rej}), (exe, rej))
+
+    # 后面每一支都要一样"服务器说自己会执行"的方式当阳性对照。可执行面为空时这里给一个
+    # 必然被拒的假值 ⇒ 那条阳性臂当场变红，而不是 except 掉、后面十几支静默跳过（#53 那一族形状）。
+    exe0 = exe[0] if exe else "__NO_EXECUTABLE_TYPE__"
+    _base = dep_rows()
+    for _item in rej:
+        _t = _item.get("type")
+        _j, _s, _ = call("POST", DEP + "/create",
+                         {"appCode": APP, "tenantCode": TENANT, "deployType": _t})
+        _text = json.dumps(_j, ensure_ascii=False) if _j is not None else ""
+        check(f"词表判「{_t}」不会执行 ⇒ /create 必须 400 并点名这一种，而不是 200 + 一行永远 PENDING 的账",
+              _s == 400 and _t in _text, f"HTTP {_s} {_text[:200]}")
+    _after = dep_rows()
+    check("被词表拒绝的那几种一条都不许进账（修前实测：三种全收，各留一行 PENDING）",
+          _base is not None and _after is not None and len(_after) == len(_base), (_base, _after))
+
+    # 阳性对照：词表说会执行的那一种必须收得下，否则上面那条"逐条 400"是常数。
+    # 顺带把 body 里伪造的 status=PENDING 也钉掉 —— 服务器回的必须是自己跑出来的那一行。
+    _j, _s, _ = call("POST", DEP + "/create",
+                     {"appCode": APP, "tenantCode": TENANT, "deployType": exe0, "status": "PENDING"})
+    done = D(_j)
+    check("可执行那种走得通，且返回的行不再是 PENDING（body 里伪造 status 也不算数）",
+          _s == 200 and done.get("status") in ("SUCCESS", "FAILED"), f"HTTP {_s} {done}")
+    check("部署日志要说清动了什么（四个计数都在，界面「日志」抽屉读的就是这一栏）",
+          "个实体" in (done.get("deployLog") or ""), str(done.get("deployLog"))[:200])
+    _jd, _sd, _ = call("GET", DEP + "/detail", params={"id": done.get("id")})
+    back = D(_jd)
+    check("库里那一行读回来等于返回的那一行（界面状态列读的是库，不是返回值）",
+          _sd == 200 and back.get("status") == done.get("status")
+          and back.get("deployLog") == done.get("deployLog"),
+          (done.get("status"), back.get("status")))
+
+    _j, _s, _ = call("POST", DEP + "/create", {"appCode": APP, "tenantCode": TENANT})
+    _text = json.dumps(_j, ensure_ascii=False) if _j is not None else ""
+    check("不给 deployType ⇒ 400 并点名 deployType（修前是 NOT NULL 撞出一句裸 500）",
+          _s == 400 and "deployType" in _text, f"HTTP {_s} {_text[:200]}")
+
+    _j, _s, _ = call("POST", DEP + "/create", {"appCode": APP, "tenantCode": TENANT,
+                                               "deployType": exe0, "materializationId": 999999999})
+    _text = json.dumps(_j, ensure_ascii=False) if _j is not None else ""
+    check("指向不存在的物化批次 ⇒ 400 并回显那个 id（修前原样进账并回显）",
+          _s == 400 and "999999999" in _text, f"HTTP {_s} {_text[:200]}")
+
+    _j, _s, _ = call("POST", DEP + "/create", {"appCode": "no_such_app_e2e", "tenantCode": TENANT,
+                                               "deployType": exe0})
+    _text = json.dumps(_j, ensure_ascii=False) if _j is not None else ""
+    check("部署一个不存在的应用 ⇒ 400 并说「没有应用」（修前 200 + 一行账）",
+          _s == 400 and "没有应用" in _text, f"HTTP {_s} {_text[:200]}")
 
 head = call("GET", "/api/lc/app/event/last", params={"appCode": APP, "tenantCode": TENANT})[0]
 parent = D(head).get("eventId")
@@ -2141,13 +2220,22 @@ WF_REJECT_BODY = json.dumps({"success": False, "code": 500, "message": "流程�
 WF_BIND = "/api/lc/workflow-binding"
 
 
+class _WfState(object):
+    """两个地址族的 server 共用的一本账（请求、回法、睡多久）。"""
+
+    def __init__(self):
+        self.requests = []
+        self.mode = "ok"
+        self.hang_seconds = 0.0
+
+
 class _WfHandler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n) if n else b""
-        srv = self.server
+        srv = self.server.state
         srv.requests.append((self.command, self.path, raw.decode("utf-8", "replace")))
         if srv.mode == "hang":
             time.sleep(srv.hang_seconds)
@@ -2163,27 +2251,82 @@ class _WfHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-class _WfStub(http.server.ThreadingHTTPServer):
+class _WfEndpoint(http.server.ThreadingHTTPServer):
+    """一个地址族一个监听：`host` 决定族，必须在建 socket 之前定下来。"""
+
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, host, port, state):
+        self.address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        super(_WfEndpoint, self).__init__((host, port), _WfHandler)
+        self.state = state
+
+
+class _WfStub(object):
     """只记请求 + 四种回法（成功 / success=false / 5xx+成功 body / 睡住不回）。
 
     用 ThreadingHTTPServer 而不是单线程：派发池有 2 个槽，"挂死那一条"不能顺手把别的探针也按住 ——
     那会把量具自己的排队冒充成被测方的排队。
+
+    为什么要**同时**绑 127.0.0.1 和 ::1（09-27 09:0x 实测，本机）：`WfAdapter` 的默认 base-url
+    写的是 `localhost`，而这台 Mac 上的 JVM（JDK 25 + okhttp 4.12，z-util-http 的 HttpExecutor）
+    把 `localhost` 解析成 `[0:0:0:0:0:0:0:1]` 且**不回落到 IPv4** —— 只绑 127.0.0.1 时每一次发起都
+    记成 `Failed to connect to localhost/[0:0:0:0:0:0:0:1]:8888`，接口层这一节 30 条判红，
+    报的还是"桩没起来或 jar 没打过来"。量具自己把桥拆了，回头怪对面没接。
+    绑 `::` + IPV6_V6ONLY=0 一根 socket 就能覆盖两族，但那等于把"能发起流程的端口"开到局域网
+    （`lsof` 会显示 `*:8888`），所以这里两族各绑一个 loopback 地址，谁也进不来。
+    只剩一个族可用（禁了 IPv6 的容器）时照跑，但把拆掉的那一族点名出来 —— 别让它变成第二次沉默。
     """
 
-    daemon_threads = True
-    allow_reuse_address = True
-    mode = "ok"
-    hang_seconds = 0.0
-
     def __init__(self, port):
-        super().__init__(("127.0.0.1", port), _WfHandler)
-        self.requests = []
-        threading.Thread(target=self.serve_forever, kwargs={"poll_interval": 0.05},
-                         daemon=True).start()
+        self.state = _WfState()
+        self.endpoints = []
+        self.unavailable = []
+        last_err = None
+        for host in ("127.0.0.1", "::1"):
+            try:
+                self.endpoints.append(_WfEndpoint(host, port, self.state))
+            except OSError as ex:
+                last_err = ex
+                self.unavailable.append("%s(%s)" % (host, ex))
+        if not self.endpoints:
+            raise last_err or OSError("两族都绑不上")
+        for ep in self.endpoints:
+            threading.Thread(target=ep.serve_forever, kwargs={"poll_interval": 0.05},
+                             daemon=True).start()
+
+    @property
+    def requests(self):
+        return self.state.requests
+
+    @requests.setter
+    def requests(self, value):
+        self.state.requests = value
+
+    @property
+    def mode(self):
+        return self.state.mode
+
+    @mode.setter
+    def mode(self, value):
+        self.state.mode = value
+
+    @property
+    def hang_seconds(self):
+        return self.state.hang_seconds
+
+    @hang_seconds.setter
+    def hang_seconds(self, value):
+        self.state.hang_seconds = value
+
+    def families(self):
+        return "/".join("v6" if ":" in str(ep.server_address[0]) else "v4" for ep in self.endpoints)
 
     def stop(self):
-        self.shutdown()
-        self.server_close()
+        for ep in self.endpoints:
+            ep.shutdown()
+            ep.server_close()
 
 
 WF = None
@@ -2194,7 +2337,9 @@ try:
 except OSError as ex:
     _bridge_err = str(ex)
 check(f"z-wf 桩绑得上 {WF_PORT}（jar 的默认 base-url 就去这里；绑不上则本节全部没有判定）",
-      WF is not None, _bridge_err)
+      WF is not None,
+      _bridge_err or ("已绑 " + WF.families() + ("；缺 " + " ".join(WF.unavailable)
+                                                if WF.unavailable else "")))
 
 
 def wfc(name, cond, detail=""):
@@ -2258,6 +2403,21 @@ def wf_row(record_id, entity=WF_ENT):
     return (rows or [{}])[0] if isinstance(rows, list) else {}, f"http={s} body={str(j)[:160]}"
 
 
+def wf_bridge_words(rid, entity):
+    """桥没通时，把 jar 记账那一行里"它自己说的那句原因"带到判决现场。
+
+    09-27 这一格整节判红时只写着"桩没起来或 jar 没打过来"，两个可能分不开，而真相（okHttp 把
+    `localhost` 解析成 ::1、桩只听 IPv4）只在 `z_lc_workflow_fire.detail` 里留了痕 —— 从红消息
+    到那条 SQL 隔了 15 分钟。红要红得能自己交代。
+    """
+    if rid is None:
+        return "记录没写进去，谈不上传"
+    row, _msg = wf_row(rid, entity=entity)
+    words = str((row or {}).get("detail") or (row or {}).get("instanceId")
+                or (row or {}).get("status") or "结局账上没有这一条（=派发压根没发生）")
+    return words[:220]
+
+
 def wf_bridge(name, entity=WF_ENT, tag="BR"):
     """把本节重新钉回"链是通的"：清桩 → 写一条 → 桩正好收到一句。
 
@@ -2269,7 +2429,8 @@ def wf_bridge(name, entity=WF_ENT, tag="BR"):
     rid, env = wf_write({"ref": tag + "-" + SUF}, entity=entity)
     WF_LIVE = bool(WF) and wf_count() == 1
     check(name, WF_LIVE,
-          f"桩收到 {wf_count()} 句（应为 1）: {str(WF.requests if WF else [])[:180]} 信封: {str(env)[:140]}")
+          f"桩收到 {wf_count()} 句（应为 1）: {str(WF.requests if WF else [])[:180]} 信封: {str(env)[:140]}"
+          + ("" if WF_LIVE else " | jar 那句: " + wf_bridge_words(rid, entity)))
     return rid
 
 

@@ -43,10 +43,10 @@ bash _e2e/deploy_250.sh gates    # 部署层四道闸，各自带负控，都要
 （收这条链时 5274/5275 都空了：脚本末尾按名字 `pgrep -f 'vite preview --port 5274'` + `kill -9`，把 06:27 那一支一起带走了 ——
 这一族脚本按端口/进程名清理时**会连别人那一支的 preview 一起杀**，用之前先想清楚这一点。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**38 支，后端 20 + 前端 18**
-（这个数不是敲出来的，09-27 01:4x 现敲：`ls _e2e/mutate_*.py | wc -l` = 20、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18。
-上一版记的 17 之后又长了三支：`mutate_health_honesty_guard.py`（#52）、`mutate_workflow_trigger_guard.py`（#61 java 层）
-与 `mutate_workflow_deployed_guard.py`（#61 部署件层，见下文「#61 的第六层：发出去的 jar」一节））：
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**40 支，后端 21 + 前端 19**
+（这个数不是敲出来的，09-27 09:2x 现敲：`ls _e2e/mutate_*.py | wc -l` = 21、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 19。
+上一版（01:4x）记的 38 之后又长了两支：`z-lc-admin-ui/e2e/mutate_workflow_browser_guard.py`（#61 的浏览器层，18 支 W1–W18，
+它的账在「缺陷 #69」那一节里 —— 那一节的量具就是它）与 `mutate_deployment_guard.py`（#70 部署中心，见下文「缺陷 #70」那一节））：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -68,7 +68,8 @@ python3 _e2e/mutate_permission_deployed_guard.py   # #48 打发出去的 fat jar
 python3 _e2e/mutate_collation_guard.py             # 250 真库撞出的那一族 #51/#54/#57：M1..M13 + N1..N5（共 18 支，跑 SchemaAdminBizServiceTest + UndoServiceSnapshotFormatTest + LcHttpContractTest 那两支）
 python3 _e2e/mutate_health_honesty_guard.py        # #52 的 java 层：H1..H17 + N1..N2（账见「健康探针」那一节）
 python3 _e2e/mutate_workflow_trigger_guard.py      # #61 的 java 层：M1..M6 打 core 四类 + 契约层（分母每轮钉 68 + 13，认领 30 条具名断言）
-python3 _e2e/mutate_workflow_deployed_guard.py     # #61 的**部署件层**：W1..W6 各重新 build fat jar、重启 18090 再跑 `[15w]`（分母每轮钉 63/532）
+python3 _e2e/mutate_workflow_deployed_guard.py     # #61 的**部署件层**：W1..W6 各重新 build fat jar、重启 18090 再跑 `[15w]`（分母每轮钉 63/546，09-27 09:1x 现读；这一节自身仍 63 条）
+python3 _e2e/mutate_deployment_guard.py            # #70 部署中心：J1a/J1b/J2/J3（java 三层）+ F1..F3（vitest 层），每轮核分母必须 = core 19 / web 7 / ui 7（漂了直接抛），账见下文「缺陷 #70」那一节
 cd z-lc-admin-ui && python3 e2e/mutate_provision_report_guard.py # #47 的 vitest 层 M1..M18（DesignerProvision.test.tsx 15 例）
 cd z-lc-admin-ui && python3 e2e/mutate_provision_browser_guard.py # #47 的**浏览器层** P1..P6（自带 build + preview，11d 那 24 条）
 cd z-lc-admin-ui && python3 e2e/mutate_permission_browser_guard.py # #49/#50 的**浏览器层** M1..M9（自带 build + preview，11e 那 39 条静态 check 的账是机器核的：认领 ∪ NOT_COVERED == 扫到的全集）
@@ -87,6 +88,7 @@ cd z-lc-admin-ui && python3 e2e/mutate_field_code_browser_guard.py  # 字段编�
 cd z-lc-admin-ui && python3 e2e/mutate_pipeline_wiring_guard.py  # 流水线词表/顺序/参数 F1..F13（按三个文件跑，含 java 参照集）
 cd z-lc-admin-ui && python3 e2e/mutate_pipeline_browser_guard.py # 流水线 11a 那 23 条**浏览器层** S1..S9（自带 build + preview）
 cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵页 B1..B12（vitest 层，分母钉 10 条，跑在两支新文件上）
+cd z-lc-admin-ui && python3 e2e/mutate_workflow_browser_guard.py # #61 的**浏览器层** W1..W18（自带 build + preview，11w 那一段；分母由源码扫出来、不许重名，判据修过的账见「缺陷 #69」那一节）
 ```
 
 ⚠ 每一支都自己报 `ALL MUTANTS BEHAVED AS CLAIMED` 才算数；退出码 0 而没跑完一整轮不等于通过。
@@ -94,8 +96,8 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 ⚠ **两支不能同时在飞**：它们都就地改写源文件，A 的"按字节还原"会把 B 正在判定的那份源码换掉。
 本轮实测踩到 —— 后台那支还没收线就前台再开一支，基线报出 1 条红
 （`字段表里不该预置引擎自建列: expected 3 to be 0`），那是**另一支的注入形状**，不是产品坏了。
-假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **33 支共用** `e2e/_mutlock.py`
-（**18 支前端全接**，后端接了 **15** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
+假红还能回头查，假绿更糟（期待的注入被对方悄悄还原）。锁现在是 **35 支共用** `e2e/_mutlock.py`
+（**19 支前端全接**，后端接了 **16** 支：`mutate_group_fields_guard.py`、`mutate_field_code_deployed_guard.py`、
 `mutate_pipeline_wiring_guard.py`、`mutate_pipeline_config_guard.py`、`mutate_replay_guard.py`（本窗补上：它改的
 `SchemaAdminBizService.java` 正是 provision 那几支也在就地改写的文件）、`mutate_provision_reconcile_guard.py`、
 `mutate_provision_deployed_guard.py`、`mutate_provision_contract_guard.py`、`mutate_edit_path_deployed_guard.py`，
@@ -105,10 +107,13 @@ cd z-lc-admin-ui && python3 e2e/mutate_permission_matrix_guard.py # 权限矩阵
 #52 的 `mutate_health_honesty_guard.py`，和 #61 这一窗新加的 `mutate_workflow_trigger_guard.py`
 （它就地改 `RuntimeCrudController.java` —— 那正是流水线、权限、provision 那几支也要动的同一个文件）
 与 `mutate_workflow_deployed_guard.py`（改的是同一个 `RuntimeCrudController.java` + `WfAdapter.java` +
-`WorkflowTriggerDispatcher.java` + `WorkflowTriggers.java`，而且它还要**重启 18090**，两支同时在飞一定互相抹）
+`WorkflowTriggerDispatcher.java` + `WorkflowTriggers.java`，而且它还要**重启 18090**，两支同时在飞一定互相抹），
+#70 这一窗的 `mutate_deployment_guard.py`（就地改 `DeploymentServiceImpl.java` / `DeploymentController.java`，
+而它的 F 族跑的是 vitest —— 与前端那 19 支抢的是同一个报告目录）与 #61 浏览器层的 `mutate_workflow_browser_guard.py`
+（自带 build + preview，`PORT = 5274`，和另外五支浏览器量具抢的是同一个端口）
 —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 18/15 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 18 与
-`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 15 数出来的（09-27 01:4x 现敲），不是点的）；
+这个 19/16 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 19 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 16 数出来的（09-27 09:2x 现敲），不是点的）；
 仍未接锁的 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
@@ -1800,13 +1805,64 @@ MyBatis-Plus 的 `eq(col, null)` **不是**"这一列不加条件"，它照样�
 
 ---
 
+### ✅ 缺陷 #70：部署中心是下一个「存了但一个字都不执行」（2026-09-27，四层 + 一跑注入）
+
+**盘面（修之前，全部实测）**：`DeploymentController.create` insert 一行 `PENDING` 然后
+`// TODO: 异步执行物化/部署逻辑` 直接返回 200 —— 全仓没有执行器，`updateDeploymentStatus` 在生产代码里
+**零调用者**，所以 `PENDING` 是**终态**：界面弹「部署已创建」、状态列永远灰、`deploy_log` 抽屉永远写「（暂无日志）」。
+同一趟还照收不存在的 `appCode`、不存在的 `materializationId`，以及不给 `deployType` 时 NOT NULL 撞出的裸 500。
+
+**修法（口径与本仓 #41/#42/#61/#66 同族）**：新增 `DeploymentTypes` 作唯一词表（`HOT_LOAD` 一种有执行器；
+DOCKER / GIT_PUSH / SQL 各带一句"服务器为什么做不了"），写入口 `validateForWrite` 拒掉兑现不了的形态，
+能兑现那一种**真的同步执行**（`schemaAdminService.provisionAllTables`）并把结局 + 四计数汇总写回那一行，
+`trigger` 返回**重读后**的那一行；`/deployment/vocabulary` 成为界面下拉项的唯一来源
+（`_deployment.ts` + `DeploymentsPage` 从它长清单，被拒的那几种摆在窗里并点名原因）。
+全貌与裁定记在 `_doc/003_待办事项/feature001_workflow_binding_fires/TASK.md` §2.12。
+
+**注入自证（永久量具 `_e2e/mutate_deployment_guard.py`，7 支 / 19 条具名红）**：
+J1a 摘写入口闸、J1b 摘"执行完把结局写回"、J2 摘 vocabulary 的可执行面、J3 让 `trigger` 返回伪造行、
+F1..F3 打前端（下拉抄一份清单 / 失败也说"部署已创建" / 词表读不出照开草稿）。逐支读数、预期红集与
+"哪两条读同一句 toast"这类归因都在 `~/.cache/zlc70/mut/ledger.json`（`ts 2026-09-27 09:15:02`，
+`RESULT 7 支判定，其中 MISMATCH: 无`，分母 core 19 / web 7 / ui 7 每轮核等值、漂了就抛）。
+
+⚠ **同一窗在量具身上撞出的、另立缺陷 #72 的那一支**（其余几条量具账：TASK §2.12 末「这一窗在量具自己身上抓到的四件事」，
+交接表末行还有一条 mtime 假红）：
+接口层那一节的 z-wf 桩原先只绑 `127.0.0.1`，而 jar 里的 okhttp 连 `localhost` 优先解析到 `::1`
+⇒ `[15w]` 整节 30 条红、报的却是"桩没起来或 jar 没打过来"（方向不给）。修 = 两族 loopback 都绑 +
+红消息里带上 jar 自己记账那句 `detail`；**没解释清的那一半照实留着**：同一份只绑 v4 的桩 08:50:51 还是
+532/532 全绿，08:54:13 起在同一支 JVM 里恒红，我没有量"中间翻了什么"，所以这一格不写成因。
+
+⚠ **覆盖缺口（认下来，不当已闭）**：
+1. **浏览器层对 `DeploymentsPage` 零断言** —— 本窗现读：`grep -c "deploy" z-lc-admin-ui/e2e/browser-e2e.mjs` = **0**
+   （那支量具里连"部署"这个字都只出现 1 次，且是注释里"部署件"那三个字）；`279 → 279`、新增 0 / 消失 0（两套 PASS 标题唯一集现算）。
+   这正是 #49 当年在权限页上的同一形状：vitest 那 3 条只证明"词表长成这样时组件画成这样"，
+   证明不了真服务端给的词表长这样、也证明不了点下去那一下真到了服务器。
+2. **250 那半条腿这一窗仍然没量**（09:32:37 现读：22 端口 TCP 握手 rc=0 而 `ssh` rc=255 `kex_exchange_identification: read: Connection reset by peer`，见下面交接表那一格），部署这件事在真 MySQL 8 上的结局没有读数。
+
+
+---
+
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（最前面那张 **09-27 07:2x** 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+四层门禁当前状态（最前面那张 **09-27 09:1x–09:2x** 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
 **不是当前数**。
-⚠ 上一版这行指的是 18:3x–19:1x 那张。09-27 07:2x 这一窗 java / 接口(H2) / 前端 / 真浏览器 **本地四层**同轮重测过，
-而**打真 MySQL 8 的那两格这一窗量不了**（250 不可达，rc 现读在下面表里，别把 09-26 那两个 469/469 当当前数）。
+⚠ 上一版这行指的是 07:2x 那张。09-27 09:1x 这一窗 java / 接口(H2) / 前端 / 真浏览器 **本地四层**同轮重测过，
+而**打真 MySQL 8 的那两格这一窗量不了**（250 的 sshd 建不起会话，rc 现读在下面表里，别把 09-26 那两个 469/469 当当前数）。
 表里每一行的时间戳才是证据，标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-27 09:1x – 09:2x 这一窗（#70 收线：部署中心从「insert 一行 PENDING + TODO」变成"能兑现的那种真的执行、兑现不了的那种写入口就拒"；
+顺带在量具身上撞出 #72：接口层的 z-wf 桩只听 IPv4，而 jar 里的 okhttp 连 `localhost` 优先打到 `::1`）本地四层全部同轮重测，日志逐层落在 `~/.cache/zlc70/`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**（`gate1-recheck.log`，`Total time: 17.972 s`、`Finished at 2026-09-27T09:15:59`）、**4788** 个用例 0 红 0 错 0 跳（5 条不带 `-- in` 的模块汇总行现加 = 2701+525+**1337**+112+**113**）。**4774 → 4788 的 +14 两把尺互证**：surefire 模块级差是 core +7 / web +7，而 `git ls-tree`+`git show` 与盘上各数一次 `@Test` 的差**逐文件落在两支上** —— `DeploymentServiceImplTest` **12 → 19**（+7）与全新的 `DeploymentContractTest` **0 → 7**（+7），加总正好 14，其余测试文件 0 变动。产物 `z-lc-admin/target/z-lc-admin.jar` md5 `37402c05baa6b1e53c0435f110ac55f9`（inode 141692193，09:15:58）|
+| 接口 E2E（本机 H2） | `python3 -u _e2e/e2e_api_test.py http://localhost:18090` | **546/546**（`gate2-final.log:616` 逐字 `=== E2E RESULT: 546/546 passed ===`，`grep -c "^  PASS"` 也 = **546**、`grep -c "^  FAIL"` = 0）。532 → 546 的 **+14 / 消失 0** 是 PASS 标题唯一集现算的（与 `zlc66/api_66.log` 逐条求差），14 条全在 `[11]` 那一节（词表两栏 / 三种被拒方式各 400 且一行不进账 / 可执行那种走完不再是 PENDING / 库里读回 = 返回的那一行 / 不给 deployType、不存在的物化批次、不存在的应用）；**分母 33 段、`[15w]` 自身仍 63 条没动**。⚠ 打的是本窗 09:15:58 那份件：`lsof` 现读 18090 监听者 = pid **57406**（`ps -o lstart` = `Sun Sep 27 09:17:53 2026`），它的 `NODE` = **141692193** = 上面那个 jar 的 inode ⇒ 起的就是这一窗新装的件 |
+| 接口 E2E（**真 MySQL 8**，隧道 18099） | `bash _e2e/deploy_250.sh api` | **这一格这一窗没重测 —— 不是绿，是没量。** 09:32:37 现读：`nc -z -w 4 192.168.31.250 22` **rc=0**（`port 22 [tcp/ssh] succeeded!`），而 `ssh -o ConnectTimeout=6 -o BatchMode=yes 250 'echo alive'` **rc=255** + `kex_exchange_identification: read: Connection reset by peer` ⇒ **端口在听 ≠ 会话建得起来**，这一窗只各敲了一次。要复测得先把 sshd 那条走通，别把 09-26 那两个 469/469 当当前数 |
+| 前端 | `cd z-lc-admin-ui && npm run check`（tsc + `eslint --max-warnings 0` + vitest + build） | **rc=0**（`gate3-final.log`，09:21:50–09:22:19）：tsc 0 / eslint 无输出 / **vitest `Tests 259 passed (259)`、`Test Files 30 passed (30)`** / build `✓ built in 2.65s`。252 → 259 的 **+7 机械核过**（与 `zlc66/check_0727.log` 的逐文件计数求差：新增 `DeploymentsPage.test.tsx` **3** + `deploymentVocabulary.test.ts` **4**，`removed` = 空集、其余 28 个文件计数**逐一相同**）。本窗为修 tsc 报的 `TS2532` 动过 `DeploymentsPage.tsx` 一行（`firstLine` 里对下标取值补 `?? ''`）|
+| 真浏览器 | `E2E_BASE=http://localhost:5274 E2E_API=http://localhost:18090 node e2e/browser-e2e.mjs` | **`=> PASS 279 / FAIL 0`**、`全绿轮次: 1/1`（`gate4-final.log`，09:18:50–09:21:38，`REPEATS=1`）。**279 → 279、新增 0 / 消失 0**（两套 PASS 标题唯一集现算）⇒ 这一窗 #70 在浏览器层**一条断言都没加**，`deploy` 那支量具里出现 **0** 次 —— 记成覆盖缺口，不算"已被上面三层兜住"（见上一节末）|
+| 注入自证（#70 族，三层一跑） | `python3 _e2e/mutate_deployment_guard.py`（**7 支**：J1a/J1b/J2/J3 + F1..F3） | 末行逐字 `RESULT 7 支判定，其中 MISMATCH: 无`（`mut/sweep_after_ui_fix.log`，09:14:03–09:15:10），台账 `mut/ledger.json` `ts 2026-09-27 09:15:02`；分母每轮核等值 **core 19 / web 7 / ui 7**；逐支红 = J1a **core 2 + web 3**、J1b **1/1**、J2 **1/1**、J3 **2/2**、F1/F2/F3 各 **ui 2**；起跑与收尾各有一轮"不注入"基线，三层各自 **0 红**；收线后 09:3x 再核一次残留：`grep -rn "MUT(" --include='*.java' --include='*.ts' --include='*.tsx' z-lc-core/src z-lc-web/src z-lc-admin-ui/src` = **0 处**，同一条命令带阳性对照（`grep -rn deployType z-lc-core/src/main/java` = **19** 命中）⇒ 那个 0 是"尺跑了且没找到"，不是"尺没跑"|
+| ⚠ 量具层（#72，同一窗） | `_e2e/e2e_api_test.py` 里那一族 z-wf 桩 | 症状：**30 条 `[15w]` 红、总盘 516/546**，红消息只说"桩没起来或 jar 没打过来"。归因三步：`/fires` 里 49/50/51 三行的 `detail` 逐字写着 `Failed to connect to localhost/[0:0:0:0:0:0:0:1]:8888` ⇒ 桩只听 `127.0.0.1` 而 okhttp 连 `localhost` 先解析到 `::1`；换一个双族监听的桩立刻 `STARTED`（id 51）。修法 = **两族 loopback 各起一支**（不是 `::` + `IPV6_V6ONLY=0` —— 那等于把进程启动期的端口开到局域网）+ 红消息里带上 jar 自己那句 `detail`。**没解释清的那一半照实记**：同一份只绑 v4 的桩在 08:50:51 还是 532/532、08:54:13 起在同一支 JVM 里恒红，"中间翻了什么"我没量，所以这一格不写成因 |
+| ⚠ 时序与另一处同形病 | 注入扫完 ⇒ `dist/` mtime 被"按字节还原"顶新 ⇒ 闸 4 直接 `rc=2` | 闸 4 的新鲜度判据读的是 **mtime**，于是报出 274s 的"产物过期"假红（`npm run build` 一次即解）。这与缺陷 #69 是同一把病尺（名字/mtime 不是身份）；**修法应当换成内容哈希**，本窗只记录不改 |
 
 **09-27 07:1x – 07:3x 这一窗（#66 收线：`/update` 的查重跑在租户归一化之前 ⇒ `tenant_code = NULL` 恒筛不到行、同 KEY 的第二条照样落库；
 顺带挖出 core 那个测试替身把"绑 null"当成"不筛租户"——那是 #66 能从四道闸里全绿走出来的第三层原因）本地四层全部同轮重测，日志逐层落在 `~/.cache/zlc66/`：**

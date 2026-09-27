@@ -783,6 +783,136 @@ HEAD=`ce81f49` 那版第 9–10 行仍是 `| sed "s/\$/APP_PORT/$APP_PORT/"`）�
     ⚠ 这三处我一开始都写的行号（674 / 314 / 361），写完发现改 docstring 已经把第一处挪到 681 ⇒ **一律改写成可 grep 的构造**，
     别在这一族里发行号。
 
+### 2.12 缺陷 **#70** 已闭合：部署中心的三个"部署方式"当场一个都不执行（09-27 08:3x–09:22 实测并修）
+
+**当时盘面（逐条现查，不是推理）**
+
+- `DeploymentServiceImpl.createDeployment` = `insert` 一行 `PENDING` + 一句 `// TODO: 异步执行物化/部署逻辑` + return。
+- `updateDeploymentStatus` 在生产代码里**零调用者** ⇒ `PENDING` 在这张表里是**终态**，没有任何人会把那一行推到 SUCCESS/FAILED。
+- `DeploymentsPage.tsx` 手抄三个选项（热加载 / Docker 镜像 / Git 推送），而三个都不执行 ⇒ 选哪个都一样。
+- 界面后果：toast「部署已创建」、状态列永远灰、`deploy_log` 抽屉永远「（暂无日志）」。
+- 同一趟写入口全收：不存在的 `appCode`、不属于本应用/本租户的 `materializationId`、以及 `deployType` 缺失时撞 NOT NULL 列的**裸 500**。
+- 接口层量具在这一格只有两句 `ok()`（只看 200）⇒ 那 532 条里没有一条说过"选哪一种有区别"。
+
+**改了什么（口径与 #41/#61 逐字同形）**
+
+- 新增 `DeploymentTypes`：`HOT_LOAD` 是唯一有执行器的一种；`DOCKER` / `GIT_PUSH` / `SQL` 各自带一条**说得清为什么不会执行**的原因。
+- 写入口 `requireExecutable`：缺 `appCode`、词表外的方式、应用不存在、批次不属于这个应用这个租户 ⇒ `IllegalArgumentException` → 400，消息点名要改哪一格。**一条永远不会执行的部署记录不该出生。**
+- 真的执行：`create` 同步跑 `schemaAdminService.provisionAllTables(tenant, app)`，把 `SUCCESS`/`FAILED` 与逐实体汇总写回那一行，**返回的是执行后的真状态**。没有照 `MaterializationService.trigger` 那个"先 insert PENDING 再调 @Async"的形状抄 —— 理由见 §2.13（#71）。
+- `/deployment/vocabulary` 成界面唯一来源（`executable` + `rejected[{type,reason}]`），`_deployment.ts` 从它长出选项，`DeploymentsPage` 不再手抄；前端词表测试机械比对 Java 侧那份清单。
+- 钉租户：`DeploymentController.create` 强制 `DEFAULT_TENANT`（与 #48 那六个口同口径）。
+
+**四道闸（本窗逐层现量，全部同一轮）**
+
+| 闸 | 跑法 | 读数 |
+| --- | --- | --- |
+| ① java | `mvn -o -B clean install` | BUILD SUCCESS、rc=0、**4788 例 / 0 失败**（`Total time: 17.972s`，`Finished at 09:15:59`）；fat jar md5 `37402c05baa6b1e53c0435f110ac55f9`，inode 141692193，落盘 09:15:58 |
+| ② 接口层（发出去的 jar） | `python3 -u _e2e/e2e_api_test.py http://localhost:18090` | 09:18:18–09:18:22 rc=0 ⇒ **`E2E RESULT: 546/546 passed`**，`^  FAIL` 计数 **0**；伺服进程 pid 57406（09:17:53 起），`lsof` 的 NODE=141692193 与①那一格**同一个 inode** |
+| ③ 前端 | `cd z-lc-admin-ui && npm run check` | 09:21:50–09:22:19 rc=0，`Test Files 30 passed (30)` / `Tests 259 passed (259)`，`✓ built in 2.65s`（tsc + eslint --max-warnings 0 + vitest + build 四步都在这一条命令里） |
+| ④ 浏览器 | `node e2e/browser-e2e.mjs`（自带 src/bundle 新鲜度闸） | 09:18:50–09:21:38 rc=0 ⇒ **`=> PASS 279 / FAIL 0`**、`全绿轮次: 1/1` |
+
+**注入自证 `_e2e/mutate_deployment_guard.py`（新，7 支 / 19 条具名红）**
+
+09:14:03–09:15:10 rc=0，末行 `RESULT 7 支判定，其中 MISMATCH: 无`；台账 `~/.cache/zlc70/mut/ledger.json`（`ts: 2026-09-27 09:15:02`）：
+
+| 支 | 摘掉的是什么 | core | web | ui |
+| --- | --- | --- | --- | --- |
+| J1a | 执行那一步（只 insert 不 provision） | 2 | 3 | — |
+| J1b | 物化批次那道归属门 | 1 | 1 | — |
+| J2 | 应用存在性预检 | 1 | 1 | — |
+| J3 | 结局回写（`updateById`） | 2 | 2 | — |
+| F1 | 页面按部署的真结局分叉 | — | — | 2 |
+| F2 | 下拉项回到"页面源码里" | — | — | 2 |
+| F3 | 词表形状不对也照旧渲染 | — | — | 2 |
+
+分母每轮钉死 `core 19 / web 7 / ui 7`；开跑前与收尾各复跑一次基线，三层都 **0 红**（`logs/{baseline,after}-{core,web,ui}.log`）。
+残留自查：`grep -r "mutant J1a\|…\|System.nanoTime() < 0" z-lc-core/src z-lc-web/src z-lc-admin-ui/src` = **0 命中**，同一批命令里对量具自身 `grep -c "mutant"` = 11（阳性对照）。
+
+**这一窗在量具自己身上抓到的四件事** —— 它们都曾长得像"绿"：
+
+1. **`.class` 归因检查写反过**：拿**跑之前**的 `.class` md5 去比上一轮的 md5，而那一刻 maven 根本还没编译 ⇒ 恒等于旧字节，那句"编译确实量了这份变异"是空的。改成注入后跑层、再判 `.class` mtime 晚于注入写入时刻；每支逐条打印 md5+时刻。
+2. **ui 层结构上永远报 0 红**：vitest 的状态词是 `failed`，判红筛的是 `fail` ⇒ F1/F2/F3 一度各报"红 0 条"，而那句"ui 基线 0 红"是**空跑**。加 `norm_status()` 归一，并拿 vitest 自报的 `numFailedTests` 与解析出的红数对账，不等就当场 FATAL（这一条在当日日志上双向实测：新代码 2==2 放行，旧代码 0!=2 红）。
+3. **core 层的假 mapper 存的是同一个对象引用**：摘掉 `updateById` 在单测里**观测不到**（服务改的就是库里那一格），所以 J3 的 core 半边报 0 红 —— 这不是断言软，是替身把"没回写"模仿成了"回写了"。改成写入/读出都 `snapshot` 一份，J3 随即打出它的 2 条具名红。
+4. **`call(..., expect_http=200)` 是一个从没被读过、也从没生效过的参数**（它广告的是"钉 HTTP 状态码"）。删掉；这件事现在由 14 支新探针里显式的 `_s == 400` 做。
+
+**接口层这一格从两句 `ok()` 长成 14 支判据**（每条都带正反两臂，一台恒答 400 的服务器过不了）：词表口 200 与形状、`executable` 非空、`rejected` 每条带原因、`executable ∩ rejected == ∅`、逐种被拒的方式 `/create` 必须 400 且点名这一种、**库里行数不许涨**（拒了不许留账）、正向臂用词表里那一种真创建（状态必须落 `SUCCESS`/`FAILED`，且不许是请求体里伪造进来的 `PENDING`）、`deployLog` 带"个实体"那句汇总、`/detail` 读回来**等于**返回的那一行（界面状态列读的是库）、缺 `deployType` 400、批次不存在 400 并回显那个 id、`appCode` 不存在 400 且说「没有应用」。
+
+**没做的 / 边界**：250 那条腿仍被网络卡住（`_e2e/deploy_250.sh`，见 §2.6 与任务 #67）；`DOCKER`/`GIT_PUSH` 不是"被禁"，是服务器没有那个能力 —— 真加了执行器就把它写进 `DeploymentTypes.IMPLEMENTED`，界面与文档跟着这份数据长。
+
+### 2.13 新撞到的欠账：`@Async` 在这个仓里没有任何机制，物化 trigger 回答 PENDING 而库里那一行已是终态（缺陷 **#71**，09-27 08:32:32 实测）
+
+修 #70 时顺手读了 `MaterializationService.trigger` 的形状，发现它和 #70 是**同一族的另一半**：
+#70 是"回答 PENDING 而永远没人执行"，这一条是"回答 PENDING 而其实已经当场跑完了"。两句都不是真话。
+
+静态读出（09-27 08:2x，三条都是现查的）：
+1. 全仓 `@EnableAsync` **0 处**（`rg -n 'EnableAsync' --glob '*.java'` 只剩 `DeploymentServiceImpl` 那段解释为什么不走这个形状的注释）
+   ⇒ 没有 `AsyncAnnotationBeanPostProcessor`，`@Async` 注解挂在一个没人处理的注解上；
+2. 唯一带 `@Async` 的方法是 `MaterializationService.runAsync`（`MaterializationService.java` 的 `@Async` 那一段），
+   而它的调用点是**同一个对象里** `trigger` 直接调 `runAsync(entity.getId())` ⇒ 即便补上 `@EnableAsync`，
+   自调用不走代理，那句还是装饰；
+3. `trigger` 在 `runAsync(...)` 之后 `return toResp(entity, null)` —— 返回的是 insert 时那个**旧对象**，
+   它的 `status` 仍是 `STATUS_PENDING`、`fileCount` 仍是 0，而 `run(...)` 是 `selectById` 重读一行再改状态的。
+
+接口上真兑现成什么样（09-27 08:32:32，dev jar 18090，两次调用在同一条命令里连着发）：
+```
+$ curl -s -X POST 'http://localhost:18090/api/lc/app/materialize?appCode=uiprov316393' \
+       -H 'Content-Type: application/json' -d '{"materializationPath":"/tmp/zlc71_probe"}'
+  → "id":2, "status":"PENDING", "fileCount":0, "createTime":"2026-09-27 08:32:32", "updateTime":"2026-09-27 08:32:32"
+$ curl -s 'http://localhost:18090/api/lc/app/materialize/status?id=2'      # 同一秒
+  → "id":2, "status":"FAILED", "errorMessage":"Absolute path not allowed: /tmp/zlc71_probe …"
+```
+响应写着"还没跑"，而库里同一秒已经是终态 —— 控制器那句注释「异步执行, 立即返回… 可用于后续 status 查询」
+（`MaterializationController` 的 `@Operation(summary = "触发物化导出 (异步)")` 同一处）是**广告**，不是兑现。
+
+代价具体是哪三样（不是"文案不好看"）：
+- 调用方拿不到结局：`status` 恒 PENDING、`fileCount` 恒 0、`files` 恒空 ⇒ 想知道跑没跑完只能二次轮询；
+- "异步"承诺的**不阻塞**没有：整个导出跑在 HTTP 请求线程上 ⇒ 大应用物化时 servlet 线程被占住，
+  超时/并发上限全在这条路上，而不是在真正的执行器上；
+- `/status` 那条"后续查询"路径于是成了唯一说真话的地方 —— 而**前端的部署页当时并没有读它**（#70 的另一半）。
+
+修法（**尚未动手，等排产**）——三条路各自都有代价，先记口径：
+- 甲 承认它是同步的：删掉 `@Async` 与"异步"文案，跑完再回答（像 #70 那样把真结局写回那一行并原样返回）。
+  最便宜，且和 #70 的处置**逐字同形**；风险是大应用的请求耗时。
+- 乙 把异步做出来：`@EnableAsync` + 把 `runAsync` 拆到另一个 bean（或注入自身代理）⇒ 真线程池。
+  要一并回答"响应里给什么、谁去轮询、页面怎么显示 RUNNING"（现在 `DeploymentEntity.STATUS_RUNNING` 那个常量
+  在本仓**零写入者**，界面也没有 RUNNING 这一档的显示口径）。
+- 丙 只做接口诚实：保持同步执行，但 `trigger` 返回**重读后**的那一行。这是甲的最低配。
+
+我的建议：**先走甲/丙这一类**（一句话也不比现在更假，且不引入线程池这一整片新面），
+把乙作为"确实需要并行导出"时的独立一项再拍。裁定前不动实现。
+
+关联：[[#2.12 缺陷 #70 部署中心]]（同族另一半）、`_e2e/README.md` 的"部署演练"那一节（250 上跑的就是这条链路）。
+
+### 2.14 新撞到的量具缺陷：接口层那个 z-wf 桩只听 IPv4，而 jar 里的 JVM 往 IPv6 连 ⇒ `[15w]` 整节量不到，报的却是"jar 没打过来"（缺陷 **#72**，09-27 09:0x 实测并修）
+
+**症状（现查）**：加上 #70 那 14 支探针之后重跑接口层，`516/546`、**30 条红**，全部落在 `[15w]`（#61 那一族），消息一律是「桥没通（桩没起来或 jar 没打过来）⇒ 这一条没有判定，不算绿」；而我新加的 14 支 #70 探针逐条 PASS。同一份 jar、同一个量具，08:50:51 那一跑还是 `532/532`。
+
+**归因（三步，每步一格证据，不是推的）**
+
+1. 拿一个**全新的** app/实体/绑定手工走一遍（`dbgwf090159`）：写记录返回 `data:1`，桩 `count=0` ⇒ 与 `SUF`、与累计状态都无关，桥此刻就是断的。
+2. 读 `GET /api/lc/workflow-binding/fires`：那一行是 `FAILED`，`detail` 写着
+   `POST /api/approval-center/processes/start http=0 err=Execute failed: Failed to connect to localhost/[0:0:0:0:0:0:0:1]:8888`（fire 行 id 49/50）
+   ⇒ **派发发生了**，只是连不上；同一时刻 `lsof` 显示桩只在 `IPv4 127.0.0.1:8888`，而 `nc -z ::1 8888` = closed。
+3. 换成一根**同时**听得见 `::1` 与 `127.0.0.1` 的 loopback 桩，再写一条 ⇒ fire 行 id **51 `STARTED` / `PI-DIAG-1`**。
+
+**根因（能证到的那一层）**：`WfAdapter` 的默认 `base-url` 是 `http://localhost:8888`，传输是 z-util-http 的 `HttpExecutor`（okhttp 4.12，栈顶 `RealConnection.connectSocket`）；量具 `_WfStub` 只绑 `("127.0.0.1", port)`。这台 Mac 上 JVM 把 `localhost` 连到了 `::1`。
+
+**⚠ 没解释清的那一半（写明，别顺嘴编成因）**：同一根 v4-only 的桩在 08:50:51 那一跑是**通的**（`532/532`，`[15w]` 逐条 PASS），08:54:13 起就不通了 —— 同一个进程、同一份配置。中间"翻了一下"的那一下我没量到（JVM 侧 `localhost` 的解析/路由顺序是唯二候选，但我手里没有任何一把尺能回看当时的路由选择）。所以这条只记结论：**修完之后不依赖它翻哪一边**。
+
+**改了什么（`_e2e/e2e_api_test.py`）**
+
+- `_WfStub` 不再是"一个 HTTPServer"，而是 `_WfState`（一本账）+ 两根 `_WfEndpoint`（`127.0.0.1` 与 `::1` 各一，`ThreadingHTTPServer` 子类，`address_family` 在建 socket 之前按 host 定）。两族各绑一个 **loopback** 地址，而不是 `::` + `IPV6_V6ONLY=0`：后者一根就够，但那等于把一个"能发起流程的端口"暴露到局域网（`lsof` 会显示 `*:8888`）。
+- 只剩一族可用（禁了 IPv6 的容器）时照跑，但把缺掉的那一族写进"桩绑得上"那条读数里 —— 不许再沉默一次。
+- `WF.requests / mode / hang_seconds` 改走 `property`，本节其余 20 多处读写点一字不动。
+- **红消息带回原因**：新增 `wf_bridge_words()`，桥没通时去 `/fires` 把 jar 自己写下的那句 `detail` 抄进判红消息。这一次从"30 条红 + 一句不指向的话"到定位隔了 15 分钟，而那句话一直都在库里。
+
+**双向实测**：改前那一跑 30 条具名红（`~/.cache/zlc70/gate2-api-70.out`，`516/546`）；改后同一台机器、同一份 jar（重建后 inode 141692193）**两跑逐字同数** `546/546`、`^  FAIL` 计数 0（`gate2-api-dual.log` 09:08:40、`gate2-final.log` 09:18:22）。
+
+**同形状还留着的两处（只登记，本轮不动）**
+
+- `_e2e/wf_stub.py` 里那句 `HTTPServer(("127.0.0.1", args.port), Handler)` 是 250 部署腿用的桩，同一个形状。本机量不到 250 ⇒ **改一条不可复现的链路是拿猜测换代码**，等 §2.6 那条腿通了第一件事就是"绑两族 + 断言 `::1` 也答"。
+- `z-lc-admin-ui/e2e/browser-e2e.mjs` 的 bundle 新鲜度闸拿 **mtime** 比（本轮被它挡下：`src 里最新的文件比 index-BMjMtCQR.js 新 274s —— 这份 bundle 不是当前源码构建出来的`）。注入量具按字节还原源码，而还原会把 mtime 刷新 ⇒ 这把尺会**误报**"bundle 不是当前源码建的"。它错得保守（拒跑，不产假绿），所以本轮只重新 `npm run build` 过闸、**没动它**；真要修是换成"src 内容哈希 vs bundle 内嵌哈希"，与 #69 是同一件事。
+
 ---
 
 ## 3. 等你（主编/CEO）拍的五问 —— 我先按默认值做了，但默认值**不算裁定**
