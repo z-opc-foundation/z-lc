@@ -96,6 +96,13 @@ export function DeploymentsPage() {
       render: (value: string) => <Tag color={STATUS_COLOR[String(value)] ?? 'default'}>{value}</Tag>,
     },
     { title: '版本', dataIndex: 'version', width: 130, render: (value?: string | null) => value ?? '—' },
+    {
+      title: '物化批次',
+      dataIndex: 'materializationId',
+      width: 110,
+      // 这一格现在是"指得回一批真产物"的 id：写入口会拒掉不存在或属于别的应用的批次。
+      render: (value?: number | null) => value ?? '—',
+    },
     { title: '创建时间', dataIndex: 'createTime', width: 170, render: (v: string | number | null | undefined) => formatTime(v) },
     {
       title: '',
@@ -105,7 +112,7 @@ export function DeploymentsPage() {
         <Button
           size="small"
           type="link"
-          disabled={!row.id}
+          disabled={Boolean(row.id)}
           onClick={async () => {
             if (!row.id) return;
             try {
