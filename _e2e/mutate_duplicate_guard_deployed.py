@@ -153,8 +153,9 @@ def restart():
         subprocess.run(["kill", "-9", str(pids[0])])
         time.sleep(2)
     log = open("/tmp/lc_deployed_mut_boot.log", "ab")
+    # start_new_session：不起新会话的话这个 jar 属于本量具的进程组，量具一退出它跟着收 SIGTERM（缺陷 #74）
     subprocess.Popen(["java", "-jar", str(JAR), "--spring.profiles.active=dev"],
-                     cwd=str(ROOT), stdout=log, stderr=log)
+                     cwd=str(ROOT), stdout=log, stderr=log, start_new_session=True)
     if not wait_health():
         raise RuntimeError("server did not come up; see /tmp/lc_deployed_mut_boot.log")
 

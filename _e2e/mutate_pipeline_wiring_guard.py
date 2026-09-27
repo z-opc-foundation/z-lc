@@ -370,8 +370,9 @@ def ensure_fresh_jvm():
         if not _wait_port_free(120):
             raise RuntimeError("old JVM still answering after kill -9")
     log = open("/tmp/lc_deployed_mut_boot.log", "ab")
+    # start_new_session：不起新会话的话这个 jar 属于本量具的进程组，量具一退出它跟着收 SIGTERM（缺陷 #74）
     subprocess.Popen(["java", "-jar", str(JAR), "--spring.profiles.active=dev"],
-                     cwd=str(ROOT), stdout=log, stderr=log)
+                     cwd=str(ROOT), stdout=log, stderr=log, start_new_session=True)
     if not wait_health():
         # 失败路径上更不能挂: 本机 lsof 在 load 高的时候直接不返回（这轮已经踩过四次）,
         # 而这里挂住 = 整场战役卡死在"报不出为什么起不来"。用 connect 探一下就够了。

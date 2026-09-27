@@ -14,39 +14,50 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar --spring.profiles.acti
 三层测试，当前全是绿的：
 
 ```bash
-mvn -o -B clean install          # 4677 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1276+112+63；z-lc-web 那 63 个里 61 个是 LcHttpContractTest 的真 HTTP 集成测试）
-python3 _e2e/e2e_api_test.py     # 464/464 项断言，打真在跑的 server
+mvn -o -B clean install          # 4790 个 Java 测试（surefire 模块汇总行现加 = 2701+525+1338+112+114；z-lc-web 那 114 个里 62 个是 LcHttpContractTest 的真 HTTP 集成测试）
+python3 _e2e/e2e_api_test.py     # 555/555 项断言，打真在跑的 server
 python3 _e2e/probe_stats.py      # 非数值统计与字典值域 warning 的即席探针（要 server 在跑）
-cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 28 文件/252 用例 + vite build（09-27 06:1x 实测产物 index-ruBdvAdn.js。⚠ 这个名**不是身份**：同一份 src 本机 rollup 会给出不同名，见下文"#69：产物名不能当还原判据"）
-E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 279 项/轮（先 build，preview 见下文。⚠ 这一行原写 222，是 09-26 那窗的数；#61 §2.5 给流程绑定页补了断言，09-27 05:0x 实测 `~/.cache/zlc61/browser_guard/00_baseline.log` 逐字 `=> PASS 279 / FAIL 0`，两跑（第二轮基线 / 第三轮基线）都是 279）
+cd z-lc-admin-ui && npm run check   # tsc + eslint --max-warnings 0 + vitest 30 文件/264 用例 + vite build（09-27 12:4x 实测 `~/.cache/zlc65gates/gate3_check.log`。⚠ 产物名**不是身份**：同一份 src 本机 rollup 会给出不同名，见下文"#69：产物名不能当还原判据"）
+E2E_REPEATS=3 node e2e/browser-e2e.mjs  # 真浏览器门禁 285 项/轮（先 build，preview 见下文。09-27 12:4x 单轮实测 `~/.cache/zlc65gates/gate4_browser.log` 逐字 `=> PASS 285 / FAIL 0`；279→285 的 +6 是 #65 在 `11w` 段补的，与 PASS 标题唯一集求差核对为"新增 6 / 消失 0"）
 bash _e2e/deploy_250.sh gates    # 部署层四道闸，各自带负控，都要能红（见「部署演练怎么跑」一节）
 ```
 
-（以上是 2026-09-26 16:4x – 16:5x 这一窗**同轮**实跑的数，不是抄上一轮 —— 上一轮（08:3x – 08:4x）记的是 4656 / 464 / 248 / 184。
-这一窗是把同一套东西**打到 250 上的真 MySQL 8 上**那一轮（部署演练），撞出 #51/#54/#55/#56/#57/#58 六件事，
+（上面四道本地闸（`mvn -o -B clean install` / `e2e_api_test.py` / `npm run check` / 真浏览器门禁）的读数取自
+2026-09-27 12:40:57 – 12:49:27 同一条链的一次串行重跑
+（`~/.cache/zlc65gates/run_gates.sh` → `driver.log`，四个退出码逐字 `rc=0 / rc=0 / rc=0 / rc=0`），不是抄上一轮。
+`probe_stats.py`（即席探针，不是闸）与 `deploy_250.sh` 都不在那条链里 ⇒ 这一窗没有它们的账。
+**打真 MySQL 8 的那两格（`deploy_250.sh api` / `gates`）这一窗没重测 —— 不是绿，是没量**：250 从 06:40 起
+失联签名已判完（端口在听而 banner 0 字节、`ssh` rc=255），按纪律不再敲 ssh，要人到控制台。
+上一窗（09-26 16:4x – 16:5x）那一轮记的是 4677 / 464 / 252 / 279，它的账仍在下文「交接状态」
+**那张标题写着 09-26 16:4x 的表**里；再往前（08:3x – 08:4x）是 4656 / 464 / 248 / 184。
+回到 09-26 16:4x – 16:5x 那一窗：它是把同一套东西**打到 250 上的真 MySQL 8 上**那一轮（部署演练），撞出 #51/#54/#55/#56/#57/#58 六件事，
 其中 #57 改了 java、#58 改了部署量具，所以每一层都重测了一遍；日志与退出码逐层落在 `~/.cache/zlc57/gates/`：
 `java57b.log`（`JAVA_EXIT=0`）、`api_h2_57b.log`（`API_EXIT=0`）、`check57b.log`（`CHECK_EXIT=0`）、
 `browser57b.log`（`BROWSER_EXIT=0`，三轮各自 222/0）、`deploy_all57b.log`（`ALL_EXIT=0`）、
 `gates57b.log`（`GATES_EXIT=0`，四道闸逐条具名负控红过又绿回来）、`api_mysql57b.log`（`API250_EXIT=0`）。
-⚠ 这一窗浏览器那一格**第一次跑是拒跑的**（`~/.cache/zlc49/gates/browser55.log` 里逐字写着
+⚠ 同一族里有一条**拒跑的实录**（出处按日志文件点名，不按窗口：`~/.cache/zlc49/gates/browser55.log` 里逐字写着
 `门禁拒绝开跑（测的必须是本轮构建的产物）：- 没从 http://localhost:5274/ 的 HTML 里读到 assets/index-*.js（preview 没起？）`）——
 产物指纹守卫拦下"没人起 preview 就去打 5274"，报的是 2 而不是 0。这一族里"跑不起来"和"跑过了"从来是两个读数，别混着记。
-⚠ 上一窗（08:3x – 08:4x）那条链一次跑绿，五个退出码没有第二个值；它的账仍在下文「交接状态」最前面第二格。）
+⚠ 再往前一窗（09-26 08:3x – 08:4x）那条链一次跑绿，五个退出码没有第二个值；它的账仍在下文「交接状态」
+**那张标题写着 09-26 08:3x – 08:4x 的表**里。（这里原先写"最前面第二格"、后来又补了一句"09-27 这一窗它已经是第八张了"——
+两句都是序数引用，每插一张新表就往下掉一格，那个"第八"落盘时就已经是过期断言 ⇒ 删掉计数，只留规则：
+**往后的交叉引用一律按窗口标题点名，别按序数。**）
 
-⚠ **本窗浏览器那一格差点测的不是本窗的件**：`npm run preview:e2e` 起在 5274 时撞上"端口已被占用"，
+⚠ **09-26 08:3x 那一窗，浏览器那一格差点测的不是当轮的件**：`npm run preview:e2e` 起在 5274 时撞上"端口已被占用"，
 它自己退到 5275（`preview48.log` 里写着 `Port 5274 is in use, trying another one...`），
-而 `browser-e2e.mjs` 打的是 **5274** —— 占着 5274 的是 06:27:52 起的一支 vite preview（本仓同一路径，不是本窗这条链起的）。
+而 `browser-e2e.mjs` 打的是 **5274** —— 占着 5274 的是 06:27:52 起的一支 vite preview（本仓同一路径，不是那条链起的）。
 这一格因此没有直接采信"退出码 0"，而是把三方对齐现量了一次：5274 返回的 HTML 里引用的产物 =
 5275 返回的 = 盘上 `dist/index.html` 引用的 = `index-CQtLNKSU.js`，且 `dist/assets/` 那一份的 mtime 是 `08:33:41`
-（= 本窗 `npm run check` 里 build 出来的那一个）。vite preview 每次请求现读磁盘，所以旧进程伺服的是**新件** ——
+（= 那一窗 `npm run check` 里 build 出来的那一个）。vite preview 每次请求现读磁盘，所以旧进程伺服的是**新件** ——
 但这条结论只有量过才敢写：**"preview 还在跑"不等于"它在测旧件"，也不等于"它在测新件"**。
 （收这条链时 5274/5275 都空了：脚本末尾按名字 `pgrep -f 'vite preview --port 5274'` + `kill -9`，把 06:27 那一支一起带走了 ——
 这一族脚本按端口/进程名清理时**会连别人那一支的 preview 一起杀**，用之前先想清楚这一点。）
 
-注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**40 支，后端 21 + 前端 19**
-（这个数不是敲出来的，09-27 09:2x 现敲：`ls _e2e/mutate_*.py | wc -l` = 21、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 19。
-上一版（01:4x）记的 38 之后又长了两支：`z-lc-admin-ui/e2e/mutate_workflow_browser_guard.py`（#61 的浏览器层，18 支 W1–W18，
-它的账在「缺陷 #69」那一节里 —— 那一节的量具就是它）与 `mutate_deployment_guard.py`（#70 部署中心，见下文「缺陷 #70」那一节））：
+注入缺陷自证（"补的测试到底钉不钉得住"唯一的答案，见下文各节）。**42 支，后端 22 + 前端 20**
+（这个数不是敲出来的，09-27 11:0x 现敲：`ls _e2e/mutate_*.py | wc -l` = 22、`ls z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 20。
+上一版（09:2x）记的 40 之后长的正是 #65 那一对：`_e2e/mutate_fire_window_guard.py`（java 层 F1–F6，
+其中 F2/F6 还各打一轮部署件）与 `z-lc-admin-ui/e2e/mutate_fire_window_ui_guard.py`（vitest 层 U1–U8），
+两本的账都在下文「缺陷 #65」那一节）：
 
 ```bash
 python3 _e2e/mutate_duplicate_guard.py            # 单测层：预检回到 deleted=0 口径
@@ -68,7 +79,7 @@ python3 _e2e/mutate_permission_deployed_guard.py   # #48 打发出去的 fat jar
 python3 _e2e/mutate_collation_guard.py             # 250 真库撞出的那一族 #51/#54/#57：M1..M13 + N1..N5（共 18 支，跑 SchemaAdminBizServiceTest + UndoServiceSnapshotFormatTest + LcHttpContractTest 那两支）
 python3 _e2e/mutate_health_honesty_guard.py        # #52 的 java 层：H1..H17 + N1..N2（账见「健康探针」那一节）
 python3 _e2e/mutate_workflow_trigger_guard.py      # #61 的 java 层：M1..M6 打 core 四类 + 契约层（分母每轮钉 68 + 13，认领 30 条具名断言）
-python3 _e2e/mutate_workflow_deployed_guard.py     # #61 的**部署件层**：W1..W6 各重新 build fat jar、重启 18090 再跑 `[15w]`（分母每轮钉 63/546，09-27 09:1x 现读；这一节自身仍 63 条）
+python3 _e2e/mutate_workflow_deployed_guard.py     # #61 的**部署件层**：W1..W6 各重新 build fat jar、重启 18090 再跑 `[15w]`（分母每轮钉 63/546，09-27 09:1x 现读；⚠ **#65 之后这一节是 72 条、全量 555** —— 那两个数是 10:4x 由 `mutate_fire_window_guard.py` 对同一份 jar 量出来的，这一支自己还没为此重跑，它每轮现量分母所以不会假绿，但引用 63/546 之前要记得那是旧形状那一棵树）
 python3 _e2e/mutate_deployment_guard.py            # #70 部署中心：J1a/J1b/J2/J3（java 三层）+ F1..F3（vitest 层），每轮核分母必须 = core 19 / web 7 / ui 7（漂了直接抛），账见下文「缺陷 #70」那一节
 cd z-lc-admin-ui && python3 e2e/mutate_provision_report_guard.py # #47 的 vitest 层 M1..M18（DesignerProvision.test.tsx 15 例）
 cd z-lc-admin-ui && python3 e2e/mutate_provision_browser_guard.py # #47 的**浏览器层** P1..P6（自带 build + preview，11d 那 24 条）
@@ -112,8 +123,8 @@ cd z-lc-admin-ui && python3 e2e/mutate_workflow_browser_guard.py # #61 的**浏�
 而它的 F 族跑的是 vitest —— 与前端那 19 支抢的是同一个报告目录）与 #61 浏览器层的 `mutate_workflow_browser_guard.py`
 （自带 build + preview，`PORT = 5274`，和另外五支浏览器量具抢的是同一个端口）
 —— 它们和前端撞的是同一个 mvn/vitest 缓存与报告目录；
-这个 19/16 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 19 与
-`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 16 数出来的（09-27 09:2x 现敲），不是点的）；
+这个 20/17 是 `grep -l _mutlock z-lc-admin-ui/e2e/mutate_*.py | wc -l` = 20 与
+`grep -l _mutlock _e2e/mutate_*.py | wc -l` = 17 数出来的（09-27 11:0x 现敲），不是点的）；
 仍未接锁的 5 支后端脚本（三个 duplicate_guard + connection_leak + field_code）**还没接锁**，
 它们两两之间同样会互相抹源码，同时开两支得自己盯着。锁拿不到直接 `exit 2` 并且
 **一个源文件都不碰**（已实测这一条）。
@@ -1839,16 +1850,162 @@ F1..F3 打前端（下拉抄一份清单 / 失败也说"部署已创建" / 词�
    证明不了真服务端给的词表长这样、也证明不了点下去那一下真到了服务器。
 2. **250 那半条腿这一窗仍然没量**（09:32:37 现读：22 端口 TCP 握手 rc=0 而 `ssh` rc=255 `kex_exchange_identification: read: Connection reset by peer`，见下面交接表那一格），部署这件事在真 MySQL 8 上的结局没有读数。
 
+---
+
+### ✅ 缺陷 #65：`/fires` 一次最多给 200 条而不回总数 —— 账长到 201 条那天，界面说的是"这个实体还没有发起记录"（2026-09-27）
+
+**形状**：`WorkflowBindingController.fires` 直接 `List<WorkflowFireEntity>`，服务端没有 `LIMIT` 也没有 `COUNT`，
+`pageFires` 靠 MyBatis-Plus 的默认上限（200）截断；前端 `readFires` 拿到一个数组，
+于是**"这一页读出来几条"与"这张账一共多少条"共用了一格**。界面拿 `fires.length` 当总数、
+拿 `fires.length === 0` 当"没有账"。第 201 条落库那天起，用户看到的话从"还有 181 条我没读给你"
+变成"还没有发起记录" —— **读不出来被说成没有**，这一族谎的第 N 个实例（同 #19/#22/#23/#24/#25）。
+
+**修法分三层，缺一层都不算修好**：
+
+1. core：`pageFires(tenant, app, entity, recordId, page, size)` 出 `PageResult<WorkflowFireEntity>`
+   `{records,total,pageNum,pageSize}`。`COUNT` 与行读**同一把 `QueryWrapper`**（数的时候必须同样看
+   tenant/entity/record），`selectCount` 在 `ORDER BY` 之前，`size` 收口在 `[1, 200]`，
+   offset 用 `LIMIT (p-1)*s, s`（不是只写条数）。
+2. web：controller 回那个信封，不再回裸数组。
+3. 前端：`readFireWindow` 认这个形状 —— `records` 不是数组、或 `total` 不是有限非负数、
+   或 `pageNum/pageSize` 不是合法页码，一律**判错**（"没有如实回总数"），而不是拿行数补一个总数；
+   抽屉一处指示拆成三句：**一共有多少 / 这一页读出来几条 / 还有多少没读**（外加"第几页"）。
+
+**三条口径是这一族的重点，不是修辞**：`total` 那一格缺席 ⇒ 报错而不是补；`records` 为空而 `total>0` ⇒
+说"这一页没有行"而不是"没有账"；翻页 ⇒ 必须**换一次真请求并带页码**（客户端切片 = 界面翻的还是同一页）。
+
+**注入自证（java 层，永久量具 `_e2e/mutate_fire_window_guard.py`，6 支）**
+读数逐字来自 `~/.cache/zlc65mut/guard-0927-104304.log`，台账 `ledger.json`
+`ran_by zifang@0927-104304 / bad=0 / restored=true / rerun_green=true`：
+
+| 注入 | 摘掉的是什么 | reactor（`core 30 + web 15` 两条腿各跑各的，不带 `-am`）| 部署件层（重新 build fat jar → 重启 18090 → 整份接口层）|
+|---|---|---|---|
+| F1 | 不 COUNT，总数拿这一页的行数顶 | **3** 条具名红 | — |
+| F2 | `LIMIT` 只剩条数（没有 offset）| **2** | `553/555`、`[15w]` 红 **2**、`changed=1` `WorkflowBindingService.class`（fp `2c2963dd6d17`）|
+| F3 | 每页上限收口 | **2** | — |
+| F4 | COUNT 与行读两套谓词 | **3** | — |
+| F5 | 排序翻成最旧在前 | **1**（顺序只钉在 core 单测一处）| — |
+| F6 | controller 回裸数组（#65 原样）| **12** | `534/555`、`[15w]` 红 **21**（那一节凡是"从信封读"的账一起塌）、`changed=1` `WorkflowBindingController.class`（fp `66bb82c992a4`）|
+
+基线 `Tests run=[30, 15]` 两层全绿、`deployed 555/555 全量、[15w] 本节 72 条、artifact fp=74e6dee60469、一轮 4.5s`；
+还原轮 `artifact 回到基线字节: True` + `555/555 本节 72 红=(none)` + `restored sources: clean`，
+末行 `RESULT: fire-window falsification done`；`finally` 里额外重装了一次原始字节
+（`~/.m2 与 fat jar 已重装原始字节 (fp=74e6dee60469)`），半路崩了也不把变异留在 m2 里。
+⚠ **上面那张表的读数出自"第一轮实测抄预期"那一跑（`guard-0927-104304.log`，跑时 `EXPECT_*` 还是空的）**，
+所以它当时只证明"红的是这些"，没证明"预期==实测"。这一格现在被钉死复跑过了：
+**`~/.cache/zlc65mut/pinned_rerun_0927_1234.out`（起跑 12:34:28，量具 mtime `10:57:51` ⇒ "起跑时 EXPECT 已非空"可证）**
+—— 六支 reactor 红 **3 / 2 / 2 / 3 / 1 / 12** 与 `EXPECT_REACTOR` 逐字同，`deployed` 两支 F2 `553/555`
+本节 `72/72` 红 **2**（`changed=1` `WorkflowBindingService.class` fp `2c2963dd6d17`）、F6 `534/555` 红 **21**
+（fp `66bb82c992a4`）与 `EXPECT_API` 逐字同；基线与每一支的 `Tests run` 恒为 `[30, 15]`、分母没漂；
+还原轮 `artifact 回到基线字节: True` / reactor `红=(none)` / `deployed 555/555 本节 72 红=(none)` /
+`restored sources: clean` / `~/.m2 与 fat jar 已重装原始字节 (fp=74e6dee60469)`；
+台账 `ran_by zifang@0927-123428 / bad=0 / denominators {java_counts:[30,15], e2e_total:555, section:72} /
+restored=true / rerun_green=true`；整跑**零条 `!!`**（`grep -c '!!'` = 0），末行逐字
+`RESULT: fire-window falsification done`。
+
+**注入自证（前端 vitest 层，永久量具 `z-lc-admin-ui/e2e/mutate_fire_window_ui_guard.py`，8 支）**
+`~/.cache/zlc65ui/full1.out`，台账 `ran_by zifang@0927-105221 / bad=0 / denominators {'tests': 8} / rerun_green=true`，
+末行逐字 `RESULT: fire-window UI falsification done`（**不是** PARTIAL —— 这一跑 `EXPECT` 已填，
+8 支的红集是逐条比对过的）：
+U1 摘 `Array.isArray(raw)` ⇒ 1 红；U2 把 `total` 那一格换成行数顶 ⇒ 1 红；
+U3 `{ledger.total}`→`{rows.length}` ⇒ **3** 红（总数那句、空页那句、翻页那句一起，正是"一处指示"撑三支断言）；
+U4 差额那句的开关翻成恒假 ⇒ 1；U5 "有没有账"改问这一页的行数 ⇒ 1；
+U6 `onChange` 摘掉 ⇒ 1；U7 `useEffect` 依赖里去掉 `page` ⇒ 1；
+**U6/U7 红集逐字相同** ⇒ 在 `PAIRS` 里明写成一条守卫（同一条性质的两个代码站点，界面无可观察差别，不许按两支记分）；
+U8 `setStatus('error')`→`('done')` ⇒ 3。
+
+**浏览器层（`11w` 那一段）：这一窗先把检查加上，再在同一个窗里把注入补完 —— 缺口已清空，不是记账了事**：
+分母 59 → **65**（`git diff HEAD -- e2e/browser-e2e.mjs | grep -c "^+  *\(check\|wfCheck\)("` = **6**、
+减号侧 = **0**；12:4x 复测又用标题唯一集机械对了一遍：与 `~/.cache/zlc70/gate4-final.log` 求差 =
+**新增 6 / 消失 0**，279 → **285**）。新增那 6 条逐字是：总数来自服务器 / 差额点名 / 一次只问一次且问
+`page=1&size=20` / 点第 2 页真再问一次带 `page=2` / 末页仍写着 25 / 裸数组那一屏报"没有读到"。
+**这 6 条现在各有各的注入**（`not_covered()` 里那一格 **(d)** 已删）：
+W19 摘 `{ledger.total}`→`{rows.length}` ⇒ 红 **2**、W20 把差额那句的开关翻成恒假 ⇒ **1**、
+W21 依赖里去掉 `page` ⇒ **2**、W22 `FIRE_PAGE_SIZE` 20→200 ⇒ **5**，四支逐字
+`OK … 预期 N 条全红，无一条连带红`（`~/.cache/zlc61/browser_guard/narrow_w5w22_0927_1159.out` 与
+`narrow_w5w22b_0927_1221.out`）；第 6 条（裸数组那一屏）归在 W4/W5 名下，W5 本轮实测红 **3**。
+⇒ 静态体检现在报 **`11w 分母 65 条（扫自源码）、22 支注入、覆盖 37 条、按未覆盖记账 27 条、兜底标题 1 条`**。
+⚠ **这一批的账是分两跑凑齐的，不是一跑整族绿**：W1–W18 + W19–W21 来自 10:59 的整族复测
+（20 轮，每轮 `PASS+FAIL 285`、还原轮红 0），W5/W22 来自 12:21 的收窄跑（4 轮，同样 285/还原 0）。
+收窄跑自己会把这一格说破：`⚠ 收窄跑：…不能当「W1–W18 整族自证」的账`。
+⚠ **跟着改的一次连带**：#65 把抽屉的数据从 `fires: WorkflowFireEntity[]` 换成分页信封
+`ledger` 之后，**#61 那支浏览器注入量具的 W4/W5 锚点悄悄失效了**（`A5` 里那句 `setFires([])` 在盘上出现 0 次，
+`R4` 里的 `fires` 已不在作用域）。四道闸一条都不会红，只有 `validate()` 抓得到 ——
+修完锚点 + 加了 `R4` 上方那段注释。这就是"改数据形状必须顺带复测量具"的实证。
+
+**⚠ 同一窗在量具身上撞出的五件事（都不是产品坏了，但都会造出假读数）**：
+
+1. `run_api` 的本节分母只数 `PASS` 行 ⇒ F2 正常红 2 条被读成"分母 72→70"；改成 PASS+FAIL 都算一行时
+   又双计数 ⇒ `74`/`93`。真值 `72/72`。**两跑都是尺坏**：`guard-0927-103651.log` 报 `2 problem(s)`，
+   修完的 `guard-0927-104304.log` 才 `done`。
+2. 半路崩过一轮：core 一红就中止 reactor，`-pl ... -am` 让 web 模块一条不跑，
+   于是"契约层没红"其实是"契约层没跑"（`guard-0927-102032.log` 末行 `RESULT: CRASHED: ... 拿到 []`）。
+   改成两条腿各跑各的、且每支注入前先 `install`（契约层从 `~/.m2` 取 core，否则量的不是同一份字节）。
+3. **新缺陷 #74（量具层）**：`restart()` 用 `Popen` 起 jar 而**不起新会话** ⇒ jar 属于量具的进程组，
+   量具一退出它跟着收 SIGTERM。而它**收完 SIGTERM 不退**：10:47:24 那一次 `SpringApplicationShutdownHook`
+   跑过之后 JVM 还活着 11 分钟，端口 18090 仍被占着、`/health` 仍回 HTTP 200，只是
+   `{"status":"DOWN", ... "NoClassDefFoundError: com/alibaba/druid/stat/JdbcStatManager"}`
+   （类加载器已经关掉）。⇒ 修 = `start_new_session=True` + SIGTERM 60s 无效则对**已归因那一个 pid** 升 SIGKILL。
+   10:58:49 直接在真卡住的 pid 30561 上复跑了修好的 `restart()`：`旧进程已收干净（等了 15s, 端口 18090 空）` →
+   `归因成立：18090 的监听者 pid=35401，argv 里就是 z-lc-admin-1.0.0-SNAPSHOT.jar` → `/health` 回
+   `UP` + `H2 2.2.224` + `latencyMs`（即 #52 那条"health 必须真问库"在新件里仍然兑现）。
+   ⚠ 这一格按"在真卡住的样本上验过修法"记，**不记成整族量具重跑** —— #74 的注入自证（摘掉
+   `start_new_session` 就复现）没做，因为它是进程生命周期而不是能被断言的产品性质。
+4. **新缺陷 #75（浏览器套件层）：注入把界面推进"没有第 2 页可点"的形状时，那一节 12 条检查一起消失，
+   量具报的却是"这一支没红"**。症状逐字（`narrow_w5w22_0927_1159.out`）：
+   `22_W22: PASS+FAIL 273 / 红 4` → `!! W22 …: 本轮分母 273 != 基线 285 —— 某一节中途没跑完，「没红」不能算通过`
+   → `!! W22 …: 整节中途抛错（流程绑定的发起账（#61 浏览器层） 红了）—— 这一轮的归因不成立，后面那些「没红」是「没跑到」`。
+   机制：`browser-e2e.mjs` 的 `8b` 段那颗翻页是**裸 `.click()`**，而 W22 把每页 20 抬成 200 之后
+   25 条全落在第一页 ⇒ `.ant-pagination-item-2` 根本不存在 ⇒ 5s 超时抛出被整节 `catch` 接住 ⇒ 该节后面
+   12 条一条没跑。**这是"未改判据、只加了一次注入"就撞出来的**（全仓扫 `.ant-pagination-item` 命中 **1** 处；
+   套件里"点了可能点不到"的交互此前已有 **5** 处写成 `.click(...).catch(() => {})`（现数带 `.catch` 的
+   click 站点 = 修完这颗之后 **6** 处），只有这一处漏了）。修法 = 那一处点击也 `.catch(() => {})`，
+   让"点不到"退回成**下面那几条检查各自红**，而不是把整节带走。修完实测：W22 分母回到 `285`、
+   红 **5** 条且逐字 `OK … 预期 5 条全红，无一条连带红`，基线轮与还原轮仍是 `285 / 红 0`（⇒ 这一改
+   对绿跑零影响，只在"点不到"那一条路上改变归因粒度）。
+   ⚠ **同一支 W22 暴露的第二次同类错觉**：我第一次给它的预期红集是**推出来的 4 条**，漏了"翻页那次请求"
+   那一格 —— 若不是它先崩成 273，我会把"预期 4 条实跑 4 条"当成对齐。**预期红集也要有猎物**，
+   见下面第 5 条的 W5。
+5. **注入打错了地方：一条性质有两个守点时，单站点摘除是等价变异，红 0 不是检查空**（同一支 W5，两跑实测）。
+   W5 原本摘"关抽屉不清空旧行"（题号逐字 `W5 W4 + 关抽屉不清空旧行`，补丁是 `A4`+`A5`），10:59 整族那跑：
+   `!! W5 W4 + 关抽屉不清空旧行: 预期变红却没红（这几条浏览器检查是空的）:
+   ['读失败那一屏也不留下"三行账"的假象…']`、红 **2**。我据此判断"注入打错了地方，真落点在 `catch` 里那句
+   `setLedger(null)`（#65 新加的）"，换成 `A19`（题号 `W5 W4 + 读失败那一屏也不清空旧账`）再跑 ——
+   12:1x 收窄跑**同样**红 2、同样那一条 `!!`。
+   两次读数合起来才说明真相：**不是落点错了，是那里有两个互不相干的落点** ——
+   关抽屉（`if (!binding)`）与 `catch` 各清一次账，摘任意一个另一个仍然把旧账清干净，界面上没有可观察差别
+   ⇒ 那一条检查**不是空的，而是被冗余防线护着**（旧行为只在两处同时不摘时才不出现）。
+   处置：`W5` 改成一次摘两个（`A4`+`A5`+`A19`），12:2x 实测红 **3**、逐字
+   `OK W5 …: 预期 3 条全红，无一条连带红`；同时把"单点回归抓不到"这件事写成**覆盖缺口**留在
+   `not_covered()` 的注释里（要拆回一支一站点，得先给套件加一条"重新打开那 1.2s 里旧行不许还亮着"的
+   loading 窗口采样，本窗没加）。⚠ **反例价值**：如果我当时只看"红 2"就宣布那条浏览器检查是死的、
+   或者只把 `A5` 换成 `A19` 就当收工，这条真性质会在账本上被记成"已被守卫"。
+   与 vitest 层的 U6/U7（`PAIRS`：红集逐字相同的两个代码站点）是同一族，只是这一族更狠 ——
+   那两个站点保护的是**同一个**观察，所以缺一支都不红。
+
 
 ---
 
 ## 交接状态（本轮收尾时实测，不是回忆）
 
-四层门禁当前状态（最前面那张 **09-27 09:1x–09:2x** 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
+四层门禁当前状态（最前面那张 **09-27 11:0x–12:5x** 的表是**当前数**；后面那几张是历窗的账，逐格保留作历史与教训出处，
 **不是当前数**。
-⚠ 上一版这行指的是 07:2x 那张。09-27 09:1x 这一窗 java / 接口(H2) / 前端 / 真浏览器 **本地四层**同轮重测过，
-而**打真 MySQL 8 的那两格这一窗量不了**（250 的 sshd 建不起会话，rc 现读在下面表里，别把 09-26 那两个 469/469 当当前数）。
+⚠ 上一版这行指的是 09:1x 那张。09-27 11:0x–12:5x 这一窗（#65 收线）java / 接口(H2) / 前端 / 真浏览器
+**本地四层**同轮重测过（一轮跑完 12:40:57–12:49:27，日志全在 `~/.cache/zlc65gates/`），
+而**打真 MySQL 8 的那两格这一窗量不了**（250 从 06:40 起失联签名已判完、要人到控制台，见下面那一行的口径）。
 表里每一行的时间戳才是证据，标题里的窗口只是"这一批数是哪一窗的"，别把它当成"下面都是老数"）：
+
+**09-27 11:0x – 12:5x 这一窗（#65 收线：`/fires` 从"裸数组、一次最多 200 条"变成分页信封 + 界面三句分开；
+三层注入自证全部带上预期复跑）本地四层同轮重测 + 三支量具各自复跑，日志落在 `~/.cache/zlc65gates/` 与 `~/.cache/zlc65{mut,ui}/`、`~/.cache/zlc61/browser_guard/`：**
+
+| 层 | 命令 | 实测（本轮现读日志，不是沿用） |
+|---|---|---|
+| Java | `mvn -o -B clean install` | **BUILD SUCCESS**（`gate1_install.log`，`Total time: 17.540 s`）、**4790** 个用例 0 红 0 错 0 跳（5 条不带 `-- in` 的模块汇总行现加 = 2701+525+**1338**+112+**114**）。**4788 → 4790 的 +2 两把尺互证**：surefire 模块行 core 1337→**1338**、web 113→**114**；`git show HEAD:` 与工作树逐文件数 `@Test` 的差**只落在两支上** —— `WorkflowBindingServiceTest` **+3 个 `pageFires*` / −2 个 `listFires*`**（那是改名不是删：旧的 `listFiresShouldBeTenantPinnedAndNewestFirst`、`listFiresShouldCapAtTheLimitTheQueryCarries` 被 `pageFires*` 三支顶掉）⇒ 净 **+1**，`WorkflowTriggerContractTest` **+1**（`fireLedgerReportsItsWholeWindow`），加总正好 +2，其余测试文件 0 变动。产物 `z-lc-admin/target/z-lc-admin-1.0.0-SNAPSHOT.jar` md5 `fd7bf6cf8a6295e85050b8c2fd509fd5`（mtime 12:41:16）|
+| 接口 E2E（本机 H2） | `python3 -u _e2e/e2e_api_test.py http://localhost:18090` | **555/555**（`gate2_api.log` 末行逐字 `=== E2E RESULT: 555/555 passed ===`，`grep -c "^  PASS"` = **555**、`grep -c "^  FAIL"` = **0**）。546 → 555 的 **+9 / 消失 0** 是 PASS 标题唯一集现算的（与 `~/.cache/zlc70/gate2-final.log` 逐条求差），9 条全在 `[15w]`：分页信封四栏齐 / 一页装得下时 `total == 行数` / `size=1` 逐页走 / 逐页拼回来与一次读全逐位相同且不重号 / 越界空页仍写总数 / `size` 超上限收口并回显收口后的值 / `page\|size` 传负数与 0 回首页默认 / 带 `recordId` 时 `total` 也只数这一条 / 没登记绑定的实体 `total=0`（后两条互为猎物）。⚠ **`[15w]` 一节本身从 63 涨到 72**，java 注入量具钉死的分母就是这个 72。打的是本窗 12:41:16 那份件：`lsof` 现读 18090 监听者 = pid **47856**（`ps -o lstart` = `Sun Sep 27 12:41:51 2026`），`/api/lc/health` 回 `UP` + `H2 2.2.224` + `latencyMs`（#52 那条"health 必须真问库"在新件里仍然兑现）|
+| 接口 E2E（**真 MySQL 8**，隧道 18099） | `bash _e2e/deploy_250.sh api` | **这一格这一窗没重测 —— 不是绿，是没量。** 250 从 06:40 起的失联签名（22/2222 端口在听而 banner 0 字节、`ssh` rc=255）在本窗**没有新的反证**，而按既定纪律"判完失联签名就停，别敲 ssh"，这一窗一次都没敲。四道闸的 250 腿（真 MySQL 8 + 部署层）因此**停在 09-26 那一版的读数上**，不许当当前数 |
+| 前端 | `cd z-lc-admin-ui && npm run check`（tsc + `eslint --max-warnings 0` + vitest + build） | **rc=0**（`gate3_check.log`）：tsc 0 / eslint 无输出 / **vitest `Tests 264 passed (264)`、`Test Files 30 passed (30)`**、`Duration 26.15s` / build `✓ built in 3.16s`。259 → 264 的 **+5** 机械核过：逐文件计数对 `zlc70/gate3-final.log` 求差 ⇒ **只有 `src/views/admin/WorkflowsPage.test.tsx` 变了（3 → 8）**，其余 29 个文件计数逐一相同、文件集合两边相同（`只在 old`、`只在 new` 都是空集）；`it()` 标题名差集 = 新增 5（第一页那句分家 / 翻页真换请求 / 空页≠没有账 / 裸数组判"没有读到" / `total` 缺席判"没有如实回总数"）、消失 0 |
+| 真浏览器 | `E2E_BASE=http://localhost:5274 E2E_API=http://localhost:18090 node e2e/browser-e2e.mjs` | **`=> PASS 285 / FAIL 0`**、`全绿轮次: 1/1`（`gate4_browser.log`，闸 4 由 `run_gates.sh` 自己起的 `vite preview --port 5274` 伺服，收尾按 `lsof` 现读的 pid 收掉）。**279 → 285、新增 6 / 消失 0**（与 `zlc70/gate4-final.log` 的 PASS 标题唯一集现算），6 条就是 #65 在 `11w` 段新加的那 6 条 ⇒ 分母与注入量具的静态体检**同向**（`validate()` 报 `11w 分母 65 条`）|
+| 注入自证（#65 三层，一窗各复跑一遍） | `_e2e/mutate_fire_window_guard.py`（F1–F6）／`z-lc-admin-ui/e2e/mutate_fire_window_ui_guard.py`（U1–U8）／`z-lc-admin-ui/e2e/mutate_workflow_browser_guard.py`（W1–W22） | java：**`RESULT: fire-window falsification done`、零条 `!!`**，`pinned_rerun_0927_1234.out`（起跑 12:34:28、量具 mtime 10:57:51 ⇒ "EXPECT 起跑时已非空"可证），六支 reactor 红 3/2/2/3/1/12 与 `EXPECT_REACTOR` 逐字同、`deployed` F2 `553/555` 红 2 与 F6 `534/555` 红 21 与 `EXPECT_API` 逐字同，还原轮 `artifact 回到基线字节: True` + `555/555 本节 72 红=(none)`；vitest：`ran_by zifang@0927-105221 / bad=0 / tests 8 / rerun_green=true`；浏览器：**22 支、`11w` 65 条覆盖 37 / 记账 27**，W19 红 2、W20 红 1、W21 红 2、W22 红 5、W5 红 3 全部 `OK … 无一条连带红`（⚠ 这批账是**整族跑（10:59，20 轮）+ 收窄跑（12:21，4 轮）两凑**，不是"一跑整族绿"；每一轮分母恒 `285`、还原轮红 0）。⚠ 本窗在这三支量具身上撞出 **缺陷 #75** 与"注入打错了地方 = 等价变异"两件事，逐字读数与处置记在本节上面那一段第 4、5 条 |
 
 **09-27 09:1x – 09:2x 这一窗（#70 收线：部署中心从「insert 一行 PENDING + TODO」变成"能兑现的那种真的执行、兑现不了的那种写入口就拒"；
 顺带在量具身上撞出 #72：接口层的 z-wf 桩只听 IPv4，而 jar 里的 okhttp 连 `localhost` 优先打到 `::1`）本地四层全部同轮重测，日志逐层落在 `~/.cache/zlc70/`：**

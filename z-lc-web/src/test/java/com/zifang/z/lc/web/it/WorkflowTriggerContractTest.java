@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -149,8 +150,10 @@ class WorkflowTriggerContractTest {
 
         JsonNode rows = get(FIRES, "appCode", app, "entityCode", ENTITY, "recordId", String.valueOf(recordId));
         assertOk(rows, "回读发起账");
-        assertEquals(1, rows.path("data").size(), "一条绑定一次发起，账上应该只有一行: " + rows.path("data"));
-        JsonNode fire = rows.path("data").get(0);
+        assertEquals(1, fireRows(rows).size(), "一条绑定一次发起，账上应该只有一行: " + fireRows(rows));
+        assertEquals(1L, rows.path("data").path("total").asLong(),
+                "total 得和这一页一起如实（库里就一行）: " + rows.path("data"));
+        JsonNode fire = fireRows(rows).get(0);
         assertEquals("STARTED", fire.path("status").asText(), fire.toString());
         assertEquals("wf-stub-77", fire.path("instanceId").asText(),
                 "实例 id 必须是 z-wf data.processInstanceId 那一格，不能是整个 data 的 toString: " + fire);
@@ -170,7 +173,7 @@ class WorkflowTriggerContractTest {
         writeRecord(app, "plain", "{\"ref\":\"NB-1\"}");
         assertEquals(2, STUB.count(),
                 "没有登记的实体不该发单，否则\"绑定决定发不发\"这句就是假的: " + STUB.requests());
-        assertEquals(0, get(FIRES, "appCode", app, "entityCode", "plain").path("data").size(),
+        assertEquals(0, fireRows(get(FIRES, "appCode", app, "entityCode", "plain")).size(),
                 "没发单的实体在账上也不该有行");
     }
 
@@ -280,8 +283,27 @@ class WorkflowTriggerContractTest {
                 "被拒的那一条不该顺带丢掉自己原来的 KEY: " + STUB.allBodies());
         JsonNode rows = get(FIRES, "appCode", app, "entityCode", ENTITY, "recordId", String.valueOf(recordId));
         assertOk(rows, "回读发起账");
-        assertEquals(2, rows.path("data").size(),
-                "两条各不重复的绑定该留下两行发起账: " + rows.path("data"));
+        assertEquals(2, fireRows(rows).size(),
+                "两条各不重复的绑定该留下两行发起账: " + fireRows(rows));
+    }
+
+    /**
+     * `/fires` 这一页的行。
+     * <p>
+     * 形状读不出来就<b>抛</b>，不许退化成"0 行"：这一族里有好几条判的是"账上正好 0 行"
+     * （没发单的实体、别人的租户），信封一漂移它们会集体假绿 —— 而 0 恰恰是它们想要的值。
+     * {@code total} 缺席同理：缺陷 #65 的整个修法就是"总数要如实回出来"。
+     */
+    private static JsonNode fireRows(JsonNode envelope) {
+        JsonNode data = envelope.path("data");
+        JsonNode records = data.path("records");
+        if (!records.isArray()) {
+            throw new AssertionError("/fires 的回包不是 {data:{records:[...]}} 形状: " + data);
+        }
+        if (!data.path("total").isNumber()) {
+            throw new AssertionError("/fires 没有回 total（那一格缺席就等于截断又变得不可见）: " + data);
+        }
+        return records;
     }
 
     /** {@code needle} 在 {@code haystack} 里出现几次（重叠不算）。 */
@@ -443,8 +465,8 @@ class WorkflowTriggerContractTest {
         long foreign = writeRecord(app, "{\"ref\":\"T-1\"}");
         assertEquals(0, STUB.count(),
                 "外租户的绑定被本租户的记录写触发，等于替别人提单: " + STUB.requests());
-        assertEquals(0, get(FIRES, "appCode", app, "recordId", String.valueOf(foreign))
-                .path("data").size(), "别人的发起也不该出现在本租户的账里");
+        assertEquals(0, fireRows(get(FIRES, "appCode", app, "recordId", String.valueOf(foreign)))
+                .size(), "别人的发起也不该出现在本租户的账里");
 
         // 阳性对照：同一行只改租户 ⇒ 必须立刻发得出去。少了这一句，上面那个 0 是"闸管用"还是
         // "这条链根本没接"分不开（#48 收口时踩过同一件事）。
@@ -549,6 +571,79 @@ class WorkflowTriggerContractTest {
                         + "每一次发起的结局都会掉进「insert 不了只剩日志」");
     }
 
+    /**
+     * 缺陷 #65 的契约层：结局账的<b>窗口</b>要如实。
+     * <p>
+     * 为什么这一条不能只留在 core 单测里：{@code page}/{@code size} 是 HTTP 查询参数，
+     * 控制器签名漏掉任何一个（或 {@code @RequestParam} 名字打错）在 core 层都是全绿的 ——
+     * "界面翻页没反应"正是这种形状。同理 {@code total} 必须由接口真的回出来，
+     * 前一句「共 250 条」才有出处；静默截断之所以能活这么久，就是因为读侧没有任何一格
+     * 说得出"库里一共有多少"。
+     */
+    @Test
+    @DisplayName("#65 结局账的窗口如实：total 是真总数、page/size 真的参与查询、上限回显的是收口后的值")
+    void fireLedgerReportsItsWholeWindow() throws Exception {
+        String app = provisionedApp("window");
+        for (long i = 1; i <= 25; i++) {
+            seedFireRow(app, 9000L + i);
+        }
+
+        JsonNode first = get(FIRES, "appCode", app, "entityCode", ENTITY, "page", "1", "size", "10");
+        assertOk(first, "读第一页");
+        assertEquals(25L, first.path("data").path("total").asLong(),
+                "total 必须是库里的真行数，不是这一页读到的条数: " + first.path("data"));
+        assertEquals(10, fireRows(first).size(), "一页就是问的 10 条: " + fireRows(first));
+        assertEquals(1L, first.path("data").path("pageNum").asLong(), "回显问的那一页");
+        assertEquals(10L, first.path("data").path("pageSize").asLong(), "回显收口后的页大小");
+
+        JsonNode second = get(FIRES, "appCode", app, "entityCode", ENTITY, "page", "2", "size", "10");
+        assertNotEquals(idsOf(fireRows(first)).toString(), idsOf(fireRows(second)).toString(),
+                "翻到第 2 页还是第 1 页的内容 ⇒ offset 根本没参与查询（LIMIT 只写了 count）");
+        assertEquals(25L, second.path("data").path("total").asLong(),
+                "每翻一页 total 都不许变，它不是这一页的计数");
+
+        JsonNode third = get(FIRES, "appCode", app, "entityCode", ENTITY, "page", "3", "size", "10");
+        assertEquals(5, fireRows(third).size(),
+                "25 条的第 3 页只剩 5 条（LIMIT 20,10）: " + fireRows(third));
+
+        JsonNode past = get(FIRES, "appCode", app, "entityCode", ENTITY, "page", "9", "size", "10");
+        assertTrue(fireRows(past).isEmpty(), "问过头的那一页该是空的: " + fireRows(past));
+        assertEquals(25L, past.path("data").path("total").asLong(),
+                "空页也必须如实报总数 —— 界面那句「还没有发起记录」只能由 total=0 来说，"
+                        + "由空页来说就是缺陷 #65 换了个地方复发");
+
+        JsonNode clamped = get(FIRES, "appCode", app, "entityCode", ENTITY, "page", "1", "size", "5000");
+        assertEquals(200L, clamped.path("data").path("pageSize").asLong(),
+                "页大小要按上限收口（一次读不许把整张表拉进内存），且回显的是**收口后**的值: "
+                        + clamped.path("data"));
+        assertEquals(25, fireRows(clamped).size(), "收口不影响这里读到的行数（库里只有 25 条）");
+        assertEquals(25L, clamped.path("data").path("total").asLong(), "收口后 total 仍然是真总数");
+
+        // 阳性对照：这一格读不到别人的账，也读不到不存在的实体（否则上面那一串 25 是"整表扫"给的）
+        assertEquals(0L, get(FIRES, "appCode", app, "entityCode", "no-such-entity")
+                .path("data").path("total").asLong(),
+                "total 不能是「整个 app 的行数」—— 谓词得和取数那一条一模一样");
+        assertEquals(0, fireRows(get(FIRES, "appCode", app + "-other", "entityCode", ENTITY)).size(),
+                "别的应用的结局不能进这个窗口（上面那个 0 的阳性对照）");
+    }
+
+    private static List<Long> idsOf(JsonNode rows) {
+        List<Long> out = new ArrayList<Long>();
+        for (JsonNode row : rows) {
+            out.add(row.path("recordId").asLong());
+        }
+        return out;
+    }
+
+    /** 直接种结局行：这一族要的是"账上有 25 条"这个事实，不是走一遍真派发。 */
+    private void seedFireRow(String app, long recordId) {
+        jdbc().update("INSERT INTO z_lc_workflow_fire (tenant_code, app_code, entity_code, record_id,"
+                        + " binding_id, trigger_event, process_definition_key, status, instance_id,"
+                        + " create_time, update_time, deleted) VALUES (?,?,?,?,?,?,?,?,?,?,?,0)",
+                TENANT, app, ENTITY, recordId, 1L, "AFTER_CREATE", "p_window", "STARTED",
+                "wf-" + recordId, new java.util.Date(), new java.util.Date());
+    }
+
     /* ------------------------------------------------------------------ */
     /* helpers                                                            */
     /* ------------------------------------------------------------------ */
@@ -606,9 +701,9 @@ class WorkflowTriggerContractTest {
     private JsonNode fireRow(String app, long recordId) throws Exception {
         JsonNode rows = get(FIRES, "appCode", app, "entityCode", ENTITY, "recordId", String.valueOf(recordId));
         assertOk(rows, "回读发起账");
-        assertEquals(1, rows.path("data").size(),
-                "这条记录在账上应该正好一行: " + rows.path("data"));
-        return rows.path("data").get(0);
+        assertEquals(1, fireRows(rows).size(),
+                "这条记录在账上应该正好一行: " + fireRows(rows));
+        return fireRows(rows).get(0);
     }
 
     /** 期望被拒的写入：既钉 HTTP 状态也钉信封 code（z-lc 的坏消息有两种载体，见 {@code LcHttpContractTest}）。 */

@@ -10,6 +10,7 @@ import {
   listWorkflowFires,
   updateWorkflowBinding,
 } from '@/api/workflowBinding';
+import type { FireWindow } from '@/api/workflowBinding';
 import { DEFAULT_TENANT_CODE } from '@/api/client';
 import { formatTime } from './_scope';
 import { triggerLabel, useWorkflowVocabulary } from './_workflow';
@@ -17,6 +18,9 @@ import { AdminScaffold, ListBanner } from './_shared';
 import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
+
+/** 发起记录一页读多少条。界面的分页器和请求里的这个数必须是同一个，否则"第几页"对不上。 */
+const FIRE_PAGE_SIZE = 20;
 
 export function WorkflowsPage() {
   const { appCode, setAppCode, options, error: appError, reload: reloadApps } = useAppSelection();
@@ -257,33 +261,38 @@ export function WorkflowsPage() {
 /**
  * 一条绑定的发起账：绑定存在 ≠ 流程发起过。这一格是 #61 那一族里"配置与运行之间那段路"的
  * 唯一用户可见证据 —— 之前它只活在日志和库里。
+ * <p/>
+ * 缺陷 #65 之后这一页是<b>服务器分页</b>：接口回 `{records, total, pageNum, pageSize}`，
+ * 界面把"库里一共多少条"和"这一页读出来几条"分开说。早先那版一次拉 200 条、客户端切 20 行，
+ * 账超过 200 条时会把"第 201 条之后没读出来"演成"这条记录没发起过流程"，
+ * 而空态那句「这个实体还没有发起记录」正好把误读说圆了。
  */
 function WorkflowFiresDrawer({ binding, onClose }: { binding: WorkflowBindingEntity | null; onClose: () => void }) {
-  const [fires, setFires] = useState<WorkflowFireEntity[]>([]);
+  const [ledger, setLedger] = useState<FireWindow | null>(null);
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'done'>('idle');
   const [reason, setReason] = useState<string>('');
 
   useEffect(() => {
     if (!binding) {
       setStatus('idle');
-      setFires([]);
+      setLedger(null);
+      setPage(1);
       return;
     }
     let stale = false;
     setStatus('loading');
     void (async () => {
       try {
-        const next = await listWorkflowFires(binding.appCode, binding.entityCode);
+        // 读不出形状时 listWorkflowFires 会抛（见 readFireWindow）：那要走下面那句"没有读到"，
+        // 不能退化成"读到了 0 条"。
+        const next = await listWorkflowFires(binding.appCode, binding.entityCode, undefined, page, FIRE_PAGE_SIZE);
         if (stale) return;
-        if (!Array.isArray(next)) {
-          setStatus('error');
-          setReason('接口没有返回发起记录列表');
-          return;
-        }
-        setFires(next);
+        setLedger(next);
         setStatus('done');
       } catch (err) {
         if (stale) return;
+        setLedger(null);
         setStatus('error');
         setReason(err instanceof Error ? err.message : String(err));
       }
@@ -291,7 +300,7 @@ function WorkflowFiresDrawer({ binding, onClose }: { binding: WorkflowBindingEnt
     return () => {
       stale = true;
     };
-  }, [binding]);
+  }, [binding, page]);
 
   const columns: ColumnsType<WorkflowFireEntity> = [
     { title: '记录', dataIndex: 'recordId', width: 110 },
@@ -310,6 +319,11 @@ function WorkflowFiresDrawer({ binding, onClose }: { binding: WorkflowBindingEnt
     { title: '时间', dataIndex: 'createTime', width: 150, render: (v: string | number | null | undefined) => formatTime(v) },
   ];
 
+  const rows = ledger?.records ?? [];
+  // 差额单独算：界面上一句"另外 N 条没有读在这一页里"里的 N 只能来自服务器的 total，
+  // 不许写成 rows.length（那正是 #65 那个把页数当总数的形状）。
+  const hiddenRows = ledger ? ledger.total - rows.length : 0;
+
   return (
     <Drawer
       open={Boolean(binding)}
@@ -320,18 +334,49 @@ function WorkflowFiresDrawer({ binding, onClose }: { binding: WorkflowBindingEnt
       {status === 'error' ? (
         <div data-testid="fire-load-error">发起记录没有读到：{reason}</div>
       ) : (
-        <Table<WorkflowFireEntity>
-          size="small"
-          rowKey={(row) => String(row.id ?? `${row.recordId}-${row.status}`)}
-          loading={status === 'loading'}
-          columns={columns}
-          dataSource={fires}
-          pagination={{ pageSize: 20 }}
-          locale={{
-            // 读失败走上面那一格（带原因），所以这里只剩"真的没有记录"这一句 —— 两者不能混成一句空态。
-            emptyText: '这个实体还没有发起记录 —— 新建一条记录，流程才会在这里出现',
-          }}
-        />
+        <>
+          {ledger ? (
+            <div data-testid="fire-window-line">
+              这个实体一共有 <Text strong>{ledger.total}</Text> 条发起记录，这里按 id 倒序读第{' '}
+              <Text strong>{ledger.pageNum}</Text> 页（每页 {ledger.pageSize} 条）
+            </div>
+          ) : null}
+          {hiddenRows > 0 ? (
+            <div data-testid="fire-window-partial">
+              这一页只读出 {rows.length} 条，另外 <b>{hiddenRows} 条没有读在这一页里</b> ——
+              翻页看，别把"没读出来"当成"没发起过"
+            </div>
+          ) : null}
+          <Table<WorkflowFireEntity>
+            size="small"
+            rowKey={(row) => String(row.id ?? `${row.recordId}-${row.status}`)}
+            loading={status === 'loading'}
+            columns={columns}
+            dataSource={rows}
+            pagination={{
+              current: ledger?.pageNum ?? page,
+              pageSize: ledger?.pageSize ?? FIRE_PAGE_SIZE,
+              total: ledger?.total ?? 0,
+              onChange: (next) => setPage(next),
+              showSizeChanger: false,
+            }}
+            locale={{
+              // 三句分开，不许互相顶：读失败走上面那一格（带原因）；读到了空页要说"这一页没有、
+              // 但一共有 N 条"；只有 total 真的是 0 才配说"还没有发起记录"。
+              emptyText:
+                ledger && ledger.total > 0 ? (
+                  <div data-testid="fire-empty-past-the-end">
+                    第 {ledger.pageNum} 页没有结局行，但这个实体一共有 {ledger.total} 条 ——
+                    「这一页是空的」不是「没有发起过」
+                  </div>
+                ) : status === 'done' ? (
+                  <div data-testid="fire-empty-none">这个实体还没有发起记录 —— 新建一条记录，流程才会在这里出现</div>
+                ) : (
+                  <div data-testid="fire-reading">正在读这个实体的发起记录…</div>
+                ),
+            }}
+          />
+        </>
       )}
     </Drawer>
   );

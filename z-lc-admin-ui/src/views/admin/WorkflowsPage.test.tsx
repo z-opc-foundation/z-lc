@@ -64,8 +64,29 @@ function fireRow(patch: Partial<WorkflowFireEntity>): WorkflowFireEntity {
 }
 
 let vocabMode: 'ok' | 'http-500' | 'shape-drift' = 'ok';
+/**
+ * `/fires` 这一格回什么。`window` 是缺陷 #65 的靶子：库里 25 条、一页 20 条，
+ * 界面必须把"一共有多少"和"这一页读出来几条"分开说；`bare-array` 是 #65 之前的形状；
+ * `no-total` 是"信封形状对、唯独 total 那一格缺席" —— 顺手补一个 `records.length` 就等于把 #65 复活。
+ */
+let fireMode: 'ok' | 'broken' | 'empty' | 'window' | 'past-window' | 'bare-array' | 'no-total' = 'ok';
+const fireRequests: { page: string | null; size: string | null }[] = [];
 let rows: WorkflowBindingEntity[] = [];
 const posts: { url: string; body: Record<string, unknown> }[] = [];
+
+function queryOf(url: string): URL {
+  return new URL(url, 'http://backend.local');
+}
+
+/** 库里 25 条结局账时，服务器按 page/size 切出来的那一页。 */
+function fireWindowOf(page: number, size: number) {
+  const all: WorkflowFireEntity[] = [];
+  for (let i = 1; i <= 25; i++) {
+    all.push(fireRow({ id: i, recordId: 1000 + i, instanceId: `wf-inst-${i}` }));
+  }
+  const from = (page - 1) * size;
+  return { records: all.slice(from, from + size), total: all.length, pageNum: page, pageSize: size };
+}
 
 function envelope(data: unknown) {
   return { success: true, code: 200, message: null, data };
@@ -113,19 +134,40 @@ function stubBackend() {
         return respond(envelope(VOCAB));
       }
       if (url.includes('/workflow-binding/fires')) {
+        const q = queryOf(url);
+        const page = Number(q.searchParams.get('page') ?? '1');
+        const size = Number(q.searchParams.get('size') ?? '20');
+        fireRequests.push({ page: q.searchParams.get('page'), size: q.searchParams.get('size') });
         if (url.includes('entityCode=broken')) return respond(failure(500, '发起记录接口 500'));
-        return respond(
-          envelope([
-            fireRow({}),
-            fireRow({
-              id: 2,
-              recordId: 901,
-              status: 'FAILED',
-              instanceId: null,
-              detail: '连接审批中心超时（250ms 上限）',
-            }),
-          ]),
-        );
+        const two = [
+          fireRow({}),
+          fireRow({
+            id: 2,
+            recordId: 901,
+            status: 'FAILED',
+            instanceId: null,
+            detail: '连接审批中心超时（250ms 上限）',
+          }),
+        ];
+        if (fireMode === 'bare-array') {
+          // 缺陷 #65 之前的形状：裸数组、没有总数。界面不许把它读成"库里就这么多条"，
+          // 更不许自己补一个 total = records.length（那等于给截断配一句看起来可信的谎）。
+          return respond(envelope(two));
+        }
+        if (fireMode === 'empty') {
+          return respond(envelope({ records: [], total: 0, pageNum: page, pageSize: size }));
+        }
+        if (fireMode === 'no-total') {
+          // 信封在、records 在，只有 total 那一格没了 —— 比裸数组更难发现：
+          // 补一个 `total = records.length` 就能让界面"正常运行"，而 #65 那句谎原地复活。
+          return respond(envelope({ records: two, pageNum: page, pageSize: size }));
+        }
+        if (fireMode === 'past-window') {
+          // 库里 25 条，而这一页读出来是空的：只有 total 说得出"不是没有账"。
+          return respond(envelope({ records: [], total: 25, pageNum: page, pageSize: size }));
+        }
+        if (fireMode === 'window') return respond(envelope(fireWindowOf(page, size)));
+        return respond(envelope({ records: two, total: two.length, pageNum: page, pageSize: size }));
       }
       if (url.includes('/workflow-binding/list')) return respond(envelope(rows));
       return respond(envelope([]));
@@ -133,21 +175,50 @@ function stubBackend() {
   );
 }
 
+const mounted: { unmount: () => void }[] = [];
+
+function unmountAll() {
+  // 只调 React 的 unmount：抽屉的 portal 是 React 自己挂到 body 的，卸载时会连壳一起摘。
+  // 手动清 body 会把 antd 退场动画还引用的节点先摘掉，留下一条"not a child of this node"的
+  // 未捕获异常 —— 量具自己制造噪声，比不清还糟。
+  while (mounted.length) mounted.pop()?.unmount();
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <WorkflowsPage />
       </QueryClientProvider>
     </MemoryRouter>,
   );
+  mounted.push(result);
+  return result;
 }
 
 function tagOf(testid: string): HTMLElement {
   const node = document.querySelector(`[data-testid="${testid}"]`);
   if (!node) throw new Error(`页面上找不到 ${testid} —— 这一格根本没渲染出来`);
   return node as HTMLElement;
+}
+
+/** 抽屉分页控件上那个「2」。找不到就把抽屉内容吐出来 —— 否则只有一条 null 红，看不出是控件没长出来。 */
+async function openSecondPage(): Promise<HTMLElement> {
+  await waitFor(() => {
+    const found = Array.from(document.querySelectorAll('.ant-drawer .ant-pagination-item')).find(
+      (node) => (node.textContent ?? '').trim() === '2',
+    );
+    if (!found) {
+      const drawer = document.querySelector('.ant-drawer');
+      throw new Error(
+        `抽屉里没有"第 2 页"这个可点的页码 —— 分页控件根本没长出来。当前抽屉内容：${drawer?.innerHTML.slice(0, 600) ?? '(整个抽屉都不在)'}`,
+      );
+    }
+  });
+  return Array.from(document.querySelectorAll('.ant-drawer .ant-pagination-item')).find(
+    (node) => (node.textContent ?? '').trim() === '2',
+  ) as HTMLElement;
 }
 
 function buttonByText(label: string): HTMLButtonElement {
@@ -224,9 +295,14 @@ function alerts(): string {
 }
 
 beforeEach(() => {
+  // 每条用例从干净盘面起跑：上一例留下的抽屉会把它的 /fires 请求记到这一例的账上，
+  // 而"一次打开只该发一次请求"这一格量的正是请求条数。
+  unmountAll();
   posts.length = 0;
   rows = [];
   vocabMode = 'ok';
+  fireMode = 'ok';
+  fireRequests.length = 0;
   stubBackend();
 });
 
@@ -343,5 +419,104 @@ describe('WorkflowsPage', () => {
     expect(tagOf('fire-load-error').textContent).toContain('发起记录没有读到');
     expect(tagOf('fire-load-error').textContent).toContain('发起记录接口 500');
     expect(document.body.textContent?.includes('这个实体还没有发起记录'), '没读到不能读成没有').toBe(false);
+  }, 90_000);
+
+  it('发起记录的第一页：「一共有多少」与「这一页读出来几条」是两句话（缺陷 #65）', async () => {
+    // 这一例只管**说**：总数、页码、这一页的行数、以及"另外几条没读在这一页里"那句差额。
+    // 翻页那一段单独一例 —— 两件事挤在一格里，注入时两支会红在同一个标题下，判据分不开。
+    rows = [bindingRow({ id: 31, entityCode: 'deal' })];
+    fireMode = 'window';
+    renderPage();
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="workflow-fires-31"]').length).toBe(1));
+    fireEvent.click(tagOf('workflow-fires-31'));
+
+    // 起跑时那一页：库里 25 条，接口按 size=20 只给 20 条
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="fire-window-line"]').length).toBe(1));
+    expect(fireRequests.length, '一次打开只该发一次请求').toBe(1);
+    expect(fireRequests[0]).toEqual({ page: '1', size: '20' });
+    expect(tagOf('fire-window-line').textContent).toContain('25');
+    expect(tagOf('fire-window-line').textContent).toContain('第 1 页');
+    expect(document.querySelectorAll('.ant-drawer [data-testid="fire-status-STARTED"]').length).toBe(20);
+    // 这一页不是全部 —— 少了这一句，"20 行"和"25 条账"的差就又隐身了（#65 的原始形状）
+    expect(tagOf('fire-window-partial').textContent).toContain('没有读在这一页里');
+    expect(tagOf('fire-window-partial').textContent).toContain('5 条');
+  }, 90_000);
+
+  it('翻页要真的换一次请求：点第 2 页得带着页码重读，而不是把第 1 页再画一遍（缺陷 #65）', async () => {
+    rows = [bindingRow({ id: 31, entityCode: 'deal' })];
+    fireMode = 'window';
+    renderPage();
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="workflow-fires-31"]').length).toBe(1));
+    fireEvent.click(tagOf('workflow-fires-31'));
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="fire-window-line"]').length).toBe(1));
+    expect(fireRequests.length).toBe(1);
+
+    const pager = await openSecondPage();
+    fireEvent.click(pager.querySelector('a') ?? pager);
+    await waitFor(() => expect(fireRequests.length).toBe(2));
+    expect(fireRequests[1]).toEqual({ page: '2', size: '20' });
+    await waitFor(() =>
+      expect(document.querySelectorAll('.ant-drawer [data-testid="fire-status-STARTED"]').length).toBe(5),
+    );
+    expect(tagOf('fire-window-line').textContent).toContain('第 2 页');
+    expect(tagOf('fire-window-line').textContent).toContain('25');
+  }, 90_000);
+
+  it('空页 ≠ 没有账；真的没有账才配说「还没有发起记录」', async () => {
+    rows = [bindingRow({ id: 31, entityCode: 'deal' })];
+    fireMode = 'past-window';
+    renderPage();
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="workflow-fires-31"]').length).toBe(1));
+    fireEvent.click(tagOf('workflow-fires-31'));
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="fire-empty-past-the-end"]').length).toBe(1));
+    expect(tagOf('fire-empty-past-the-end').textContent).toContain('25');
+    // 总数那一格在**任何**一页都该是库里的总数，不是"这一页读出来几条"。
+    // 没有这一句，U3（把「共 N 条」画成 rows.length）与 U4（摘掉差额提示）红在同一格标题下，
+    // 判据就分不开两种修法 —— 而那是两种不同的谎。
+    expect(tagOf('fire-window-line').textContent).toContain('25');
+    expect(document.body.textContent?.includes('这个实体还没有发起记录'), '有 total 就不许说"还没有"').toBe(false);
+
+    // 反方向：total 真的是 0 时，那句"还没有"必须说得出（否则这一族改动会把它一路删成谁都不说）
+    unmountAll();
+    fireMode = 'empty';
+    rows = [bindingRow({ id: 31, entityCode: 'deal' })];
+    renderPage();
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="workflow-fires-31"]').length).toBe(1));
+    fireEvent.click(tagOf('workflow-fires-31'));
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="fire-empty-none"]').length).toBe(1));
+    expect(document.querySelectorAll('[data-testid="fire-window-partial"]').length).toBe(0);
+    expect(document.querySelectorAll('[data-testid="fire-empty-past-the-end"]').length).toBe(0);
+  }, 90_000);
+
+  it('接口退回 #65 之前那个裸数组 ⇒ 判"没有读到"，不许把行数当总数', async () => {
+    rows = [bindingRow({ id: 31, entityCode: 'deal' })];
+    fireMode = 'bare-array';
+    renderPage();
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="workflow-fires-31"]').length).toBe(1));
+    fireEvent.click(tagOf('workflow-fires-31'));
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="fire-load-error"]').length).toBe(1));
+    expect(tagOf('fire-load-error').textContent).toContain('裸数组');
+    expect(document.querySelectorAll('[data-testid="fire-status-STARTED"]').length).toBe(0);
+    expect(document.body.textContent?.includes('这个实体还没有发起记录'), '读不出来不能读成没有').toBe(false);
+  }, 90_000);
+
+  it('total 那一格缺席 ⇒ 判"没有如实回总数"，不许拿这一页的行数补一个总数', async () => {
+    // 这一例是 U2 那支注入的猎物：`readFireWindow` 里把 `total` 缺省成 `records.length`
+    // 看起来什么都对（两行就写"共 2 条"），只有这一格能把它读成谎。
+    rows = [bindingRow({ id: 31, entityCode: 'deal' })];
+    fireMode = 'no-total';
+    renderPage();
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="workflow-fires-31"]').length).toBe(1));
+    fireEvent.click(tagOf('workflow-fires-31'));
+
+    await waitFor(() => expect(document.querySelectorAll('[data-testid="fire-load-error"]').length).toBe(1));
+    expect(tagOf('fire-load-error').textContent).toContain('没有如实回总数');
+    expect(document.body.textContent?.includes('一共有'), '补出来的总数不许上界面').toBe(false);
+    expect(document.querySelectorAll('[data-testid="fire-status-STARTED"]').length).toBe(0);
+    expect(document.body.textContent?.includes('这个实体还没有发起记录'), '读不出来不能读成没有').toBe(false);
   }, 90_000);
 });

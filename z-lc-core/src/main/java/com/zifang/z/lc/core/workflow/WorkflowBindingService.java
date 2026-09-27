@@ -1,6 +1,7 @@
 package com.zifang.z.lc.core.workflow;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowBindingMapper;
@@ -10,6 +11,7 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -35,12 +37,34 @@ public class WorkflowBindingService {
     @Resource
     private WorkflowFireMapper workflowFireMapper;
 
+    /** 结局账一页的行数上限：一次读不许把整张表拉进内存（与 {@code listApps} 同一口径）。 */
+    public static final int FIRE_PAGE_MAX = 200;
+
+    /** 不给 {@code size} 时一页读多少条。界面上那张表一屏就是 20 行。 */
+    public static final int FIRE_PAGE_DEFAULT = 20;
+
     /**
-     * 某条记录（或某个实体近期）的流程发起结局，按 id 倒序、最多 200 条。
-     * 这张表是"绑定到底兑现过没有"的唯一证据面，读侧不给跨租户的行（同上，租户是硬条件）。
+     * 某条记录（或某个实体近期）的流程发起结局，按 id 倒序<b>分页</b>读，带真总数。
+     * <p>
+     * 缺陷 #65 之前这一格是 {@code listFires(...).last("LIMIT 200")}：一个不带总数的硬截断。
+     * 这张表是"绑定到底兑现过没有"的唯一证据面，静默截断的后果不是"少看几条"，而是
+     * 一个查旧账的人把"第 201 条之后根本没读出来"读成"这条记录没发起过流程"，
+     * 而界面上那句「这个实体还没有发起记录」正好把误读说圆了（同 #19/#22/#23 一族：
+     * 把"没读到"报成"没有"）。
+     * <p>
+     * 三条口径：① {@code total} 是真的 COUNT，且和取数用<b>同一个谓词</b>（各算各的话，
+     * "共 250 条 / 这一页 20 条"和"这一页其实是别的实体混进来的"分不开）；② 页大小按
+     * {@link #FIRE_PAGE_MAX} 收口，且 {@code pageSize} 回显的是<b>收口后</b>的值 ——
+     * 请求 5000 却自称 5000 是第二种撒谎；③ COUNT 那一条不带 ORDER BY（MySQL 宽松、
+     * H2 {@code MODE=MySQL} 会直接报 "Column id must be in the GROUP BY list"，
+     * 这条教训抄自 {@code AppAdminBizService.listApps}）。
      */
-    public List<WorkflowFireEntity> listFires(
-            String tenantCode, String appCode, String entityCode, Long recordId) {
+    public PageResult<WorkflowFireEntity> pageFires(
+            String tenantCode, String appCode, String entityCode, Long recordId,
+            Integer page, Integer size) {
+        int p = page == null || page < 1 ? 1 : page;
+        int s = size == null || size < 1 ? FIRE_PAGE_DEFAULT : Math.min(size, FIRE_PAGE_MAX);
+
         QueryWrapper<WorkflowFireEntity> q =
                 new QueryWrapper<WorkflowFireEntity>()
                         .eq("tenant_code", tenantCode)
@@ -52,8 +76,16 @@ public class WorkflowBindingService {
         if (recordId != null) {
             q.eq("record_id", recordId);
         }
-        q.orderByDesc("id").last("LIMIT 200");
-        return workflowFireMapper.selectList(q);
+        Long counted = workflowFireMapper.selectCount(q);
+        long total = counted == null ? 0L : counted;
+        if (total == 0) {
+            return new PageResult<WorkflowFireEntity>(
+                    Collections.<WorkflowFireEntity>emptyList(), 0L, (long) p, (long) s);
+        }
+        q.orderByDesc("id");
+        q.last("LIMIT " + (long) (p - 1) * s + "," + s);
+        return new PageResult<WorkflowFireEntity>(
+                workflowFireMapper.selectList(q), total, (long) p, (long) s);
     }
 
     public List<WorkflowBindingEntity> listByApp(String tenantCode, String appCode) {

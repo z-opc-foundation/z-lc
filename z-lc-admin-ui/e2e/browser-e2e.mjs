@@ -3170,6 +3170,90 @@ async function runOnce(runNum, appCode) {
       await page.unroute(wfFiresRoute);
       await wfCloseFires();
 
+      // ================= (8b) 缺陷 #65：一页装不下整张账时，抽屉要替"没读出来的那些"说话 =========
+      // 真库里这一段最多十来条，永远长不到会被截断的形状 —— 所以这一节自己造一份"库里 25 条、
+      // 服务器按 page/size 切"的回包。量的不是数据，是界面拿到那个形状会不会开口、翻页会不会真问一次。
+      const wfWindowReqs = [];
+      const wfWindowAll = Array.from({ length: 25 }, (_, i) => ({
+        id: 500 + i,
+        tenantCode: 'default',
+        appCode: wfApp,
+        entityCode: 'case',
+        recordId: 9000 + i,
+        bindingId: 1,
+        triggerEvent: 'AFTER_CREATE',
+        processDefinitionKey: wfKey,
+        status: 'STARTED',
+        instanceId: `wf-win-${500 + i}`,
+        detail: null,
+        createTime: '2026-09-27T10:00:00',
+      }));
+      await page.route(wfFiresRoute, async (route) => {
+        const u = new URL(route.request().url());
+        const p = Number(u.searchParams.get('page') || '1');
+        const s = Number(u.searchParams.get('size') || '20');
+        wfWindowReqs.push({ page: p, size: s });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: true,
+            code: 200,
+            data: { records: wfWindowAll.slice((p - 1) * s, p * s), total: 25, pageNum: p, pageSize: s },
+          }),
+        });
+      });
+      wfWindowReqs.length = 0;
+      const wfWin1 = await wfOpenFires();
+      const wfWinRows1 = await wfFiresRows();
+      check('抽屉那一格说的是「一共有 25 条、读第 1 页（每页 20 条）」—— 总数来自服务器，不是这一页的行数',
+        wfWin1.includes('一共有 25 条发起记录') && wfWin1.includes('第 1 页') && wfWin1.includes('每页 20 条'),
+        wfWin1.slice(0, 260));
+      check('这一页只画 20 行，而那 5 行的差额必须被点名（少了这一格，"20 行"就又等于"账只有 20 条"）',
+        wfWinRows1.length === 20 && /另外 5 条没有读在这一页里/.test(wfWin1),
+        `行数=${wfWinRows1.length} 抽屉=${wfWin1.slice(0, 260)}`);
+      check('打开一次只问一次，问的是 page=1&size=20（界面不再一次拉 200 条自己切）',
+        wfWindowReqs.length === 1 && wfWindowReqs[0].page === 1 && wfWindowReqs[0].size === 20,
+        JSON.stringify(wfWindowReqs));
+      // 点不动不许带走整节：09-27 12:1x 注入 W22（每页 20 抬成 200）实测把这一节打到中途抛错，
+      // 分母 285→273、日志逐字 `!! W22 …: 整节中途抛错 … 后面那些「没红」是「没跑到」` ——
+      // 25 条全落在第一页时根本没有第 2 页可点，`.click()` 就 timeout 抛出。
+      // 那条路正是要量的形状（"每页几条"变了，界面与请求不再是同一个数），所以这里改成
+      // 点不到就留下面那两条检查自己红，而不是让整节消失。
+      await page.locator('.ant-drawer .ant-pagination-item-2').first()
+        .click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const wfWin2 = (await page.locator('.ant-drawer-body').first().innerText()).replace(/\s+/g, ' ');
+      const wfWinRows2 = await wfFiresRows();
+      check('点第 2 页是真的再问一次服务器并带上 page=2（客户端假翻页 = 界面翻的还是同一页）',
+        wfWindowReqs.length === 2 && wfWindowReqs[1].page === 2, JSON.stringify(wfWindowReqs));
+      check('第 2 页画剩下那 5 行，而总数那一格仍写着 25（翻到末页也不会读成「账变短了」）',
+        wfWinRows2.length === 5 && wfWin2.includes('一共有 25 条发起记录') && wfWin2.includes('第 2 页'),
+        `行数=${wfWinRows2.length} 抽屉=${wfWin2.slice(0, 240)}`);
+      await wfCloseFires();
+
+      // ================= (8c) #65 之前那个形状：裸数组 ⇒ 判"没有读到"，不把行数当总数 ============
+      await page.unroute(wfFiresRoute);
+      await page.route(wfFiresRoute, (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          code: 200,
+          data: [{
+            id: 1, appCode: wfApp, entityCode: 'case', recordId: 7, bindingId: 1,
+            triggerEvent: 'AFTER_CREATE', processDefinitionKey: wfKey, status: 'STARTED',
+            instanceId: 'wf-old-shape', detail: null, createTime: '2026-09-27T10:00:00',
+          }],
+        }),
+      }));
+      const wfBareShape = await wfOpenFires();
+      check('接口回的是没有总数那一栏的裸数组：这一屏报「发起记录没有读到」，不画行、也不说「还没有发起记录」',
+        /发起记录没有读到/.test(wfBareShape) && !wfBareShape.includes('还没有发起记录')
+        && !/STARTED/.test(wfBareShape), wfBareShape.slice(0, 260));
+      await page.unroute(wfFiresRoute);
+      await wfCloseFires();
+
       // ================= (9) 词表读失败时，界面不许把每一行都说成"引擎不兑现" ====================
       // #19/#22/#23 同一族：量具坏了不能被说成数据坏了。词表读失败时页面只知道"没有清单"，
       // 它不知道这一行的事件码引擎兑不兑现 —— 那一句必须留白并说"未校对"。

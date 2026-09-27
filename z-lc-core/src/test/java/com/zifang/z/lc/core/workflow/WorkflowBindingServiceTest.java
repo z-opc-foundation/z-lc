@@ -2,6 +2,7 @@ package com.zifang.z.lc.core.workflow;
 
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowBindingMapper;
@@ -188,9 +189,22 @@ public class WorkflowBindingServiceTest {
                 Collections.emptyList(),
                 keysOf(service.listByEvent(null, APP, ENTITY, WorkflowTriggers.AFTER_CREATE)));
         seedFire(TENANT, ENTITY, 5L, "STARTED");
+        PageResult<WorkflowFireEntity> noEntityPredicate =
+                service.pageFires(TENANT, APP, null, null, 1, 20);
         assertEquals("夹具: 反方向也要成立 —— 没有谓词的那一列（这里 entityCode 传 null 就是不拼这一句）"
                         + "不许被当成\"筛掉一切\"",
-                1, service.listFires(TENANT, APP, null, null).size());
+                1, noEntityPredicate.getRecords().size());
+        // 替身的 selectCount 也必须按谓词答话：它要是恒 0 或恒等于一个常数，上面那句 total 的断言
+        // 与下面所有"共多少条"的断言证的都是替身，不是代码（#65 之前的形状就是恒 return 0L）。
+        seedFire("other", ENTITY, 6L, "STARTED");
+        seedFire("other", ENTITY, 7L, "STARTED");
+        assertEquals("夹具: 本租户数出来是 1、换租户是 2 ⇒ count 按 wrapper 的租户谓词答话，不是常数",
+                1L, service.pageFires(TENANT, APP, null, null, 1, 20).getTotal());
+        assertEquals("夹具: 上一条的反方向", 2L,
+                service.pageFires("other", APP, null, null, 1, 20).getTotal());
+        assertEquals("夹具: 绑了 null 的租户谓词在 SQL 上对任何行都是 UNKNOWN ⇒ count 也得是 0，"
+                        + "不许把 null 当\"不筛\"",
+                0L, service.pageFires(null, APP, null, null, 1, 20).getTotal());
     }
 
     private static WorkflowBindingEntity autoSubmitOff(WorkflowBindingEntity e) {
@@ -533,21 +547,28 @@ public class WorkflowBindingServiceTest {
     // ---------------- 结局账（z_lc_workflow_fire） ----------------
 
     @Test
-    public void listFiresShouldBeTenantPinnedAndNewestFirst() {
+    public void pageFiresShouldBeTenantPinnedAndNewestFirst() {
         seedFire(TENANT, ENTITY, 7L, WorkflowFireEntity.STATUS_STARTED);
         seedFire("other", ENTITY, 8L, WorkflowFireEntity.STATUS_STARTED);
         seedFire(TENANT, ENTITY, 9L, WorkflowFireEntity.STATUS_FAILED);
         seedFire(TENANT, "task", 10L, WorkflowFireEntity.STATUS_STARTED);
         seedFire(TENANT, ENTITY, 11L, WorkflowFireEntity.STATUS_STARTED).setDeleted(1);
 
-        List<WorkflowFireEntity> mine = service.listFires(TENANT, APP, ENTITY, null);
-        assertEquals("跨租户/跨实体/已删除的结局行不能进这个列表: " + statusesOf(mine),
-                Arrays.asList(9L, 7L), recordIdsOf(mine));
-        assertEquals("最新的结局在前: ", WorkflowFireEntity.STATUS_FAILED, mine.get(0).getStatus());
+        PageResult<WorkflowFireEntity> mine = service.pageFires(TENANT, APP, ENTITY, null, 1, 200);
+        List<WorkflowFireEntity> rows = mine.getRecords();
+        assertEquals("跨租户/跨实体/已删除的结局行不能进这个列表: " + statusesOf(rows),
+                Arrays.asList(9L, 7L), recordIdsOf(rows));
+        assertEquals("最新的结局在前: ", WorkflowFireEntity.STATUS_FAILED, rows.get(0).getStatus());
 
-        List<WorkflowFireEntity> oneRecord = service.listFires(TENANT, APP, ENTITY, 7L);
-        assertEquals("按记录号过滤不能把别的记录带进来: " + statusesOf(oneRecord),
-                Collections.singletonList(7L), recordIdsOf(oneRecord));
+        WorkflowFireEntity one = service.pageFires(TENANT, APP, ENTITY, 7L, 1, 200).getRecords().get(0);
+        assertEquals("按记录号过滤不能把别的记录带进来: " + one.getRecordId(),
+                Long.valueOf(7L), one.getRecordId());
+        // total 与取数必须出自同一个谓词：否则"共 5 条"和"这一页 2 条"可以同时撒谎，
+        // 而这一族断言（缺陷 #65 的修法核心）就只是把静默截断换成了一个更精致的谎。
+        assertEquals("total 不能是把整张表数一遍（这里表里有 5 行，本租户/本实体只有 2 行）",
+                2L, mine.getTotal());
+        assertEquals("total 也不能带别的记录号", 1L,
+                service.pageFires(TENANT, APP, ENTITY, 7L, 1, 200).getTotal());
     }
 
     private static List<String> statusesOf(List<WorkflowFireEntity> rows) {
@@ -567,13 +588,57 @@ public class WorkflowBindingServiceTest {
     }
 
     @Test
-    public void listFiresShouldCapAtTheLimitTheQueryCarries() {
+    public void pageFiresShouldCapThePageButEchoTheWholeLedger() {
         for (long i = 1; i <= 250; i++) {
             seedFire(TENANT, ENTITY, i, WorkflowFireEntity.STATUS_STARTED);
         }
-        assertEquals("读侧必须带上 LIMIT 200（替身按 wrapper 里的 LIMIT 截断）—— 谁把 LIMIT 摘掉这条就红，"
-                + "没有上限的结局读会把整张表拉进内存", 200,
-                service.listFires(TENANT, APP, ENTITY, null).size());
+
+        PageResult<WorkflowFireEntity> over = service.pageFires(TENANT, APP, ENTITY, null, 1, 5000);
+        assertEquals("一页必须有上限（没有上限的结局读会把整张表拉进内存）", 200, over.getRecords().size());
+        assertEquals("回显的 pageSize 得是**收口之后**的值：请求 5000 却自称 5000 是第二种撒谎",
+                200L, over.getPageSize());
+        assertEquals("而 total 说的仍是库里真有的行数，不是这一页读出来几条 —— 这正是静默截断和"
+                + "「只读了最近 200 条、共 250 条」的全部区别", 250L, over.getTotal());
+
+        PageResult<WorkflowFireEntity> unset = service.pageFires(TENANT, APP, ENTITY, null, null, null);
+        assertEquals("不给 size 时用默认页大小（不是 200 也不是 0）",
+                WorkflowBindingService.FIRE_PAGE_DEFAULT, unset.getRecords().size());
+        assertEquals("不给 page 时是第一页", 1L, unset.getPageNum());
+        PageResult<WorkflowFireEntity> zero = service.pageFires(TENANT, APP, ENTITY, null, -3, 0);
+        assertEquals("page/size 的非法值要收口成合法值并如实回显，不能悄悄变出第 0 页",
+                1L, zero.getPageNum());
+        assertEquals(WorkflowBindingService.FIRE_PAGE_DEFAULT, zero.getRecords().size());
+    }
+
+    /**
+     * 截断只要<b>可达</b>就不是撒谎：窗口能一路走到账本末尾，且一页不多一页不少、没有重复也没有缝。
+     * 这一条钉的是 {@code LIMIT (page-1)*size,size} 那一步算术 —— 只钉"第一页 20 条"的话，
+     * offset 写错（比如忘了乘 size）照样全绿。
+     */
+    @Test
+    public void pageFiresWindowShouldWalkTheWholeLedgerWithoutGaps() {
+        for (long i = 1; i <= 250; i++) {
+            seedFire(TENANT, ENTITY, i, WorkflowFireEntity.STATUS_STARTED);
+        }
+        List<Long> seen = new ArrayList<>();
+        for (int p = 1; p <= 14; p++) {
+            PageResult<WorkflowFireEntity> one = service.pageFires(TENANT, APP, ENTITY, null, p, 20);
+            assertEquals("第 " + p + " 页回显的 pageNum 必须就是问的那一页", (long) p, one.getPageNum());
+            assertEquals("每翻一页 total 都不能变（它是全账的行数，不是这一页的）", 250L, one.getTotal());
+            seen.addAll(recordIdsOf(one.getRecords()));
+        }
+        assertEquals("14 页 × 20 条覆盖 250 条：不多读（重复/缝）也不漏读", 250, seen.size());
+        Collections.sort(seen);
+        for (int i = 0; i < seen.size(); i++) {
+            assertEquals("第 " + (i + 1) + " 小的记录号", Long.valueOf(i + 1L), seen.get(i));
+        }
+
+        PageResult<WorkflowFireEntity> tail = service.pageFires(TENANT, APP, ENTITY, null, 13, 20);
+        assertEquals("最后一页只有 250-240=10 条（LIMIT 240,20）", 10, tail.getRecords().size());
+        PageResult<WorkflowFireEntity> past = service.pageFires(TENANT, APP, ENTITY, null, 14, 20);
+        assertTrue("问过头的那一页该是空的: " + past.getRecords(), past.getRecords().isEmpty());
+        assertEquals("但空页不等于「这个实体没有发起记录」—— total 还如实说是 250 条",
+                250L, past.getTotal());
     }
 
     // ---------------- 类形状 ----------------
@@ -642,14 +707,26 @@ public class WorkflowBindingServiceTest {
                     }
                 }
                 sort(kept, args[0]);
-                Integer limit = limitOf(args[0]);
-                if (limit != null && kept.size() > limit) {
-                    return new ArrayList<Object>(kept.subList(0, limit));
+                int[] window = windowOf(args[0]);
+                if (window[1] < 0) {
+                    // wrapper 上根本没有 LIMIT ⇒ 替身像真库一样把匹配的行全数交回去：
+                    // "把上限摘掉"这一支变异因此是红（一页读出 250 条），而不是静默等价。
+                    return kept;
                 }
-                return kept;
+                int from = Math.min(window[0], kept.size());
+                int to = Math.min(from + window[1], kept.size());
+                return new ArrayList<Object>(kept.subList(from, to));
             }
             if ("selectCount".equals(name)) {
-                return Long.valueOf(0L);
+                // 替身必须按 wrapper 的谓词数行：恒 0 或恒全表都会让"total 是真总数"那一族
+                // 断言变成空跑（缺陷 #65 之前的形状就是这里直接 return 0L）。
+                long kept = 0;
+                for (Object row : rows) {
+                    if (row != null && matches(row, args[0])) {
+                        kept++;
+                    }
+                }
+                return Long.valueOf(kept);
             }
             Class<?> rt = method.getReturnType();
             if (rt == int.class) {
@@ -838,13 +915,23 @@ public class WorkflowBindingServiceTest {
         return id;
     }
 
-    /** {@code last("LIMIT 200")} 会落进 sqlSegment；替身按它截断，好让"摘掉 LIMIT"这件事被测得出来。 */
-    private static Integer limitOf(Object wrapper) {
+    /**
+     * {@code last("LIMIT 200")} 与 {@code last("LIMIT 40,20")} 都会落进 sqlSegment；替身按它截断，
+     * 好让"摘掉 LIMIT""offset 算错""只认 LIMIT 不认逗号后的 count"这三件事都被测得出来。
+     * 返回 {@code {offset, count}}，没有 LIMIT 时是 {@code {0, -1}}。
+     */
+    private static int[] windowOf(Object wrapper) {
         if (!(wrapper instanceof AbstractWrapper)) {
-            return null;
+            return new int[]{0, -1};
         }
-        Matcher m = Pattern.compile("LIMIT\\s+(\\d+)", Pattern.CASE_INSENSITIVE)
+        Matcher m = Pattern.compile("LIMIT\\s+(\\d+)(?:\\s*,\\s*(\\d+))?", Pattern.CASE_INSENSITIVE)
                 .matcher(String.valueOf(((AbstractWrapper<?, ?, ?>) wrapper).getSqlSegment()));
-        return m.find() ? Integer.valueOf(m.group(1)) : null;
+        if (!m.find()) {
+            return new int[]{0, -1};
+        }
+        if (m.group(2) == null) {
+            return new int[]{0, Integer.parseInt(m.group(1))};
+        }
+        return new int[]{Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2))};
     }
 }

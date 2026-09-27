@@ -169,19 +169,30 @@ A4 = ("      {status === 'error' ? (\n"
       "      ) : (\n")
 # `fires.length < 0` 是恒假但类型合法的写法：换成 `false &&` 会被 tsc 判"条件恒假"，
 # 那时 build 红指不回守卫（这一支的每一轮都要真构建）。
-R4 = ("      {status === 'error' && fires.length < 0 ? (\n"
+# ⚠ 09-27 10:4x 跟着 #65 改过一次：抽屉的数据从 `fires: WorkflowFireEntity[]` 换成了
+# 分页信封 `ledger: FireWindow | null`，旧式子里那个 `fires` 已经不在作用域里 ——
+# 留着它，W4/W5 这两支会红在 tsc 上而不是红在那句守卫上（validate() 抓不到，只有 build 抓得到）。
+R4 = ("      {status === 'error' && (ledger?.total ?? 0) < 0 ? (\n"
       '        <div data-testid="fire-load-error">发起记录没有读到：{reason}</div>\n'
       "      ) : (\n")
 
 A5 = ("    if (!binding) {\n"
       "      setStatus('idle');\n"
-      "      setFires([]);\n"
+      "      setLedger(null);\n"
+      "      setPage(1);\n"
       "      return;\n"
       "    }\n")
 R5 = ("    if (!binding) {\n"
       "      setStatus('idle');\n"
+      "      setPage(1);\n"
       "      return;\n"
       "    }\n")
+# ⚠ 09-27 11:1x/12:1x 两次实测：(A5,R5) 与 (A19,R19) **各自单独**挂到 W4 上都抓不到
+# '读失败那一屏也不留下"三行账"的假象' —— 那条性质有两个互不相干的守点（关抽屉那句 + catch 那句），
+# 摘掉任意一个，另一个仍然把旧账清干净，界面上没有可观察差别 = 等价变异。
+# 于是 W5 一次摘两个（见 W5 那段注释）。这一支不是"守卫没用"，是
+# **单站点摘除在这条性质上结构上不可观察**；要把它拆回一支一站点，得加一条
+# "重新打开的那 1.2s 里旧行不许还亮着"的采样（loading 窗口内读数），本窗没加，按覆盖缺口记账。
 
 # `err` 必须仍然被读一次：`noUnusedLocals` 会把没用的 catch 变量判成编译错，那时 build 红指不回守卫。
 A6 = "      message.error(err instanceof Error && err.message ? err.message : '保存失败');\n"
@@ -246,6 +257,27 @@ R17 = ""
 A18 = ("      render: (v: string | null | undefined) => (v ? <Text style={{ fontSize: 12 }}>{v}</Text> : '—'),\n")
 R18 = "      render: () => '—',\n"
 
+# ---- W19–W22：缺陷 #65 那一族（服务器分页）在浏览器层的牙，09-27 11:2x 补的 ----
+# A19 摘的是 catch 里那句清空，和 A5（关抽屉那句）一起挂在 W5 上 —— 两处任摘一处都是等价变异，
+# 实测见 A5 上方那段注释。
+A19 = ("        if (stale) return;\n"
+       "        setLedger(null);\n"
+       "        setStatus('error');\n")
+R19 = "        if (stale) return;\n        setStatus('error');\n"
+
+A20 = "              这个实体一共有 <Text strong>{ledger.total}</Text> 条发起记录"
+R20 = "              这个实体一共有 <Text strong>{rows.length}</Text> 条发起记录"
+
+# 恒假但类型合法（`false &&` 会被 tsc 判"条件恒假"，那一轮 build 红指不回守卫）。
+A21 = "          {hiddenRows > 0 ? (\n"
+R21 = "          {hiddenRows < 0 ? (\n"
+
+A22 = "  }, [binding, page]);\n"
+R22 = "  }, [binding]);\n"
+
+A23 = "const FIRE_PAGE_SIZE = 20;\n"
+R23 = "const FIRE_PAGE_SIZE = 200;\n"
+
 
 def runs() -> list[tuple[str, list[tuple[str, str]], list[str]]]:
     return [
@@ -264,9 +296,15 @@ def runs() -> list[tuple[str, list[tuple[str, str]], list[str]]]:
         ]),
         ("W4 抽屉读失败改画表格", [(A4, R4)], [
             _name('读不到发起记录时，抽屉报的是"没有读到"'),
+            _name('没有总数那一栏的裸数组'),
         ]),
-        ("W5 W4 + 关抽屉不清空旧行", [(A4, R4), (A5, R5)], [
+        # 三支补丁一起下：A4 让"没有读到"那一格不再画，A5+A19 把两处清账一起摘 —— 第三条检查
+        # 要的是"旧行还亮着"这个可观察形状，而它有两个守点（实测见 A5 上方那段注释：
+        # family_rerun_0927_1059.out 用 (A4,A5) 红 2、narrow_w5w22_0927_1159.out 用 (A4,A19) 红 2，
+        # 两跑都逐字 `!! W5 …: 预期变红却没红 … ['读失败那一屏也不留下"三行账"的假象…']`）。
+        ("W5 W4 + 两处清账一起摘，旧行在「读不到」那一屏还亮着", [(A4, R4), (A5, R5), (A19, R19)], [
             _name('读不到发起记录时，抽屉报的是"没有读到"'),
+            _name('没有总数那一栏的裸数组'),
             _name('读失败那一屏也不留下"三行账"的假象'),
         ]),
         ("W6 写入口的原因换成固定「保存失败」", [(A6, R6)], [
@@ -329,6 +367,34 @@ def runs() -> list[tuple[str, list[tuple[str, str]], list[str]]]:
             _name('引擎那句拒绝理由原样落在「为什么」那一格'),
             _name('502 那一行的「为什么」说的是这一单没成'),
         ]),
+        # ---- W19–W22：缺陷 #65（服务器分页）在浏览器层的四支，09-27 11:2x 补 ----
+        # 预期红集是**推出来的**（每支摘掉的是哪一格、那一格被哪几条断言读），
+        # 由 `--only W19..W22` 那一跑逐字核；实测不符按实测改这本账，不改断言。
+        # 11:59 那一跑实测（narrow_w5w22_0927_1159.out）：W19 红 2 / W20 红 1 / W21 红 2，
+        # 三跑逐字 `OK … 预期 N 条全红，无一条连带红` ⇒ 上面这三行预期与盘面一致，不动。
+        # W22 那一条预期当时是**推漏了一格**：把每页 20 抬成 200 之后 25 条全落在第一页，
+        # 「第 2 页」那颗按钮根本不存在，`.click()` 超时抛出把整节带走（实测分母 285→273、
+        # 逐字 `!! W22 …: 整节中途抛错 …「没红」是「没跑到」`）。先修套件那一处点击
+        # （browser-e2e.mjs 8b 段，点不到就留给下面的检查自己红），再把预期红集补成
+        # 这一支真的动到的**五格**：每页几条那句、差额那句、请求那一格、翻页那次请求、末页行数。
+        ("W19 总数那一格拿这一页的行数顶", [(A20, R20)], [
+            _name('总数来自服务器，不是这一页的行数'),
+            _name('第 2 页画剩下那 5 行'),
+        ]),
+        ("W20 「另外 N 条没读在这一页里」那句的开关翻成恒假", [(A21, R21)], [
+            _name('那 5 行的差额必须被点名'),
+        ]),
+        ("W21 翻页不再重新问服务器（依赖里去掉 page）", [(A22, R22)], [
+            _name('带上 page=2'),
+            _name('第 2 页画剩下那 5 行'),
+        ]),
+        ("W22 每页条数从 20 抬成 200（界面与请求不再是同一个数）", [(A23, R23)], [
+            _name('问的是 page=1&size=20'),
+            _name('总数来自服务器，不是这一页的行数'),
+            _name('那 5 行的差额必须被点名'),
+            _name('带上 page=2'),
+            _name('第 2 页画剩下那 5 行'),
+        ]),
     ]
 
 
@@ -370,6 +436,16 @@ def not_covered() -> dict[str, list[str]]:
             _name('这一节的应用收掉了'),
             _name('解绑与删应用本身不发流程'),
         ],
+        # (d) 那一格（09-27 10:4x 跟着 #65 新添的 5 条"只加了检查没加注入"）已在 11:2x 由
+        # W19–W22 清空 —— 总数/差额/页码请求/翻页真的再问一次/末页那一格各有各的注入。
+        # 同一轮量具自己撞出来的**残余缺口**记在这儿（缺口在注入这一侧，不在检查名那一侧，
+        # 所以不进这张表）：'读失败那一屏也不留下"三行账"的假象' 这条性质有两个守点
+        # （关抽屉 A5 + catch A19），摘任意一个都是等价变异 —— 两跑实测各红 2 条、逐字
+        # `!! W5 …: 预期变红却没红`。W5 于是改成一次摘两个。这意味着
+        # 于是 W5 改成一次摘两个。这意味着
+        # **浏览器层现在只守得住"两处一起摘"，单点回归（比如日后有人"简化"掉 catch 那句）
+        # 抓不到**：要拆回一支一站点，得先给套件加一条"重新打开的那 1.2s 里旧行不许还亮着"
+        # 的 loading 窗口采样。本窗没加 ⇒ 按覆盖缺口记账，不许把它当成已经在守卫的东西。
     }
 
 
@@ -590,10 +666,20 @@ def judge(label: str, expected: list[str], failed: list[str]) -> int:
 def main(only: str | None = None) -> int:
     if (code := validate()):
         return code
+    # `--only` 收逗号分隔的题号（09-27 11:5x 加的：一整族 20 轮 ~50 分钟，只为核 5 支重跑整族不划算）。
+    # 点不到名的题号要**当场拒**，不许退化成"只跑到能跑到的那几支"—— 那等于把打错的题号读成"这一支已经核过了"。
+    wanted = None if only is None else {t.strip() for t in only.split(",") if t.strip()}
+    tags = {r[0].split()[0] for r in runs()}
+    if wanted is not None:
+        unknown = sorted(wanted - tags)
+        if unknown:
+            print(f"!! --only {only} 里有整族不存在的题号 {unknown}"
+                  f"（这一族现有 {len(tags)} 支：{sorted(tags, key=lambda t: int(t[1:]))}）—— 收窄跑不许空跑")
+            return 2
     picked = [(i, r) for i, r in enumerate(runs(), start=1)
-              if only is None or r[0].split()[0] == only]
+              if wanted is None or r[0].split()[0] in wanted]
     if only is not None and not picked:
-        print(f"!! --only {only} 在一整族里点不到名（W1–W18 的题号打错了？）—— 收窄跑不许空跑")
+        print(f"!! --only {only} 在一整族里点不到名 —— 收窄跑不许空跑")
         return 2
     busy = e2e_already_running()
     if busy:

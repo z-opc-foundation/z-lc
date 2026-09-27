@@ -165,8 +165,9 @@ def restart():
         time.sleep(2)
     LOGS.mkdir(parents=True, exist_ok=True)
     log = open(BOOT_LOG, "ab")
+    # start_new_session：不起新会话的话这个 jar 属于本量具的进程组，量具一退出它跟着收 SIGTERM（缺陷 #74）
     subprocess.Popen(["java", "-jar", str(JAR), "--spring.profiles.active=dev"],
-                     cwd=str(ROOT), stdout=log, stderr=log)
+                     cwd=str(ROOT), stdout=log, stderr=log, start_new_session=True)
     deadline = time.time() + 420
     while time.time() < deadline:
         try:

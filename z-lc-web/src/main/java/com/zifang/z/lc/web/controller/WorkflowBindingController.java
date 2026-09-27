@@ -1,6 +1,7 @@
 package com.zifang.z.lc.web.controller;
 
 import com.zifang.util.core.meta.Result;
+import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.core.workflow.WorkflowBindingService;
 import com.zifang.z.lc.core.workflow.WorkflowTriggers;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
@@ -88,11 +89,14 @@ public class WorkflowBindingController {
         return Result.success(true);
     }
 
-    @Operation(summary = "某条记录的流程发起结局（STARTED/FAILED 逐条，含失败原因）")
+    @Operation(summary = "某条记录的流程发起结局（STARTED/FAILED 逐条，含失败原因；分页读，total 是真总数）")
     @GetMapping("/fires")
-    public Result<List<WorkflowFireEntity>> fires(@RequestParam String appCode,
-                                                  @RequestParam(required = false) String entityCode,
-                                                  @RequestParam(required = false) Long recordId) {
-        return Result.success(workflowBindingService.listFires(DEFAULT_TENANT, appCode, entityCode, recordId));
+    public Result<PageResult<WorkflowFireEntity>> fires(@RequestParam String appCode,
+                                                        @RequestParam(required = false) String entityCode,
+                                                        @RequestParam(required = false) Long recordId,
+                                                        @RequestParam(required = false) Integer page,
+                                                        @RequestParam(required = false) Integer size) {
+        return Result.success(workflowBindingService.pageFires(
+                DEFAULT_TENANT, appCode, entityCode, recordId, page, size));
     }
 }

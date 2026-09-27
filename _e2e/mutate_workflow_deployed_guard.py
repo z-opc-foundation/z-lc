@@ -243,8 +243,9 @@ def restart():
     print(f"  旧进程已收干净（等了 {waited}s, 端口 18090 空）")
     BOOT_LOG.parent.mkdir(parents=True, exist_ok=True)
     log = open(BOOT_LOG, "ab")
+    # start_new_session：不起新会话的话这个 jar 属于本量具的进程组，量具一退出它跟着收 SIGTERM（缺陷 #74）
     proc = subprocess.Popen(["java", "-jar", str(JAR), "--spring.profiles.active=dev"],
-                            cwd=str(ROOT), stdout=log, stderr=log)
+                            cwd=str(ROOT), stdout=log, stderr=log, start_new_session=True)
     if not wait_health():
         tail = subprocess.run(["tail", "-20", str(BOOT_LOG)], capture_output=True,
                               text=True).stdout.strip()

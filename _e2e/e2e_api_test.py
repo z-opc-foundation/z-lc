@@ -2381,15 +2381,36 @@ def wf_write(values, entity=WF_ENT, actor=None):
     return (j or {}).get("data"), j
 
 
-def wf_fires(entity=WF_ENT, record_id=None):
+def wf_fire_window(entity=WF_ENT, record_id=None, page=None, size=None):
+    """读 /fires 的**整个分页信封**。
+
+    缺陷 #65 之前这一格回的是裸数组：接口自己不知道账上还有多少条，界面也就永远说不出
+    "读出来的 200 行不是全部"。现在回 `{records,total,pageNum,pageSize}`。
+    形状不合一律返回 None —— 这一节里有好几条检查盼的就是"账上没有行"，把"读不出形状"
+    折成一个空列表，那些检查就会替一个坏掉的接口作证。
+    """
     params = {"appCode": WF_APP, "entityCode": entity}
     if record_id is not None:
         params["recordId"] = record_id
+    if page is not None:
+        params["page"] = page
+    if size is not None:
+        params["size"] = size
     j, s, _ = call("GET", WF_BIND + "/fires", params=params)
     if not isinstance(j, dict) or j.get("success") is not True:
         return None, s, j
     data = D(j)
-    return (data if isinstance(data, list) else []), s, j
+    if not isinstance(data, dict) or not isinstance(data.get("records"), list):
+        return None, s, j
+    for _k in ("total", "pageNum", "pageSize"):
+        if not isinstance(data.get(_k), int):
+            return None, s, j
+    return data, s, j
+
+
+def wf_fires(entity=WF_ENT, record_id=None, page=None, size=None):
+    rows, s, j = wf_fire_window(entity=entity, record_id=record_id, page=page, size=size)
+    return (rows.get("records") if rows is not None else None), s, j
 
 
 def wf_bindings(entity=WF_ENT):
@@ -2621,6 +2642,60 @@ _rows_next, _, _ = wf_fires(record_id=rid_next)
 wfc("一次超时不许传染下一次：紧接着的一条又发得出去（2 槽池的槽位要在有上限之后自己回来）",
     isinstance(_rows_next, list) and len(_rows_next) == 1
     and _rows_next[0].get("status") == "STARTED", str(_rows_next)[:220])
+
+# ---- 缺陷 #65：total 必须是库里一共有多少，不是这一页读出来几条 --------------------------------
+# 上面那一堆探针每条读的都是"某一行的结局"，它们全绿也说明不了分页是对的：账长到一页装不下时
+# 接口只给前 200 条、而 total 这一栏根本不存在，界面就只能把"没读出来的那些"演成"没发起过"。
+# 这一节量的是信封本身。
+_env_all, s_all, j_all = wf_fire_window(entity=WF_ENT, size=200)
+_ids_all = [str((r or {}).get("id")) for r in ((_env_all or {}).get("records") or [])]
+_total_all = (_env_all or {}).get("total")
+wfc("/fires 回的是分页信封：records/total/pageNum/pageSize 四栏齐（裸数组=这一格没有总数）",
+    isinstance(_env_all, dict) and isinstance(_total_all, int) and len(_ids_all) >= 2,
+    f"http={s_all} body={str(j_all)[:240]}")
+wfc("一页装得下整张账时 total 就等于读出来的行数（>=2 是要有猎物，不是空跑）",
+    _total_all == len(_ids_all), f"total={_total_all} 这一页={len(_ids_all)} 行")
+
+_walk, _page_bad = [], ""
+for _p in range(1, (_total_all or 0) + 1):
+    _wp, _, _wj = wf_fire_window(entity=WF_ENT, page=_p, size=1)
+    _wr = (_wp or {}).get("records") or []
+    if (len(_wr) != 1 or (_wp or {}).get("total") != _total_all
+            or (_wp or {}).get("pageNum") != _p):
+        _page_bad = f"第 {_p} 页读到 {len(_wr)} 行 total={(_wp or {}).get('total')} body={str(_wj)[:160]}"
+        break
+    _walk.append(str(_wr[0].get("id")))
+wfc(f"一页一条走到第 {_total_all} 页：每页正好 1 行、页码回显对、每页都带着同一份总数",
+    not _page_bad and bool(_total_all) and len(_walk) == _total_all,
+    _page_bad or f"只走到 {len(_walk)} 页（total={_total_all}）")
+wfc("逐页拼回来的行与一次读全的那批逐位相同、且不重号（翻页漏行/重行就是「没读出来」）",
+    _walk == _ids_all and len(set(_walk)) == len(_walk),
+    f"翻页={_walk} 整读={_ids_all}")
+
+_past, _, j_past = wf_fire_window(entity=WF_ENT, page=(_total_all or 0) + 1, size=1)
+wfc("走完再往前一页：这一页没有行，而 total 仍然写着整张账那么多（空页 ≠ 这条链没发过单）",
+    (_past or {}).get("records") == [] and (_past or {}).get("total") == _total_all,
+    f"body={str(j_past)[:200]} data={str(_past)[:160]}")
+
+_big, _, j_big = wf_fire_window(entity=WF_ENT, size=5000)
+wfc("size 超上限要收口，并且回显**收口之后**的那个值（回显请求值=界面上那格每页条数是假的）",
+    (_big or {}).get("pageSize") == 200, f"pageSize={(_big or {}).get('pageSize')} body={str(j_big)[:180]}")
+
+_neg, _, j_neg = wf_fire_window(entity=WF_ENT, page=-3, size=0)
+wfc("page/size 传成负数或 0：回到首页、回到默认每页条数，而不是报错也不是空集",
+    (_neg or {}).get("pageNum") == 1 and (_neg or {}).get("pageSize") == 20
+    and len((_neg or {}).get("records") or []) == min(20, _total_all or 0),
+    f"data={str(_neg)[:200]} body={str(j_neg)[:160]}")
+
+_one, _, j_one = wf_fire_window(entity=WF_ENT, record_id=rid_next, size=5)
+wfc("带 recordId 时 total 也只数这一条（COUNT 用另一套谓词=界面写着「共 9 条」而只有一行）",
+    (_one or {}).get("total") == 1 and len((_one or {}).get("records") or []) == 1,
+    f"data={str(_one)[:200]} body={str(j_one)[:160]}")
+
+_none_win, _, j_none = wf_fire_window(entity=WF_NONE, size=5)
+wfc(f"没登记绑定的实体 {WF_NONE} 读回 total=0 —— 这一条是上一条的猎物：COUNT 若不看 entityCode，这里就会是 {_total_all}",
+    (_none_win or {}).get("total") == 0 and (_none_win or {}).get("records") == [],
+    f"data={str(_none_win)[:200]} body={str(j_none)[:160]}")
 
 # ---- 边界口径：批量导入不发单（改了这条要同时改文档）-------------------------------------------
 wf_bridge(f"复证链还通：批量导入之前 {WF_ENT} 仍然正好一句")
