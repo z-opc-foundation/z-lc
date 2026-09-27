@@ -87,7 +87,7 @@ export function DeploymentsPage() {
       title: '方式',
       dataIndex: 'deployType',
       width: 130,
-      render: (value: string) => deployTypeLabel(value),
+      render: (value: string) => value,
     },
     {
       title: '状态',
@@ -112,7 +112,7 @@ export function DeploymentsPage() {
         <Button
           size="small"
           type="link"
-          disabled={Boolean(row.id)}
+          disabled={!row.id}
           onClick={async () => {
             if (!row.id) return;
             try {
