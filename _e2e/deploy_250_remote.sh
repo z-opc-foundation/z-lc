@@ -98,7 +98,17 @@ step_db() {
   [ -f "$CONF/mysql.env" ] || die "$CONF/mysql.env 不存在"
   # shellcheck disable=SC1090
   . "$CONF/mysql.env"
-  if ! docker ps --format '{{.Names}}' | grep -qx "$DB_CONTAINER"; then
+  # 三种现场要分开：在跑 / 存在但停着 / 真没有。只问 `docker ps`（在跑的）会把第一种最常见的
+  # 现场当成"没有容器"—— 09-27 14:03 主机重启之后 `docker ps -a` 里我的容器是 Exited (255)，
+  # 于是这一步径直去 `docker run`，撞上同名冲突 die 掉（真读数：~/.cache/zlc250_0927/db.log）。
+  # 而且撞名的提示"mysqld 服务端参数必须写在镜像名之后"会把人往错的方向引。
+  if docker ps --format '{{.Names}}' | grep -qx "$DB_CONTAINER"; then
+    echo "    容器已在跑：$DB_CONTAINER"
+  elif docker ps -a --format '{{.Names}}' | grep -qx "$DB_CONTAINER"; then
+    # 拉回来而不是重建：数据在卷上，重建会连库一起没了（且 MYSQL_ROOT_PASSWORD 换了会让 app.env 失配）。
+    docker start "$DB_CONTAINER" >/dev/null || die "docker start $DB_CONTAINER 失败"
+    echo "    容器存在但是停着的 ⇒ docker start 拉回：$DB_CONTAINER"
+  else
     docker run -d --name "$DB_CONTAINER" -p "127.0.0.1:$DB_PORT:3306" \
       -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" -e MYSQL_DATABASE=z_lc \
       -e MYSQL_USER=zlc -e MYSQL_PASSWORD="$LC_DB_PASSWORD" \
@@ -108,6 +118,14 @@ step_db() {
       --default-authentication-plugin=mysql_native_password >/dev/null \
       || die "docker run 失败（mysqld 服务端参数必须写在镜像名之后）"
   fi
+  # 端口对账必须在"就绪"之前：下面那圈探测是 `docker exec mysqladmin ping`，走的是容器内部的
+  # socket，**根本不碰宿主端口** —— 于是容器映射到别人的 mysqld（250 上就躺着 33060 的
+  # z-schedule-e2e-mysql）时它照样回"就绪"，而应用连的是另一台库、闸 2 的写-读回全绿却量错了库。
+  local mapped
+  mapped=$(docker port "$DB_CONTAINER" 3306/tcp 2>/dev/null \
+           | sed -n 's#^127\.0\.0\.1:\([0-9]\{1,\}\)$#\1#p' | head -1)
+  [ "$mapped" = "$DB_PORT" ] \
+    || die "容器 $DB_CONTAINER 映射在 127.0.0.1:${mapped:-<无>}，而这里要说的是 $DB_PORT —— 别连到别人的 mysqld 上"
   for _ in $(seq 1 90); do
     docker exec "$DB_CONTAINER" mysqladmin -uroot -p"$MYSQL_ROOT_PASSWORD" ping >/dev/null 2>&1 && {
       echo "    mysql 就绪（$DB_CONTAINER / 127.0.0.1:$DB_PORT）"; return 0; }
@@ -294,31 +312,52 @@ step_stop() {
 # 正向对照就是 step_env 自己（同一道校验, 值 %q 写 → 必须过）。
 step_gate1() {
   local rc=0 out
-  # 前置（必须先证）：起点要是干净的。今天实测踩过两回——
+  # 前置（必须先证）：起点要是干净的。实测踩过三回——
   #   ① 上一次负控中途 die 退出脚本, 把 app.env 留在坏的形态; 这一轮"备份→注入→还原"
-  #      还原的就是那份坏备份, 于是"闸咬住了"咬的是上一轮的残留。所以恢复改用 step_env 重新生成。
+  #      还原的就是那份坏备份, 于是"闸咬住了"咬的是上一轮的残留。⇒ 参照必须是**本轮起点**那一份。
   #   ② require_app_env 里 `set -a; . app.env` 把好值漏进脚本自己的环境; 而
   #      `A=x&cmd` 这种坏行在子 shell 里只是"这一句没赋值", 变量沿用父进程那个好值 ——
   #      注入后校验照样绿, 看着像"闸是空的"。所以两个分支都从不带这三个变量的起点跑同一个闸。
+  #   ③ 把"还原"实现成"重跑 step_env 重新生成"，等于给还原步加了一个 ambient 依赖：
+  #      step_env 要 `$ZLC_WF_BASE_URL`（闸 1 从 09-27 起不给默认值），而 `deploy_250.sh gates`
+  #      的用法注释里从来没说要带 ZLC_EXTRA_ENV。09-27 16:4x 实测（~/.cache/zlc250_0927/gates.log
+  #      全文 4 行）：注入之后那一步 die 在 `!! 闸1: ZLC_WF_BASE_URL 是空的` ⇒ app.env 停在
+  #      `ZLC_WF_BASE_URL=''` 的半还原态，随后的 start/verify/fireprobe 全被 require_app_env 拦掉，
+  #      而 gates 2/3/4 一条没跑。所以还原改成**只认本轮参照的字节**：不重生成、不靠 ambient。
   good_url_check() { ( unset SPRING_DATASOURCE_URL SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD
                        require_app_env ); }
   good_url_check || die "闸1 负控的起点就不干净：app.env 现在就过不了校验 —— 先跑 env"
   # shellcheck disable=SC1090
   . "$CONF/mysql.env"
   umask 077
+  # 本轮的好参照：上一行刚过校验，这一份字节就是"还原要回到的那一版"（临时名带 XXXXXX，不与固定名撞）。
+  local good_ref; good_ref=$(mktemp "$CONF/.app.env.good.XXXXXX") \
+    || die "闸1：建不出本轮参照（mktemp $CONF/.app.env.good.XXXXXX 失败）—— 没有参照就不做注入，否则没法还原"
+  cp -p "$CONF/app.env" "$good_ref"
   { printf 'SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:%s/z_lc?useUnicode=true&characterEncoding=utf8\n' "$DB_PORT"
     printf 'SPRING_DATASOURCE_USERNAME=%q\n' zlc
     printf 'SPRING_DATASOURCE_PASSWORD=%q\n' "$LC_DB_PASSWORD"; } > "$CONF/app.env"
   good_url_check || rc=$?
   out=$( good_url_check 2>&1 ) || rc=$?
   echo "    [注入后校验说] $(echo "$out" | tail -1)"
-  step_env >/dev/null
+  cp -p "$good_ref" "$CONF/app.env"
+  # 收线读数**无条件**印（只在出问题时印的判据，事后分不清"还原成功"和"没还原"—— #78 同一族）。
+  # app.env 里有口令，所以这里只报字节数与"是不是同一份字节"，不回显内容。
+  local same="不一致" pin_line
+  cmp -s "$CONF/app.env" "$good_ref" && same="逐字相同"
+  pin_line=$(grep -m1 '^ZLC_WF_BASE_URL=' "$CONF/app.env" || true)
+  echo "    [还原后] app.env（$(wc -c <"$CONF/app.env" | tr -d ' ') 字节）与本轮参照 $same，wf 那一行：${pin_line:-<没有这一行>}"
+  if ! good_url_check; then
+    rm -f "$good_ref"
+    die "闸1 收尾：还原之后的 app.env 过不了自己那道校验 —— 别拿这个状态往下跑"
+  fi
+  rm -f "$good_ref"
   if [ "$rc" = "0" ]; then
     die "闸1 负控失败：不加引号的 url 照样过了校验 —— 这道闸是空的"
   fi
   echo "$out" | grep -q "闸1" \
     || die "闸1 负控是红了，但红不是这道闸报的（退出码 $rc）—— 上面那行是它实际报的什么"
-  echo "  ✓ 闸 1 咬得住：同一份校验，%q 写的过、不加引号写的拒（具名报闸1，退出码 $rc）；已重新生成 app.env 并复检"
+  echo "  ✓ 闸 1 咬得住：同一份校验，%q 写的过、不加引号写的拒（具名报闸1，退出码 $rc）；已按本轮参照还原字节并复检"
 }
 
 # 闸 2 负控：让 LC 池连到另一个库（表齐全, 所以应用自己一切正常）, 但自证按 z_lc 读回 ——
@@ -374,7 +413,12 @@ sql_out() {
   # 喂进来的，`-i` 让子进程继续挂在同一根管道上，第一次调用就把后面还没执行的脚本吃掉。
   # 实测：三条查询的 heredoc 只印出第一条（16:3x 在本机排查闸 4 留脏时撞上）。SQL 走 `-e`，
   # stdin 一律 /dev/null；只有 step_schema 灌 SQL 文件那一处该留 `-i`（它自己重定向了 stdin）。
-  docker exec "$DB_CONTAINER" mysql -uroot -p"$(root_pw)" -N -B -e "$1" </dev/null 2>&1 \
+  # **必须点名 --default-character-set=utf8mb4**：`docker exec` 里没有 LANG，mysql 客户端按 latin1
+  # 请求结果 ⇒ 库里的中文逐字读成 `?`。09-27 16:5x 闸 6 第一次正向跑被它读出一条看不出真相的红：
+  # detail 读回 `z-wf ????: ??????: business key ???`。这一句只证明"**CLI 这一条读路**看不见中文"，
+  # 不能反证库里存坏了 —— 写路（JDBC）与读路（CLI）是两件事，所以闸 6 另外用应用自己那条 JDBC
+  # 读路（/fires）钉同一句原话，两条读路各自成立才算数（见 step_fireprobe 里那两支 fp_check）。
+  docker exec "$DB_CONTAINER" mysql -uroot -p"$(root_pw)" -N -B --default-character-set=utf8mb4 -e "$1" </dev/null 2>&1 \
     | grep -v 'Using a password' || true
 }
 
@@ -761,12 +805,18 @@ step_healthproof() {
 
 # ---- 闸 6：流程发起那本账在真 MySQL 8 上写不写得进、读不读得出（缺陷 #61 §2.6）----
 #
-# 为什么这一支不能拿接口层那 63 条代替：`_e2e/e2e_api_test.py` 的 `[15w]` 桩是**测试进程自己**起的
-# （`WF_PORT` :2134 绑在跑脚本那台机上，`_WfStub(WF_PORT)` :2193），而 app 的 BASE 只是 `sys.argv[1]`
-# (:21)。把 BASE 指到 250 之后，250 上那个 jar 发的是**它自己的** localhost —— 我本地的桩永远收不到 ⇒
-# `WF_LIVE = bool(WF) and wf_count()==1` (:2315) 恒假 ⇒ 整节 63 条一律判"桥没通"。那是真红不是假绿
-# （:2121 定的规矩就是桥没通就没有绿），但它说的只是"桩和 app 不在同一台机"，不是 250 的结论。
-# 所以这一支把桩搬到 250 本机（`_e2e/wf_stub.py`），并把判据从"应用怎么转述"换成"库自己承认哪几行"。
+# 为什么这一支不能只拿接口层那一节代替：`_e2e/e2e_api_test.py` 的 `[15w]` 桩是**测试进程自己**起的
+# （`WF_PORT` / `_WfStub(WF_PORT)`，绑在跑脚本那台机上），而 app 的 BASE 只是 `sys.argv[1]`。
+# 把 BASE 指到 250 而别的都不动 ⇒ 250 上那个 jar 发的是**它自己的** localhost，我本地的桩永远收不到，
+# `WF_LIVE = bool(WF) and wf_count()==1` 恒假 ⇒ 整节一律判"桥没通"。那是真红不是假绿（桥没通就没有绿
+# 是那一节自己定的规矩），但它说的只是"桩和 app 不在同一台机"，不是 250 的结论。
+# ⚠ 这一段原先还写着"这一支不可被接口层那 63 条代替"，那半句被**缺陷 #82** 顶掉了：`deploy_250.sh api`
+# 现在会建一条反向隧道（`ssh -R`）把本机的桩搬到 250 那一侧，接口层那一节（现 72 条）第一次真打在
+# 部署件 + 真 MySQL 8 上（09-27 17:08 实测 `~/.cache/zlc250_0927/api250_bridge2.log` = 555/555，
+# 同窗不带隧道那一跑是 515/555、40 条红全在这一节）。
+# 闸 6 于是换了一条存在理由，而且更硬：它**不听应用转述、直接读库**（`information_schema` +
+# `z_lc_workflow_fire`），并且不要求量具与 jar 同机 —— 反向隧道断了、250 这侧的桩活着，它照样量得到。
+# 两格各留各的判据，别合并。
 FP_APP=""; FP_TBL=""; FP_TBL2=""; FP_BAD=0
 FP_STUB_PORT="${ZLC_FP_STUB_PORT:-18888}"
 
@@ -907,9 +957,13 @@ step_fireprobe() {
     "rid=${rid:-空} 桩收到 $((n1 - n0)) 句（应为 1）"
 
   lastbody=$(fp_stub "/__hits" | python3 -c 'import sys,json;print((json.load(sys.stdin).get("last") or {}).get("body",""))' 2>/dev/null || true)
-  lastkey=$(printf '%s' "$lastbody" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("processDefinitionKey"))' 2>/dev/null || true)
-  lastbiz=$(printf '%s' "$lastbody" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("businessKey"))' 2>/dev/null || true)
-  fp_check "发出去那一句带的是登记的 KEY（不是流程里的上一个）" \
+  # 线上那一份字段名是 `processKey`（DTO 里才叫 processDefinitionKey）—— 这一度读成 `.get("processDefinitionKey")`
+  # 于是恒取到 None，把被测的构件冤枉成"没带 KEY"。出处：`browser-e2e.mjs` 的 11w 断言 body.processKey、
+  # `mutate_workflow_deployed_guard.py` 的 "body 里是 DTO 真读的 processKey（不是 processDefKey）"。
+  # 用 ["…"] 而不是 .get("…")：字段整个消失时要落成"空"（尺读不到），不能与"值为 None"混成一格。
+  lastkey=$(printf '%s' "$lastbody" | python3 -c 'import sys,json;print(json.load(sys.stdin)["processKey"])' 2>/dev/null || true)
+  lastbiz=$(printf '%s' "$lastbody" | python3 -c 'import sys,json;print(json.load(sys.stdin)["businessKey"])' 2>/dev/null || true)
+  fp_check "发出去那一句带的是登记的 KEY（读 body 的 processKey，即线上字段名；不是流程里的上一个）" \
     "$([ "$lastkey" = "$key" ] && echo 1 || echo 0)" "key=${lastkey:-空} 期望=$key body=$(printf '%s' "$lastbody" | head -c 200)"
   fp_check "发出去那一句能定位回这条记录（businessKey 含 record_id=${rid:-?}）" \
     "$(printf '%s' "$lastbiz" | grep -q -- "$rid" && echo 1 || echo 0)" "businessKey=${lastbiz:-空}"
@@ -936,8 +990,21 @@ step_fireprobe() {
   failed=$(printf '%s' "$rows" | grep -c '^FAILED|' || true)
   fp_check "引擎答 200 而 success=false ⇒ 库里落一行 FAILED（这一单没成不该一个字都不留）" \
     "$([ "$failed" = "1" ] && echo 1 || echo 0)" "FAILED=$failed 全部行: $(printf '%s' "$rows" | tr '\n' ' ')"
-  fp_check "FAILED 那一行带引擎那句原话（不是笼统一句「发起失败」）" \
-    "$(printf '%s' "$rows" | grep -q '^FAILED||流程启动失败' && echo 1 || echo 0)" "$(printf '%s' "$rows" | tr '\n' ' ')"
+  # 引擎那句原话整句钉（桩的字面在 `_e2e/wf_stub.py` 的 reject 分支，前缀 `z-wf 拒绝发起` 是应用自己加的归属）。
+  # 前一版钉的是 `^FAILED||流程启动失败` —— 锚在错的那一头：库里的 detail 以 `z-wf 拒绝发起: ` 开头，
+  # 于是这一条**永远红**（闸 6 从来没有一次正向跑完过，所以这颗雷一直没被踩到；本次 16:5x 才现形）。
+  # 要求"整句连续出现"比原来的前缀锚强：既不许退化成笼统一句，也不许丢掉是谁拒的。
+  local engine_sentence="z-wf 拒绝发起: 流程启动失败: business key 已存在"
+  fp_check "FAILED 那一行带引擎那句原话（读库，且是「归属前缀 + 原话」整句，不是笼统一句「发起失败」）" \
+    "$(printf '%s' "$rows" | grep -qF "$engine_sentence" && echo 1 || echo 0)" "$(printf '%s' "$rows" | tr '\n' ' ')"
+  # 同一条换**应用自己那条 JDBC 读路**再读一次：上面那支读的是 mysql CLI。两条读路都成立才分得开
+  # "库里就是坏的"与"某一侧读路把中文读成 ?"（缺陷 #81：CLI 不点 --default-character-set 时中文逐字变 `?`）。
+  # JSON 里若被转义成   由 python 解回真字符，尺不许因为自己不会解码而判红。
+  local fires2
+  fires2=$(fp_get "/api/lc/workflow-binding/fires?appCode=$FP_APP&entityCode=case&recordId=$rid" \
+           | python3 -c 'import sys,json;print(json.dumps(json.load(sys.stdin),ensure_ascii=False))' 2>/dev/null || true)
+  fp_check "同一句原话经应用那条 JDBC 读路也读得回（/fires 的 detail，与 CLI 那一条互证）" \
+    "$(printf '%s' "$fires2" | grep -qF "$engine_sentence" && echo 1 || echo 0)" "$(printf '%s' "$fires2" | head -c 300)"
   fp_check "FAILED 那一行不许留下实例号（发不成的单不能长得像发成了）" \
     "$(printf '%s' "$rows" | grep -q '^FAILED|wf250' && echo 0 || echo 1)" "$(printf '%s' "$rows" | tr '\n' ' ')"
   fp_check "两行各记各的账（STARTED 没被 FAILED 覆盖）" \

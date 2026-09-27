@@ -2187,7 +2187,17 @@ check("收尾: 本租户这一侧的探针行全部回收干净（留在库里�
 call("POST", "/api/lc/app/delete", {"appCode": PM_APP})
 
 # -------------------------------------------------- 流程绑定（缺陷 #61，打的是在跑的那个 fat jar）
-print("\n[15w] 缺陷 #61: 一条绑定在部署件上真的换出一次发起（桩就是它默认指向的那个端口）")
+# 缺陷 #82：桩绑在哪个端口，决定这一节量的是哪一种部署形状。默认 8888 = 「什么都没配」那一格
+# （WfAdapter 的 base-url 默认值，见下面那段注释）；显式给 LC_WF_STUB_PORT 则是「配置指到哪里」
+# 那一格 —— 打 250 时只能走这条：桩是测试进程自己起的，而 jar 在 250 上只会打它自己 app.env
+# 点名的地址，中间由 _e2e/deploy_250.sh 的反向隧道接上。
+# 标题里那句端口身份必须跟着变：09-27 17:0x 那一跑打印的是「桩绑得上 18899（jar 的默认 base-url
+# 就去这里…）」，读日志的人会以为「没配」那一格也被测过了 —— 而它没有。
+_WF_STUB_ENV = os.environ.get("LC_WF_STUB_PORT")
+print("\n[15w] 缺陷 #61: 一条绑定在部署件上真的换出一次发起（桩在 :%s，%s）"
+      % (_WF_STUB_ENV or "8888",
+         "由部署件显式指过来，不是默认值" if _WF_STUB_ENV
+         else "就是它默认指向的那个端口"))
 # 这一节存在的理由：core 单测与契约层证明的是"这些类自己会这么做"，证明不了"shipped 的那个 jar 里
 # 有一个人调它"。#61 的原始形状恰恰是 listByEvent + startProcess 在生产代码里零调用者而全套测试绿。
 # 所以这里量的必须是 18090 上那个进程：真 HTTP、真发一句到桩、真从 /fires 回读结局。
@@ -2210,7 +2220,7 @@ WF_TABLE = f"e2e_wf_{SUF}"
 #             否则同一个实体上挂两条绑定，"正好一句"这种计数断言从结构上就不成立。
 WF_ENT, WF_NONE, WF_TWO = "case", "plain", "second"
 WF_KEY = "expense_deployed"          # 登记时故意两端带空白，见 wf_bind 那一句
-WF_PORT = int(os.environ.get("LC_WF_STUB_PORT", "8888"))
+WF_PORT = int(_WF_STUB_ENV or "8888")
 WF_PATH = "/api/approval-center/processes/start"
 WF_INSTANCE = "wf-deployed-77"
 WF_ACTOR = "wf_e2e_" + SUF
@@ -2336,7 +2346,9 @@ try:
     WF = _WfStub(WF_PORT)
 except OSError as ex:
     _bridge_err = str(ex)
-check(f"z-wf 桩绑得上 {WF_PORT}（jar 的默认 base-url 就去这里；绑不上则本节全部没有判定）",
+check("z-wf 桩绑得上 %d（%s；绑不上则本节全部没有判定）" % (WF_PORT,
+      "jar 的默认 base-url 就去这里" if not _WF_STUB_ENV
+      else "部署件被反向隧道指到这里，量的不是「什么都没配」那一格"),
       WF is not None,
       _bridge_err or ("已绑 " + WF.families() + ("；缺 " + " ".join(WF.unavailable)
                                                 if WF.unavailable else "")))

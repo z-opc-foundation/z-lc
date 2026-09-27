@@ -81,6 +81,73 @@ tunnel() {
   echo "    隧道自证：http://localhost:$LOCAL_TUNNEL → $HOST:$APP_PORT，health UP"
 }
 
+# 缺陷 #82：接口层 [15w] 那 40 条读的是**本进程内存里**那本桩账（e2e_api_test.py 自己起的
+# _WfStub），而 jar 在 250 上只会打它自己那一侧 app.env 里点名的地址。09-27 16:5x 第一次把
+# `api` 打到 250：桩在本地 8888 绑上了（那条 check 是绿的），jar 一句都没打过来 ⇒ 40 条判
+# "桥没通"。那 40 条不是产品红，是量具缺一条腿 —— 反向隧道把本机的桩搬到 250 那一侧去。
+BRIDGE_PORT="${ZLC_BRIDGE_PORT:-18899}"   # 250 的 8888 是别人的 java（pid 1655），这里不抢
+_api_pin_saved=""
+
+bridge_up() {
+  if ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST" "ss -lnt 2>/dev/null | grep -qE ':$BRIDGE_PORT[[:space:]]'"; then
+    echo "!! 250 上 127.0.0.1:$BRIDGE_PORT 已经有人在听 —— 别把 jar 指到一个不是我的洞上"; exit 6
+  fi
+  ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ConnectTimeout=8 \
+    -R "127.0.0.1:$BRIDGE_PORT:127.0.0.1:$BRIDGE_PORT" "$HOST"
+  local i
+  for i in 1 2 3 4 5; do
+    if ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST" "ss -lnt 2>/dev/null | grep -qE ':$BRIDGE_PORT[[:space:]]'"; then
+      echo "    反向隧道自证：$HOST:127.0.0.1:$BRIDGE_PORT 在听，洞的另一头是本机 127.0.0.1:$BRIDGE_PORT"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "!! 反向隧道没能在 250 那侧开出 127.0.0.1:$BRIDGE_PORT —— 别往下跑（jar 会打给一个不存在的洞）"; exit 6
+}
+
+bridge_down() {
+  local pid args
+  pid=$(pgrep -f "127.0.0.1:$BRIDGE_PORT:127.0.0.1:$BRIDGE_PORT" 2>/dev/null | head -1 || true)
+  [ -n "${pid:-}" ] || { echo "    反向隧道进程不在了，无需收"; return 0; }
+  args=$(ps -o args= -p "$pid" 2>/dev/null || true)
+  case "$args" in
+    ssh*-R*"$BRIDGE_PORT"*) kill "$pid" 2>/dev/null || true
+      echo "    已收反向隧道 ssh（pid $pid）" ;;
+    *) echo "!! pid $pid 的命令行不是这条反向隧道（$args）—— 不动它" ;;
+  esac
+}
+
+api_teardown() {
+  # 还原顺序不能反：先把 app.env 指回原来那格并重启，再拆洞 —— 反过来的话中间那几秒里
+  # 线上实例的 wf 目标是一个已经没人听的洞，而这一格之后没人会去重启它。
+  if [ -n "$_api_pin_saved" ]; then
+    echo "    [还原] app.env 的 wf 目标指回：$_api_pin_saved"
+    ZLC_EXTRA_ENV="$_api_pin_saved" rssh env && rssh start \
+      || echo "!! 还原这一步没跑成 —— 线上那格的 wf 目标可能还指着洞"
+    local want hole
+    want=$(printf '%s' "$_api_pin_saved" | sed -n 's#^ZLC_WF_BASE_URL=.*:\([0-9]\{1,\}\)$#\1#p')
+    hole=$(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST" \
+      "ss -lnt 2>/dev/null | grep -cE ':${want:-0}[[:space:]]'" || echo "?")
+    echo "    [还原后] 250 上 :${want:-?} 的监听数 = $hole（0 ⇒ 那个桩没在跑，线上这格的 wf 现在是发不出去的，别说'恢复原状'）"
+  fi
+  bridge_down
+  _api_pin_saved=""
+}
+
+api_with_bridge() {
+  bridge_up
+  trap 'api_teardown' EXIT
+  _api_pin_saved=$(ssh -o ConnectTimeout=8 -o BatchMode=yes "$HOST" \
+    "grep -m1 '^ZLC_WF_BASE_URL=' ~/.config/z-lc-deploy/app.env" || true)
+  [ -n "$_api_pin_saved" ] \
+    || { echo "!! 读不到 250 上 app.env 现有的 wf 目标 —— 没有退路就不做注入"; exit 6; }
+  echo "=== 把部署件的 wf 目标指到反向隧道（原来是：$_api_pin_saved）==="
+  ZLC_EXTRA_ENV="ZLC_WF_BASE_URL=http://127.0.0.1:$BRIDGE_PORT" rssh env && rssh start
+  tunnel
+  echo "=== API 层门禁打远程（桩 = 本机 :$BRIDGE_PORT，jar 经反向隧道打过来）==="
+  LC_WF_STUB_PORT="$BRIDGE_PORT" python3 -u "$REPO/_e2e/e2e_api_test.py" "http://localhost:$LOCAL_TUNNEL"
+}
+
 case "${1:-all}" in
   sync)   sync ;;
   tunnel) tunnel ;;
@@ -108,8 +175,12 @@ case "${1:-all}" in
   fireprobe) rssh fireprobe ;;
   collate) rssh collate ;;
   repair)  rssh repair ;;
-  api)    tunnel; echo "=== API 层门禁打远程 ==="; \
+  # 缺陷 #82：`api` 现在默认接反向隧道。不带隧道那一跑（09-27 16:5x 实测）是 515/555，40 条红
+  # **全部**落在 [15w] 那一节且逐条写着"桥没通"—— 那是量具的拓扑，不是产品的行为。
+  # 要复刻旧那一跑（只打线上实例、不重启它）用 `api_plain`。
+  api)    api_with_bridge ;;
+  api_plain) tunnel; echo "=== API 层门禁打远程 ==="; \
           python3 -u "$REPO/_e2e/e2e_api_test.py" "http://localhost:$LOCAL_TUNNEL" ;;
   all)    sync; rssh db; rssh schema; rssh env; rssh start; rssh verify; rssh collate; tunnel ;;
-  *) echo "用法: $0 [all|sync|db|schema|env|start|verify|collate|repair|gates|gate1|gate2|gate3|gate4|healthproof|fireprobe|api|tunnel|status|stop]"; exit 2 ;;
+  *) echo "用法: $0 [all|sync|db|schema|env|start|verify|collate|repair|gates|gate1|gate2|gate3|gate4|healthproof|fireprobe|api|api_plain|tunnel|status|stop]"; exit 2 ;;
 esac
