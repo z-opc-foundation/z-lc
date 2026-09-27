@@ -34,7 +34,7 @@ export function DeploymentsPage() {
   const [detail, setDetail] = useState<DeploymentDTO | null>(null);
 
   const kinds = useDeploymentVocabulary();
-  const executable = kinds.vocabulary.executable;
+  const executable = ['HOT_LOAD', 'SQL_SYNC'];
   const rejectedReasons = kinds.vocabulary.rejected;
 
   const selectOptions = useMemo(

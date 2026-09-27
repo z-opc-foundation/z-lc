@@ -3336,6 +3336,295 @@ async function runOnce(runNum, appCode) {
       await wfKillSafe();
     }
 
+    /* ---- 11x. 部署中心：界面上点「开始部署」那一下，运行时库里真的长出一张表（#70 的浏览器层 = 缺陷 #73）---- */
+    // 本节写出来之前 `grep -c DeploymentsPage e2e/browser-e2e.mjs` = 0 —— 和 #49 当时的形状一模一样：
+    // 页面改了，门禁一个字都没测。vitest 那份 `DeploymentsPage.test.tsx` 喂的是**自己 stub 的词表**，
+    // 它证明不了三件事：① 界面上那份清单（哪几种不执行、为什么）是真服务端给的；② 点下去之后
+    // **库里**真长出了那张表（#43 的谎正是"报告说建成而库里没有"，界面说成功不算成功）；
+    // ③ 状态格 / 版本格 / 日志格抄的是服务器原话。
+    // 分母由 e2e/mutate_deployment_browser_guard.py **从源码扫**出来：每条都写成 `check('…')`、
+    // 整节名字唯一、名字里不许插本轮才有的值（应用码 / 行 id / 表名一律只进 detail）。
+    const dpTail = `${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90) + 10}`;
+    const dpApp = `dpui${dpTail}`;
+    const dpTable = `ui_dp${dpTail}`;
+    const dpH = { 'Content-Type': 'application/json', 'X-Tenant-Code': 'default' };
+    const dpPost = (p, body) => fetch(`${API}${p}`, {
+      method: 'POST', headers: dpH, body: JSON.stringify(body ?? {}),
+    }).then((r) => r.json()).catch((e) => ({ success: false, message: String(e?.message ?? e) }));
+    const dpGet = (p) => fetch(`${API}${p}`, { headers: dpH })
+      .then((r) => r.json()).catch((e) => ({ success: false, message: String(e?.message ?? e) }));
+    try {
+      // ---- 本节自己的应用 + 一个**故意不建表**的实体：猎物就是"点了部署，表才长出来" -------------
+      const dpMadeApp = await dpPost('/api/lc/app/create', {
+        tenantCode: 'default', appCode: dpApp, appName: '部署中心冒烟', description: '11x',
+      });
+      if (!dpMadeApp.success) throw new Error(`11x 建应用失败: ${dpMadeApp.message}`);
+      const dpMadeEnt = await dpPost(
+        `/api/lc/admin/app/entity/create?appCode=${dpApp}&tenantCode=default`, {
+          tenantCode: 'default', appCode: dpApp, entityCode: 'case', entityName: '工单',
+          tableName: dpTable,
+          fields: [
+            { fieldCode: 'title', fieldName: '标题', fieldType: 'STRING', required: true, fieldLength: 64, sortOrder: 1 },
+          ],
+        });
+      if (!dpMadeEnt.success) {
+        throw new Error(`11x 建实体失败（多半是撞上上一轮残留的同名表，那是量具的事不是产品的）: ${dpMadeEnt.message}`);
+      }
+      // 物理表的现读：`/admin/db/table` 对**不存在**的表也会回一份逆向映射的壳，而 `fields` 是空的
+      // （实测 05:06）⇒ 判"表在不在"只能读 fields，不能读"有没有 data"。
+      const dpPhysicalColumns = async () => {
+        const r = await dpGet(`/api/lc/admin/db/table?tableName=${dpTable}`);
+        return r && r.data && Array.isArray(r.data.fields)
+          ? r.data.fields.map((f) => f.fieldCode) : null;
+      };
+      const dpColsBefore = await dpPhysicalColumns();
+      check('节前对账：这张物理表还不存在（否则"点一下真长出表"那条量的是别人的残留）',
+        Array.isArray(dpColsBefore) && dpColsBefore.length === 0,
+        `fields=${JSON.stringify(dpColsBefore)}`);
+
+      const dpVocRes = await dpGet('/api/lc/deployment/vocabulary');
+      const dpVoc = dpVocRes.data || {};
+      check('节前的词表读得到：可执行的一种与不执行的几种都有（后面"界面 = 词表"才有对照物）',
+        Array.isArray(dpVoc.executable) && dpVoc.executable.length >= 1
+        && Array.isArray(dpVoc.rejected) && dpVoc.rejected.length >= 1,
+        JSON.stringify(dpVocRes).slice(0, 200));
+
+      // ---- 本节的网络账 + toast 观察器（同 11w：三秒就自收，边出现边抄；goto 之后 window 是新的）----
+      const dpListReqs = [];
+      const dpCreateReqs = [];
+      const dpOnReq = (req) => {
+        const u = req.url();
+        if (u.includes('/deployment/list')) dpListReqs.push(u);
+        if (req.method() === 'POST' && u.includes('/deployment/create')) dpCreateReqs.push(u);
+      };
+      page.on('request', dpOnReq);
+      const dpWatchToasts = async () => {
+        await page.evaluate(() => {
+          const w = window;
+          if (w.__dpToastWatched) return;
+          w.__dpToastWatched = true;
+          w.__dpToasts = [];
+          const scan = () => {
+            document.querySelectorAll('.ant-message-notice').forEach((node) => {
+              const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+              if (t && w.__dpToasts.indexOf(t) < 0) w.__dpToasts.push(t);
+            });
+          };
+          new MutationObserver(scan).observe(document.body, { childList: true, subtree: true });
+          setInterval(scan, 120);
+          scan();
+        }).catch(() => {});
+      };
+      const dpToasts = async () => {
+        await dpWatchToasts();
+        return (await page.evaluate(() => (window.__dpToasts ? window.__dpToasts.slice() : []))
+          .catch(() => [])).join(' || ');
+      };
+      const dpRows = async () => (await page
+        .locator('.ant-table-tbody tr.ant-table-row').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+      const dpRowCells = async (id) => {
+        const row = page.locator(`.ant-table-tbody tr[data-row-key="${id}"]`);
+        if ((await row.count()) !== 1) return null;
+        return (await row.first().locator('td').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+      };
+      const dpServerList = async () => {
+        const r = await dpGet(`/api/lc/deployment/list?appCode=${dpApp}`);
+        return Array.isArray(r.data) ? r.data : null;
+      };
+
+      await dpWatchToasts();
+      await page.goto(`${BASE}/admin/deployments?appCode=${dpApp}`,
+        { waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1500);
+
+      // ================= (1) 这一页画出来的是什么 ==================================================
+      const dpHead = (await page.locator('.ant-table-thead th').allInnerTexts())
+        .map((t) => t.replace(/\s+/g, ' ').trim());
+      check('部署页的表头逐格按列序画出来（ID/方式/状态/版本/物化批次/创建时间/日志）',
+        dpHead.join('|') === 'ID|方式|状态|版本|物化批次|创建时间|',
+        `heads=${JSON.stringify(dpHead)}`);
+      const dpEmptyText = (await page.locator('.ant-table-placeholder').allInnerTexts())
+        .map((t) => t.replace(/\s+/g, ' ').trim()).join(' ');
+      check('一条部署都没有时说的是「该应用还没有部署记录」（不是"读不到"，也不是别人的应用）',
+        dpEmptyText.includes('该应用还没有部署记录'), dpEmptyText.slice(0, 160));
+      check('一次挂载只发一次部署列表请求（依赖身份每轮变就会在这里现形，界面看着全绿）',
+        dpListReqs.length === 1, `list 请求 ${dpListReqs.length} 次`);
+      const dpNewBtn = page.getByRole('button', { name: /新\s*建\s*部\s*署/ });
+      check('词表读得到的时候「新建部署」是 enabled 的（下一条的阳性对照：别把闸读成按钮坏了）',
+        (await dpNewBtn.count()) === 1 && !(await dpNewBtn.first().isDisabled()),
+        `count=${await dpNewBtn.count()}`);
+
+      // ================= (2) 下拉里那份清单是服务器给的 ============================================
+      await dpNewBtn.first().click({ timeout: 5000 }).catch(() => {});
+      // 这扇窗里的元素一律按 antd 自己的类名定位：`data-testid` 挂在 Modal/Select 上时会不会落到
+      // DOM 里，取决于组件透传不透传（本文件 §11a/§11e 已跑通的就是 `.ant-modal` + `.ant-select-selector`
+      // 这条路子），拿它当定位锚点等于把判据押在组件实现细节上。
+      await page.locator('.ant-modal .ant-modal-title').first()
+        .waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+      await page.locator('.ant-modal .ant-select-selector').first()
+        .click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(600);
+      const dpOptionNodes = page
+        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option');
+      const dpOptionTexts = (await dpOptionNodes.allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+      const dpDisabledTexts = (await page
+        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option-disabled')
+        .allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+      check('下拉里的选项个数 = 词表里的个数（可执行的 + 不执行的都摆出来，界面不再自己抄一份）',
+        dpOptionTexts.length === dpVoc.executable.length + dpVoc.rejected.length,
+        `界面 ${dpOptionTexts.length} 项 vs 词表 ${dpVoc.executable.length}+${dpVoc.rejected.length}`,
+      );
+      const dpEnabledTexts = (await page
+        .locator('.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option:not(.ant-select-item-option-disabled)')
+        .allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+      check('兑现得了的那几种是可选中的，且说的是人话（HOT_LOAD 画成「热加载」，不是裸编码）',
+        dpEnabledTexts.length === dpVoc.executable.length && dpEnabledTexts.indexOf('热加载') === 0,
+        `可选项=${JSON.stringify(dpEnabledTexts)}`);
+      check('兑现不了的那几种在列表里是灰的，标签自己写着「服务器不执行」',
+        dpVoc.rejected.length >= 1 && dpDisabledTexts.length === dpVoc.rejected.length
+        && dpDisabledTexts.every((t) => t.endsWith('（服务器不执行）')),
+        `选项=${JSON.stringify(dpOptionTexts)} 灰的=${JSON.stringify(dpDisabledTexts)}`);
+      // 不能用 Escape 收下拉框：焦点不在 Select 里时它会把整个 Modal 关掉（11a 那一族的实测教训），
+      // 于是"点开始部署"落在一只已经不存在的窗上 ⇒ 改点窗的标题。
+      await page.locator('.ant-modal-title').first().click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      const dpRejectedRead = [];
+      for (const item of dpVoc.rejected) {
+        dpRejectedRead.push({
+          type: item.type,
+          inWindow: (await page.locator(`[data-testid="deployment-rejected-${item.type}"]`)
+            .first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim(),
+          reason: item.reason.replace(/\s+/g, ' ').trim(),
+        });
+      }
+      check('每一种不执行的理由原样摆在这扇窗里，且逐一点名自己的方式码（一句不许是页面编的）',
+        dpVoc.rejected.length >= 1 && dpRejectedRead.every((one) => one.inWindow.length > 0
+          && one.inWindow.includes(one.type) && one.inWindow.includes(one.reason)),
+        `窗里=${JSON.stringify(dpRejectedRead).slice(0, 420)}`);
+      const dpChosenLabel = (await page.locator('.ant-modal .ant-select-selection-item')
+        .first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+      check('没选过的时候默认落在服务器清单的第一种，而不是页面钉死的那个码',
+        dpChosenLabel === '热加载' && dpVoc.executable[0] === 'HOT_LOAD',
+        `当前=${dpChosenLabel} executable=${JSON.stringify(dpVoc.executable)}`);
+
+      // ================= (3) 点下去：这一次是真执行 ==================================================
+      const dpCreated = page.waitForResponse((res) => res.url().includes('/deployment/create')
+        && res.request().method() === 'POST', { timeout: 30000 });
+      await page.getByRole('button', { name: /开始部署/ }).first()
+        .click({ timeout: 5000 }).catch(() => {});
+      let dpCreateBody = null;
+      try {
+        const env = await (await dpCreated).json();
+        dpCreateBody = env && env.data ? env.data : null;
+      } catch { /* 下面那一条会红 */ }
+      await page.waitForTimeout(1500);
+      check('点一次「开始部署」只发一个 create 请求（重发一次的部署就是往库里多写一行假账）',
+        dpCreateReqs.length === 1, `create 请求 ${dpCreateReqs.length} 次`);
+      const dpLogHead = dpCreateBody && dpCreateBody.deployLog
+        ? dpCreateBody.deployLog.split('\n')[0].trim() : '';
+      const dpToastNow = await dpToasts();
+      check('成功那一下界面说的是「部署完成」，并抄服务器那句汇总的第一行（不是"已创建"）',
+        dpCreateBody !== null && dpToastNow.includes('部署完成') && dpLogHead.length > 0
+        && dpToastNow.includes(dpLogHead),
+        `toast=${dpToastNow.slice(0, 260)} 日志第一行=${dpLogHead.slice(0, 160)}`);
+      const dpCells = dpCreateBody ? await dpRowCells(dpCreateBody.id) : null;
+      check('表里那一行的状态格写的是服务器给的那个结局，不是界面自己盖的 SUCCESS',
+        dpCells !== null && dpCreateBody !== null && dpCells[2] === dpCreateBody.status
+        && dpCreateBody.status === 'SUCCESS',
+        `格子=${JSON.stringify(dpCells)} 服务器=${dpCreateBody && dpCreateBody.status}`);
+      check('方式那一格画的是中文标签（不是 HOT_LOAD 裸编码），ID 那一格就是服务器那一行的 id',
+        dpCells !== null && dpCreateBody !== null && dpCells[0] === String(dpCreateBody.id)
+        && dpCells[1] === '热加载',
+        `格子=${JSON.stringify(dpCells)}`);
+      check('没记版本、没挂物化批次的那两格画的是破折号（空白会被读成"这格本来就没有"）',
+        dpCells !== null && dpCells[3] === '—' && dpCells[4] === '—',
+        `格子=${JSON.stringify(dpCells)}`);
+      const dpServerRows = await dpServerList();
+      check('列表里那一行是读回来的，不是乐观追加的（界面行数 = 服务器行数 = 1）',
+        Array.isArray(dpServerRows) && dpServerRows.length === 1
+        && (await dpRows()).length === dpServerRows.length,
+        `服务器 ${Array.isArray(dpServerRows) ? dpServerRows.length : '读不到'} 行`);
+      const dpColsAfter = await dpPhysicalColumns();
+      check('点了部署之后运行时库里真的长出了那张表（title 这一列读得到，不是界面自己说成功）',
+        Array.isArray(dpColsAfter) && dpColsAfter.indexOf('title') >= 0,
+        `fields=${JSON.stringify(dpColsAfter)}`);
+
+      // ================= (4) 日志抽屉：原话，不是转述 ===============================================
+      const dpLogBtn = page.locator(`.ant-table-tbody tr[data-row-key="${dpCreateBody ? dpCreateBody.id : 'x'}"]`)
+        .getByRole('button', { name: /日\s*志/ });
+      await dpLogBtn.first().click({ timeout: 5000 }).catch(() => {});
+      await page.locator('.ant-drawer-open').first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+      const dpDrawerTitle = (await page.locator('.ant-drawer-title').first().innerText().catch(() => ''))
+        .replace(/\s+/g, ' ').trim();
+      check('抽屉标题认领的是哪一行的账（#id 与状态都在，不是一句"部署详情"）',
+        dpCreateBody !== null && dpDrawerTitle.includes(`#${dpCreateBody.id}`)
+        && dpDrawerTitle.includes(dpCreateBody.status),
+        `title=${dpDrawerTitle}`);
+      const dpDrawerLog = (await page.locator('[data-testid="deployment-log"]').first()
+        .innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+      check('日志那一格里是服务器原话（界面对它一个字都不改写、也不换成"成功"两个字）',
+        dpCreateBody !== null && dpDrawerLog === dpCreateBody.deployLog.replace(/\s+/g, ' ').trim(),
+        `格里=${dpDrawerLog.slice(0, 220)}`);
+      await page.locator('.ant-drawer-close').first().click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(600);
+      check('关掉抽屉不带走那一行（表格还在，界面前后是同一份账）',
+        (await dpRowCells(dpCreateBody ? dpCreateBody.id : 'x')) !== null,
+        `id=${dpCreateBody && dpCreateBody.id}`);
+
+      // ================= (5) 两处"读不到"不许长成"没有" =============================================
+      await page.route('**/api/lc/deployment/vocabulary*', (r) => r.abort());
+      await page.reload({ waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1200);
+      const dpVocAlerts = (await page.locator('.ant-alert').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+      check('词表读不到时页面报的是「部署方式词表没有读到」，并给重试的入口',
+        dpVocAlerts.some((t) => t.includes('部署方式词表没有读到'))
+        && (await page.getByRole('button', { name: /重\s*试/ }).count()) >= 1,
+        `alerts=${JSON.stringify(dpVocAlerts).slice(0, 300)}`);
+      check('词表读不到时「新建部署」收住（那种草稿只能送出一个空 deployType）',
+        (await dpNewBtn.count()) === 1 && (await dpNewBtn.first().isDisabled()),
+        `count=${await dpNewBtn.count()}`);
+      await page.unroute('**/api/lc/deployment/vocabulary*');
+      await page.reload({ waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1200);
+      check('把词表换回来：同一颗按钮立刻松开（上一条不是把页面判死了）',
+        (await dpNewBtn.count()) === 1 && !(await dpNewBtn.first().isDisabled()),
+        `count=${await dpNewBtn.count()}`);
+
+      // 列表那一读：先让屏幕上有一行，再打断这一读 ⇒ "旧行还亮着"这个形状才是可注入的（同 W4/W5 的成对设计）
+      const dpListRoute = '**/api/lc/deployment/list*';
+      await page.route(dpListRoute, (r) => r.abort());
+      await page.locator('button:has(.anticon-reload)').first().click({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(1500);
+      const dpFailAlerts = (await page.locator('.ant-alert').allInnerTexts()).map((t) => t.replace(/\s+/g, ' '));
+      // 空表那一格的占位话也得读：横幅说"没有读到"、表格格子说"还没有"，同一屏上两句互相打脸
+      // （缺陷 #22 那一族在部署页的形状 —— 只在横幅上分家的修法会漏掉这一格）。
+      const dpFailEmpty = (await page.locator('.ant-table-placeholder').allInnerTexts())
+        .map((t) => t.replace(/\s+/g, ' ').trim()).join(' ');
+      check('部署记录读不到那一屏报的是「部署记录没有读到」（不是"该应用还没有部署记录"）',
+        dpFailAlerts.some((t) => t.includes('部署记录没有读到'))
+        && !dpFailAlerts.some((t) => t.includes('该应用还没有部署记录'))
+        && !dpFailEmpty.includes('该应用还没有部署记录'),
+        `alerts=${JSON.stringify(dpFailAlerts).slice(0, 300)} 空表=${dpFailEmpty.slice(0, 120)}`);
+      check('读不到那一屏不留下上一份账的行（旧行亮着 + 一句"没有读到"= 两个互相打脸的话并排）',
+        (await dpRows()).length === 0, `行数=${(await dpRows()).length}`);
+      await page.unroute(dpListRoute);
+      await page.reload({ waitUntil: 'networkidle', timeout: 20000 });
+      await page.waitForTimeout(1500);
+      check('恢复之后再读一次：那一行回来了（上一条不是读一次就废）',
+        (await dpRows()).length === 1, `行数=${(await dpRows()).length}`);
+
+      // ================= (6) 收尾：本节种的东西不留账 ==============================================
+      const dpAppGone = await dpPost('/api/lc/app/delete', { appCode: dpApp });
+      check('这一节的应用收掉了（留着会占住表名，下一轮撞上它就是量具故障）',
+        dpAppGone.success === true, JSON.stringify(dpAppGone).slice(0, 200));
+      page.off('request', dpOnReq);
+      await shot(page, `r${runNum}-08x-deployments`);
+    } catch (e) {
+      if (e instanceof skipRemaining) throw e;
+      check('部署中心的真浏览器层（#70 / 缺陷 #73）', false, e && e.message ? e.message : String(e));
+      await shot(page, `r${runNum}-08x-deployments-FAIL`);
+    }
+
     /* ---- 9. 全局异常 ---- */
     try {
       check('全程没有未捕获的 JS 异常', pageErrors.length === 0, pageErrors.slice(0, 3).join(' ;; '));
