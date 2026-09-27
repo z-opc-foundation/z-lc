@@ -567,6 +567,21 @@ def foreign_titles(failed: list[str]) -> list[str]:
     return [t for t in failed if t not in mine]
 
 
+def git_blob(target: Path) -> tuple[str, str]:
+    """(提交树里那一版的 blob, 工作树这版的 blob) —— 同一个 sha1 算法，可以直接比。
+
+    这一支量的是**工作树**，而它把 `.tsx` 逐支改成带缺陷的样子；共享工作树里另一个会话的
+    `chore(sync)` 会连注入态一起提交并推送（09-27 13:4x–14:3x 实测六次，其中一次的字节正好是
+    D20 的变异 ⇒ 缺陷 #77）。`src_digest()` 只管"我这三轮还原回没回来"，管不到提交树被人推走，
+    所以开跑/收线各读一次 HEAD 那一版，收线时对账。
+    """
+    rel = f"HEAD:./{target.relative_to(UI)}"
+    head = subprocess.run(["git", "rev-parse", rel], cwd=UI, capture_output=True, text=True)
+    wt = subprocess.run(["git", "hash-object", str(target)], cwd=UI, capture_output=True, text=True)
+    return (head.stdout.strip() or f"<{rel} 读不出：{head.stderr.strip()[:60]}>",
+            wt.stdout.strip() or "<工作树字节读不出>")
+
+
 def judge(label: str, expected: list[str], failed: list[str]) -> int:
     for title in failed:
         print(f"    RED ({'预期' if title in expected else '未预期'}) {title}")
@@ -625,6 +640,9 @@ def main(only: str | None = None) -> int:
 
     original = PAGE.read_text(encoding="utf-8")
     base_src = src_digest()
+    head0, work0 = git_blob(PAGE)
+    print(f"  字节对账起点：提交树 {PAGE.name} blob={head0} / 工作树={work0}"
+          + ("" if head0 == work0 else "（不同 ⇒ 工作树有未提交改动，这一跑量的是工作树不是提交树）"))
     bad = 0
     preview = None
     try:
@@ -691,6 +709,27 @@ def main(only: str | None = None) -> int:
         PAGE.write_text(original, encoding="utf-8")
         if preview is not None:
             stop_preview(preview)
+        # 收线读数**无条件**印：只在出问题时印的判据，事后分不清"对账通过"和"对账没跑"
+        # —— 本量具的第一版就是这么漏的（run4 日志里只有起点那一行，收线那一行没印，
+        # 想证明"这一跑期间提交树没被推进"只能另开 git 命令复算）。缺席的读数不是证据。
+        head1, wt1 = git_blob(PAGE)
+        print(f"  字节对账收线：提交树 {PAGE.name} blob={head1} / 工作树={wt1}"
+              + (" —— 与起点逐字相同 ⇒ 还原回到了我测量的那一版，且这一跑期间提交树没被推进"
+                 if head1 == head0 and wt1 == work0 else ""))
+        if wt1 != work0:
+            print(f"  !! 收线时工作树字节 {wt1} != 开跑时 {work0} —— 还原没回到我测量的那一版，"
+                  "这三轮的账全部作废，先对字节")
+            bad += 1
+        if head1 != head0:
+            if head1 == work0:
+                print(f"  ⚠ 这一跑期间提交树被推进过，进去的正是我这一版字节（{head0} → {head1}）—— 没污染")
+            else:
+                print(f"  !! 这一跑期间提交树被推进过，而进去的字节**不是**我开跑那一版"
+                      f"（HEAD {head0} → {head1}，我测的那版是 {work0}）—— 共享工作树里别人把我某一轮的"
+                      f"注入态提交了，或我的还原没落到提交树上。现场对账："
+                      f"\n     git log --oneline -3 -- {PAGE.relative_to(UI)}"
+                      f"\n     git show HEAD:./{PAGE.relative_to(UI)} | md5 -q   # 应与 md5 -q {PAGE} 同值")
+                bad += 1
 
     covered = {n for _, _, expected in runs() for n in expected}
     booked = {n for v in not_covered().values() for n in v}
