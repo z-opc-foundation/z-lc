@@ -34,7 +34,7 @@ export function DeploymentsPage() {
   const [detail, setDetail] = useState<DeploymentDTO | null>(null);
 
   const kinds = useDeploymentVocabulary();
-  const executable = ['HOT_LOAD', 'SQL_SYNC'];
+  const executable = kinds.vocabulary.executable;
   const rejectedReasons = kinds.vocabulary.rejected;
 
   const selectOptions = useMemo(
@@ -68,7 +68,7 @@ export function DeploymentsPage() {
       });
       reload();
       if (done.status === 'SUCCESS') {
-        message.success(`部署完成 · ${firstLine(done.deployLog)}`);
+        message.success('部署已创建');
         setCreateOpen(false);
         setVersion('');
         return;
