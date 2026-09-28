@@ -35,9 +35,9 @@
         </dependency>
         <!-- z-util-core (StatusCode 接口 — ZLcEngineStatusCode 实现该接口) -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-core</artifactId>
-            <version>1.0.2-SNAPSHOT</version>
+            <version>${util.version}</version>
         </dependency>
 
         <!-- Test dependencies -->

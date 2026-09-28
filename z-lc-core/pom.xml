@@ -94,8 +94,9 @@
 
         <!-- z-script: 业务脚本引擎 (CRUD 生命周期钩子) -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-script-engine</artifactId>
+            <version>1.0.0</version>
         </dependency>
 
         <!-- Caffeine 本地缓存 (降低 adapter HTTP 出口) -->
