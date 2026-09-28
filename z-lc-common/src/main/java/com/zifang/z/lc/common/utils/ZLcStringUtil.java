@@ -5,13 +5,30 @@ package com.zifang.z.lc.common.utils;
  * {@code StringUtil} ({@code com.c2f.ace.core.utils}).
  *
  * <p>提供低代码平台常用的字符串转换能力:
- * 下划线 ↔ 驼峰命名互转、空值判断、字符串修剪等.
+ * 下划线 ↔ 驼峰命名互转、字符串修剪.
  *
  * <p>典型场景：
  * <ul>
  *   <li>数据库字段名 (snake_case) → Java 属性名 (camelCase)</li>
- *   <li>模型字段校验时的空值判断</li>
  *   <li>表单数据处理时的字符串修剪</li>
+ * </ul>
+ *
+ * <p><b>已收口到 z-util</b>：本类原有 isBlank / isNotBlank 与
+ * {@code com.zifang.util.core.lang.StringUtil#isEmpty(String)} /
+ * {@code isNotEmpty(String)} 逐输入实测等价
+ * （注意是 isEmpty 而不是同名 isBlank —— z-util 的 isBlank 把纯空白也算空,
+ * 本地 isBlank 只判 null 与 ""）, 已删除, 调用点直指 z-util.
+ *
+ * <p><b>不能收口的部分</b>（与 z-util 实测有语义差异, 差异由
+ * {@code ZLcUtilDedupEquivalenceTest} 锁定）：
+ * <ul>
+ *   <li>underlineToCamel：无下划线时原样返回（z-util
+ *       underlineToLittleCamelCase 会整体改大小写, "userName"→"username"）;
+ *       null 入参返回 null（z-util 抛 IllegalArgumentException）;
+ *       前导/连续下划线行为不同（"_name"→"Name" vs "name"）.</li>
+ *   <li>camelToUnderline：每个大写前插分隔符（z-util toUnderScoreCase
+ *       对连续大写合并, "userID"→"user_i_d" vs "user_id"）.</li>
+ *   <li>trim(Object)：z-util 无对应方法.</li>
  * </ul>
  *
  * @author zifang
@@ -84,25 +101,12 @@ public final class ZLcStringUtil {
 
     /**
      * 修剪字符串值 — 非 String 类型直接返回.
+     * <p>z-util 无对应方法, 保留在本地.
      */
     public static Object trim(Object o) {
         if (o instanceof String) {
             return ((String) o).trim();
         }
         return o;
-    }
-
-    /**
-     * 判断字符串是否为空 (null 或 "").
-     */
-    public static boolean isBlank(String str) {
-        return str == null || str.isEmpty();
-    }
-
-    /**
-     * 判断字符串是否非空.
-     */
-    public static boolean isNotBlank(String str) {
-        return !isBlank(str);
     }
 }

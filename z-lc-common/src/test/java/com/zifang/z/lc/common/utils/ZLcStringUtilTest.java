@@ -1,5 +1,6 @@
 package com.zifang.z.lc.common.utils;
 
+import com.zifang.util.core.lang.StringUtil;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
@@ -8,7 +9,12 @@ import java.lang.reflect.Modifier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * ZLcStringUtil 单元测试
+ * ZLcStringUtil 单元测试.
+ *
+ * <p>2026-09 收口：本地 isBlank / isNotBlank 与
+ * {@code StringUtil.isEmpty(String)} / {@code isNotEmpty(String)} 逐输入实测等价,
+ * 本地实现已删除, 下面 6 个用例改为直接验证 z-util（注意不是 z-util 的 isBlank ——
+ * 那个把纯空白也算空, 语义不同, 详见 ZLcUtilDedupEquivalenceTest）.
  *
  * @author zifang
  */
@@ -90,31 +96,31 @@ class ZLcStringUtilTest {
 
     @Test
     void shouldReturnTrueForNullBlank() {
-        assertThat(ZLcStringUtil.isBlank(null)).isTrue();
+        assertThat(StringUtil.isEmpty((String) null)).isTrue();
     }
 
     @Test
     void shouldReturnTrueForEmptyBlank() {
-        assertThat(ZLcStringUtil.isBlank("")).isTrue();
+        assertThat(StringUtil.isEmpty("")).isTrue();
     }
 
     @Test
     void shouldReturnFalseForNonEmptyBlank() {
-        assertThat(ZLcStringUtil.isBlank("hello")).isFalse();
+        assertThat(StringUtil.isEmpty("hello")).isFalse();
     }
 
     @Test
     void shouldReturnFalseForNullNotBlank() {
-        assertThat(ZLcStringUtil.isNotBlank(null)).isFalse();
+        assertThat(StringUtil.isNotEmpty((String) null)).isFalse();
     }
 
     @Test
     void shouldReturnTrueForEmptyNotBlank() {
-        assertThat(ZLcStringUtil.isNotBlank("")).isFalse();
+        assertThat(StringUtil.isNotEmpty("")).isFalse();
     }
 
     @Test
     void shouldReturnTrueForNonEmptyNotBlank() {
-        assertThat(ZLcStringUtil.isNotBlank("hello")).isTrue();
+        assertThat(StringUtil.isNotEmpty("hello")).isTrue();
     }
 }
