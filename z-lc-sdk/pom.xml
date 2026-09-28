@@ -59,5 +59,14 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
+
+        <!-- 本模块测试源码是 JUnit 4（org.junit.Test）。此前编译能过，是因为旧
+             com.zifang:z-util-core:1.0.2-SNAPSHOT 的 pom 把 junit 漏成了 compile 作用域；
+             1.0.13 换回 io.github.yuku123 坐标后必须自己显式声明（版本由 spring-boot-dependencies 管）。 -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

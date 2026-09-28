@@ -77,5 +77,13 @@
             <artifactId>z-util-core</artifactId>
             <version>${util.version}</version>
         </dependency>
+
+        <!-- 本模块测试源码是 JUnit 4（org.junit.Test）。此前靠旧 com.zifang:z-util-core:1.0.2-SNAPSHOT
+             泄漏的 compile 作用域 junit 编过；1.0.13 换回 io.github.yuku123 坐标后显式声明。 -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
