@@ -48,7 +48,7 @@ class ZLcIOUtilTest {
     @Test
     void shouldReadFile() throws Exception {
         Path filePath = tempDir.resolve("test.txt");
-        Files.writeString(filePath, "test content", StandardCharsets.UTF_8);
+        Files.write(filePath, "test content".getBytes(StandardCharsets.UTF_8));
 
         String result = ZLcIOUtil.readFile(filePath.toString());
 
@@ -69,7 +69,7 @@ class ZLcIOUtilTest {
         ZLcIOUtil.generateFile(filePath.toString(), content);
 
         assertThat(Files.exists(filePath)).isTrue();
-        assertThat(Files.readString(filePath, StandardCharsets.UTF_8)).isEqualTo(content);
+        assertThat(new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8)).isEqualTo(content);
     }
 
     @Test

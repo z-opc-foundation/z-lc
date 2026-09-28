@@ -36,7 +36,7 @@ class ZLcExportTxtUtilTest {
         ZLcExportTxtUtil.exportTxtLocal(content, filePath.toString());
 
         assertThat(Files.exists(filePath)).isTrue();
-        assertThat(Files.readString(filePath, StandardCharsets.UTF_8)).isEqualTo(content);
+        assertThat(new String(Files.readAllBytes(filePath), StandardCharsets.UTF_8)).isEqualTo(content);
     }
 
     @Test

@@ -122,8 +122,8 @@ class ZLcUtilDedupEquivalenceTest {
                 java.time.Instant.ofEpochMilli(millis), ZoneId.systemDefault())
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         assertThat(LocalDateUtil.format(fromEpoch.toInstant().atZone(ZoneId.systemDefault())
-                .toLocalDate())).isEqualTo(LocalDate.ofInstant(
-                java.time.Instant.ofEpochMilli(millis), ZoneId.systemDefault())
+                .toLocalDate())).isEqualTo(java.time.Instant.ofEpochMilli(millis)
+                .atZone(ZoneId.systemDefault()).toLocalDate()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")));
     }
 

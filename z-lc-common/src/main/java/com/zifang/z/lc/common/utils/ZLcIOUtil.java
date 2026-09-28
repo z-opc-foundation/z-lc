@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Objects;
 
 /**
@@ -71,9 +72,9 @@ public final class ZLcIOUtil {
      */
     public static String readFile(String fileName) {
         try {
-            Path path = Path.of(fileName);
+            Path path = Paths.get(fileName);
             if (Files.exists(path)) {
-                return Files.readString(path, StandardCharsets.UTF_8);
+                return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
             }
         } catch (IOException e) {
             // fall through
@@ -109,8 +110,8 @@ public final class ZLcIOUtil {
      */
     public static void generateFile(String filePath, String fileContent) {
         try {
-            Path path = Path.of(filePath);
-            Files.writeString(path, fileContent, StandardCharsets.UTF_8);
+            Path path = Paths.get(filePath);
+            Files.write(path, fileContent.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new RuntimeException("生成文件失败: " + filePath, e);
         }

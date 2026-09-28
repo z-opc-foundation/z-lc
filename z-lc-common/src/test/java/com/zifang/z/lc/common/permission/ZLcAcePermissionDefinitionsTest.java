@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -51,7 +52,7 @@ class ZLcAcePermissionDefinitionsTest {
 
     @Test
     void shouldFilterReturnMatchingDefinitions() {
-        List<String> permissions = List.of("z-lc:platform:app:create", "z-lc:platform:app:remove");
+        List<String> permissions = Arrays.asList("z-lc:platform:app:create", "z-lc:platform:app:remove");
         Map<String, ZLcAcePermissionDefinitions.ZLcPermissionDefinition> filtered = ZLcAcePermissionDefinitions.filter(permissions);
         assertThat(filtered).hasSize(2);
         assertThat(filtered).containsKey("z-lc:platform:app:create");
