@@ -11,13 +11,24 @@
 
     <artifactId>z-lc-common</artifactId>
 
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
+    <!-- 迁移删掉了这一块 <properties>（maven.compiler.source/target=8、
+         project.build.sourceEncoding=UTF-8）：父链 z-boot-parent:1.0.19 的 properties 就是
+         8 / 8 / UTF-8，逐字同值（z-boot README「消费模型」步骤 3），6 个子 pom 同一批删除。 -->
 
     <dependencies>
+        <!-- Log4j2 API（本模块 src/main/java 有 3 个文件直接 LogManager.getLogger：
+             ZLcRetryAspect / ZLcTaskExecutionUtil / ZLcAcePermissionDefinitions）。
+             基线里这一坐标是**借来的**：z-util-core:1.0.13 → log4j-slf4j2-impl:2.26.1 → log4j-api:2.17.2，
+             编译能过纯属传递作用域泄漏（同仓其余 5 个子 pom 都自己显式声明了 log4j-api，
+             见 z-lc-sdk/pom.xml:28-32 那一条）。本次因为下面那条 exclusion 把 log4j-slf4j2-impl 摘掉，
+             借道就断了（实测：不加这一条时 z-lc-common 编译 12 处 "package org.apache.logging.log4j
+             does not exist" / "cannot find symbol: class Logger"）。显式声明、版本由父链下发
+             （地板直接钉 log4j-api 2.25.4，与基线借到的 2.17.2 不同值，那处漂移记在仓根 DM 的说明里），
+             不新增版本键。 -->
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+        </dependency>
         <!-- z-lc-common 只依赖 spring-web (POJO/JSON) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -33,11 +44,23 @@
             <groupId>javax.validation</groupId>
             <artifactId>validation-api</artifactId>
         </dependency>
-        <!-- z-util-core (StatusCode 接口 — ZLcEngineStatusCode 实现该接口) -->
+        <!-- z-util-core (StatusCode 接口 — ZLcEngineStatusCode 实现该接口)
+             这里的 exclusion 与本仓 z-lc-core/pom.xml:50-96 那一段是同一件事（完整实测理由写在那里）：
+             z-util-core:1.0.13 带着 log4j-slf4j2-impl:2.26.1，类名与 1.x 那支逐字同名，而本链的
+             slf4j-api 是 1.7.36。本模块不写就会顺着 z-lc-common → z-lc-sdk → z-lc-core 这条路把 2.x 那只
+             再送回下游（本仓实测 8 条路径中的 2 条经兄弟模块），所以在源头一起摘掉。
+             对下游发布件的影响：z-lc-web 自己直接声明 z-util-core 且不排除，
+             z-lc-admin 需要的 log4j-slf4j2-impl（它跑 slf4j-api 2.0.7 那一支）走的正是 z-lc-web 这条路，
+             实测最近者胜，不受本条影响。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-core</artifactId>
-            <version>${util.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Test dependencies -->
@@ -49,6 +72,31 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- 迁移补的一条 test 域 binding，只有本模块需要（其余 5 个子 pom 实测不需要补 binding；
+             core/sdk 那两处补的是另一件事——log4j-slf4j2-impl 的 exclusion，见 z-lc-core/pom.xml:50-96）。
+             起因是地板的一条策略：z-boot-dependencies:1.0.19 里 `spring-boot-starter-logging` 那条
+             直接条目带 `<exclusions>*:*</exclusions>`（口径"日志只留 log4j2 一族"）⇒ 本模块 compile 树上
+             基线那四件 logback-classic/logback-core 1.2.12 + log4j-to-slf4j 2.17.2 + jul-to-slf4j 1.7.36
+             一起消失。逐模块 binding 实测（两侧 tree 同一把尺）：基线本模块唯一可用的 slf4j 1.x binding
+             就是 logback-classic 1.2.12，迁移后本模块 0 个可用 binding —— 只剩对 slf4j-api 1.7.36 完全惰性的
+             log4j-slf4j2-impl 2.26.1（SLF4J 2.x 那一支，本模块已用 exclusion 摘掉，sdk 同）；
+             design/web 仍留 log4j-slf4j-impl（2.17.2 → 2.25.4，且直接声明顺序在 z-util-core 之前，两侧一致）、
+             admin 仍是 log4j-slf4j2-impl + slf4j-api 2.0.7，这两处不受影响。
+             代价在测试里露头：ZLcUtilDedupEquivalenceTest.mdcThreadPoolExecutorEquivalentAndSafer 断言
+             MDC 跨线程传播，无 binding 时 slf4j 1.7 打 "Failed to load class org.slf4j.impl.StaticMDCBinder
+             / Defaulting to no-operation MDCAdapter" ⇒ MDC.put 落空、断言 expected "test-trace-123"
+             but was null（基线同一断言靠 logback 的 LogbackMDCAdapter 过）。
+             src/main 现读 0 处 org.slf4j（本模块直接用 log4j2 API 的是 3 个文件：ZLcTaskExecutionUtil /
+             ZLcRetryAspect / ZLcAcePermissionDefinitions），全仓 0 处 java.util.logging、0 个 logback*.xml
+             ⇒ jul-to-slf4j 与 log4j-to-slf4j 都不复原，只把测试尺子踩住的那一件复原到 test 域；
+             生产侧跟着地板口径走（binding 由 app 模块 z-lc-web / z-lc-admin 的 spring-boot-starter-log4j2 供）。
+             不新增版本键：logback-classic 仍由父链 import 的 spring-boot-dependencies 2.7.18 下发 1.2.12，
+             与基线逐字同值（同做法见 z-rpc/z-rpc-spring-boot-starter/pom.xml:74-95）。 -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

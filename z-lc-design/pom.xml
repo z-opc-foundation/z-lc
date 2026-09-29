@@ -11,16 +11,19 @@
     </parent>
 
     <artifactId>z-lc-design</artifactId>
+
+    <!-- 迁移改动（逐条同值，判据见根 pom 的 properties / DM 注释）：
+         · 那块 <properties>（maven.compiler.source/target + sourceEncoding）删了，父链同值供给。
+         · knife4j-openapi3-spring-boot-starter 的字面 <version>4.1.0</version> 删了：地板按同一坐标
+           直钉 ${knife4j-openapi3.version}=4.1.0（现读 repo1 z-boot-dependencies-1.0.19.pom:295-296），
+           与基线树 knife4j-*:jar:4.1.0 逐字相同 ⇒ 上面那句"不显式 version"这次才真正成立。
+         · z-util-core 的 ${util.version} 删了：fleet 同坐标直钉 1.0.13，同值。
+         · 本模块自己排掉 spring-boot-starter-logging / logback-classic 的三条 exclusion 是建仓就有的
+           写法（floor 的 *:* 通配 exclusion 对本模块是惰性的，运行期实现仍是 log4j2）。 -->
     <name>z-lc-design</name>
     <description>z-lc Design Framework — @LowCodeModel / @LowCodeModelService / PageTemplate / Collector. Framework
         core, no business implementation.
     </description>
-
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
 
     <dependencies>
         <!-- Log4j2 API (本模块 src/main/java 含 LogManager.getLogger 调用) -->
@@ -69,13 +72,11 @@
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-spring-boot-starter</artifactId>
-            <version>4.1.0</version>
         </dependency>
 
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-core</artifactId>
-            <version>${util.version}</version>
         </dependency>
 
         <!-- 本模块测试源码是 JUnit 4（org.junit.Test）。此前靠旧 com.zifang:z-util-core:1.0.2-SNAPSHOT

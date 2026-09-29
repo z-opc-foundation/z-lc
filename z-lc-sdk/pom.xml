@@ -11,16 +11,18 @@
     </parent>
 
     <artifactId>z-lc-sdk</artifactId>
+
+    <!-- 迁移改动（逐条同值，判据见根 pom 的 properties / DM 注释）：
+         · 那块 <properties>（maven.compiler.source/target=8 + project.build.sourceEncoding=UTF-8）删了，
+           父链 z-boot-parent:1.0.19 供同一面值。
+         · 自家 z-lc-common 那条依赖本来就没写 version（走根 DM），未动。
+         · io.github.yuku123:z-util-core 的 <version>${util.version}</version> 删了：
+           z-boot-fleet:1.0.0 按同一坐标直钉 1.0.13，与基线树 z-util-core:jar:1.0.13 逐字相同。
+         · junit:junit 那条不写版本是对的：floor import 的 Boot BOM 供 4.13.2，基线树同值。 -->
     <name>z-lc-sdk</name>
     <description>z-lc SPI Framework — 25 SPI interfaces, annotations and abstract base. Pure API, no business
         implementation.
     </description>
-
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
 
     <dependencies>
         <!-- Log4j2 API (本模块 src/main/java 含 LogManager.getLogger 调用) -->
@@ -33,10 +35,23 @@
             <groupId>com.zifang</groupId>
             <artifactId>z-lc-common</artifactId>
         </dependency>
+        <!-- z-util-core：这条 exclusion 与本仓 z-lc-common / z-lc-core 上的是同一件事
+             （完整实测理由写在 z-lc-core/pom.xml:50-96）：z-util-core:1.0.13 带着
+             log4j-slf4j2-impl:2.26.1，类名与 1.x 那支（log4j-slf4j-impl）逐字同名，
+             而本链的 slf4j-api 是父链下发的 1.7.36。本模块是 z-lc-core 的直接依赖，
+             不在这里摘，2.x 那只就会顺着 z-lc-sdk → z-util-core 这条路重新进 z-lc-core 的
+             classpath（实测 59 条 NoClassDefFoundError 就是这么来的）。
+             本模块自己的测试 0 处 MDC/logback 引用（实测 grep），摘掉后没有任何可用的 slf4j 1.x
+             binding ⇒ 走 slf4j 的 NOP，与迁移前"库不指定 binding"的口径一致，525 条测试实测不受影响。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-core</artifactId>
-            <version>${util.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- 纯 API — 只引 spring-core (注解扫描), 不引 lombok (手写 getter/setter) -->

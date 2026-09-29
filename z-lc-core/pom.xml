@@ -11,11 +11,18 @@
 
     <artifactId>z-lc-core</artifactId>
 
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
+    <!-- 迁移改动（逐条同值或有明确归属，判据见根 pom 的 properties / DM 注释）：
+         · 那块 <properties>（maven.compiler.source/target + project.build.sourceEncoding）删了，父链同值供给。
+         · 三处字面 <version> 删了（trap 3：模块侧版本压过一切 DM）：
+           z-boot-datasource-starter 1.0.17 → 由 parent 的 23 条自家 starter 下发 1.0.19
+           （这是本次唯一一处**有意的兄弟仓抬号**，与 z-task/pom.xml:123-126 同一判法）；
+           z-script-engine 1.0.0 → fleet 按同一坐标直钉 1.0.0（同值）；
+           z-agent-llm-gateway-core ${project.version} → 收进根 DM 的同坐标 ${project.version}（同值）。
+         · z-util-core / -jdbc / -http / -parser-json 这四条本来就没写版本，现在由 fleet 下发 1.0.13，
+           与基线树同值。
+         · com.squareup.okhttp3:okhttp 不写版本是对的：基线走本仓那条 Boot BOM import 的 4.9.3，
+           迁移后走地板直钉的 4.12.0（floor 面值，本仓 pom 里那段注释本来就写着"由 z-boot-dependencies
+           BOM 管"）。 -->
 
     <dependencies>
         <!-- Jackson databind (本模块 src/main/java 用 ObjectMapper / JsonNode 等) -->
@@ -40,22 +47,75 @@
             <artifactId>z-lc-sdk</artifactId>
         </dependency>
 
-        <!-- z-util-core 提供 PageResult -->
+        <!-- z-util-core 提供 PageResult
+             这里补的 exclusion 是迁移实测出来的（不是历史遗留）。完整口径写在本模块这一条上，
+             z-util-jdbc / z-util-http 与本仓 z-lc-common、z-lc-sdk 里那几条是同一件事的引用。
+             事情是：z-util-core:1.0.13 带着 log4j-slf4j2-impl:2.26.1 —— SLF4J **2.x** 那一支的桥，
+             它的类名与 1.x 那支（log4j-slf4j-impl）逐字同名（org.apache.logging.slf4j.Log4jLoggerFactory /
+             Log4jLogger / Log4jMDCAdapter），同一个 classpath 上先出现的那只赢；而 2.x 那一只里的
+             Log4jLogger 引用 org/slf4j/spi/LoggingEventBuilder —— 那是 slf4j-api **2.x** 才有的类，
+             本模块的 slf4j-api 是父链（Boot 2.7.18 的 DM）下发的 1.7.36，没有这个类 ⇒ 静态初始化当场炸。
+             本模块的直接依赖顺序实测（两棵树同一把尺）：z-util-core 在树里排第 287 行，供 log4j-slf4j-impl
+             的 spring-boot-starter-log4j2 是 z-boot-datasource-starter 的传递件、排到第 371 行之后 ⇒
+             2.x 那只先占位。
+             基线为什么没事：幻影父链没给 spring-boot-starter-logging 挂 *:* 通配 exclusion，
+             spring-boot-starter-web 先带进 logback-classic 1.2.12，slf4j 1.7 的绑定查找在它那里就收口了，
+             org.apache.logging.slf4j.* 一把都没加载 —— 迁移后地板把 logback 一族整块摘掉，这只遮丑的桥没了，
+             冲突当场露头。实测（warm clean test，JAVA_HOME=corretto-1.8.0_492）：本模块 1338 条里 59 条 Errors，
+             WfAdapterTest / WorkflowTriggerDispatcherTest / DataModelConvertMysqlSqlStrategyTest /
+             DataModelConvertMysqlSqlStrategyH2Test / MetaAdapterTest / DataModelConvertStrategyRegistrarTest
+             全是 NoClassDefFoundError: org/slf4j/spi/LoggingEventBuilder，次生为
+             Could not initialize class com.zifang.util.http.client.HttpExecutor /
+             com.zifang.util.db.context.DataSourceRegistry。
+             改法取最小那一档：摘掉 2.x 那只，把绑定交回 1.x 那支（log4j-slf4j-impl，地板直钉 2.25.4），
+             slf4j-api 保持父链的 1.7.36 不动 = 与基线逐字同值，log4j2 一族跟着地板 2.25.4（本仓不另钉）。
+             同做法见 z-gw/z-gw-core/pom.xml:101-106、z-gw/z-gw-api/pom.xml:59-63（同样是把
+             log4j-slf4j2-impl 从 z-util-core 上摘掉）。
+             不这么改的另一条路是把全仓 slf4j-api 抬到 2.0.7（z-lc-admin 早就这么跑，它反过来排除
+             log4j-slf4j-impl 并钉 slf4j.version=2.0.7），但那是"整族换版本 + 五个模块改口径"的另一个决定，
+             不在统一继承 parent 这一格里顺手做 —— 已记进交付报告的"没替 CEO 判"清单。
+             为什么不在本模块排除 log4j-slf4j-impl 反过来留 2.x 那只：那等于替 design/web/admin 决定口径，
+             而 design/web 的直接声明顺序（starter-log4j2 在 z-util-core 之前，树里 499<525、597<695）
+             基线与迁移后一致，本来就没事。
+             这一条只覆盖 8 条路径里以 z-util-core 为入口的那 4 条，另 4 条走 z-util-jdbc→z-util-proxy /
+             z-util-http→z-util-proxy 与本仓 z-lc-sdk、z-lc-common，所以同一 exclusion 在那四处一起写了
+             （实测路径清单见交付报告）。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-core</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
-        <!-- 数据源注册/探活/方言/动态查询 (z-lc 不再自建造池与探活代码) -->
+        <!-- 数据源注册/探活/方言/动态查询 (z-lc 不再自建造池与探活代码)
+             同上一条：z-util-jdbc:1.0.13 经 z-util-proxy / z-util-expr-sql 再到 z-util-core，
+             是 log4j-slf4j2-impl:2.26.1 进本模块 classpath 的另 3 条路径，必须一起摘。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-jdbc</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
-        <!-- Library-First: HTTP 能力下沉到 z-util-http，不自造 OkHttp/RestTemplate 配置 -->
+        <!-- Library-First: HTTP 能力下沉到 z-util-http，不自造 OkHttp/RestTemplate 配置
+             同上一条：z-util-http:1.0.13 经 z-util-proxy / z-util-core 带进剩下的路径。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-util-http</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- 唯一的例外，且不是"自造一套客户端"：z-util-http 改超时的入口只有
              {@code new HttpExecutor(OkHttpClient)} 一个（实测 HttpRequestDefinition 没有任何超时字段，
@@ -89,14 +149,12 @@
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-boot-datasource-starter</artifactId>
-            <version>1.0.17</version>
         </dependency>
 
         <!-- z-script: 业务脚本引擎 (CRUD 生命周期钩子) -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-script-engine</artifactId>
-            <version>1.0.0</version>
         </dependency>
 
         <!-- Caffeine 本地缓存 (降低 adapter HTTP 出口) -->
@@ -109,7 +167,6 @@
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-agent-llm-gateway-core</artifactId>
-            <version>${project.version}</version>
             <optional>true</optional>
         </dependency>
 

@@ -17,9 +17,6 @@
     </description>
 
     <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!--
             Log4j2 全套显式锁定到 2.20.0 + slf4j-api 2.0.7:
             修复 spring-boot-dependencies 2.7.12 强制降级 log4j-slf4j-impl 2.25.4 → 2.17.2 导致的
@@ -31,6 +28,14 @@
     </properties>
 
     <dependencyManagement>
+        <!-- 这一块**整块逐字保留**（README「消费模型」步骤 1/3 的"刻意分歧"）：
+             log4j2 一族 2.20.0 + slf4j-api 2.0.7 是修 NoSuchMethodError
+             (org.apache.logging.slf4j.Log4jLoggerFactory.<init>) 的既有决定，面值就靠这些
+             **模块侧直接条目**顶住：直接条目按"最近声明"赢过继承来的父链 DM（floor:1.0.19 把
+             log4j-api/core/jul/slf4j-impl 直钉 2.25.4、Boot BOM 把 slf4j-api 给 1.7.36）。
+             preflight 迁前把 log4j2.version 报成"与父链不同值 2.20.0 vs 2.25.4"、slf4j.version
+             报成"父链不供这个键名"，两条都在这一层原地解决，没有删键、也没有把键上抬到根 pom
+             （上抬会让 z-lc-core/-design/-web 那三棵树也跟着换实现，那是另一件事）。 -->
         <dependencies>
             <dependency>
                 <groupId>org.slf4j</groupId>
@@ -61,33 +66,33 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- 下面 5 处 com.zifang 依赖的 <version> 都删了（z-boot README「消费模型」步骤 3 / trap 3：
+             模块侧写版本压过一切 DM）：4 个自家模块原本写 ${project.version}、
+             z-agent-llm-gateway-core 原本写字面 1.0.0-SNAPSHOT，现在一律从根 pom 的
+             <dependencyManagement> 拿同一个 ${project.version}=1.0.0-SNAPSHOT，逐字同值。
+             本模块的 maven.compiler.source/target/encoding 那三格也删了（父链供 8/8/UTF-8 同值）。 -->
         <!-- z-lc-web (含 LcModuleDataSource 数据源 + 全部 controller) -->
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-lc-web</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <!-- z-lc-design (含 PageTemplateController + LowCodeModelService 收集器) -->
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-lc-design</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <!-- z-lc-core 内部依赖传递到 admin: z-agent-llm-gateway-core (AiModelingService 用到) -->
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-agent-llm-gateway-core</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-lc-sdk</artifactId>
-            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-lc-common</artifactId>
-            <version>${project.version}</version>
         </dependency>
 
         <!-- Spring Boot Web (provided 走 z-lc-web, 这里加保险) -->
@@ -133,7 +138,13 @@
         </dependency>
 
         <!-- H2 2.2.224: 实测 MODE=MySQL 可直接执行本仓库的 MySQL DDL (含 ENGINE/UNIQUE KEY/内联 KEY),
-             1.4.200 反而不支持 CASE_INSENSITIVE_IDENTIFIERS, 故锁 2.x -->
+             1.4.200 反而不支持 CASE_INSENSITIVE_IDENTIFIERS, 故锁 2.x
+             ⚠ 这一处字面 <version> 在迁移里**故意留着不删**：基线树里 h2 是两格共存
+             （z-lc-core / z-lc-web 的 test 作用域走 Boot/floor 的 2.1.214，本模块 runtime 走 2.2.224）。
+             删掉这一行 → 本模块静默降到 2.1.214（上面那段 DDL 支持就是它写下来的理由）；
+             把它上抬成根 DM 的直接条目 → z-lc-core/-web 两棵树静默升到 2.2.224。
+             两个方向都是本次迁移没被授权做的实现更换，所以维持"模块侧最近声明"原样；已记入迁移报告的
+             "拒绝裁定"（h2 到底统一成哪一格、由谁统一，是 z-lc 自己的功能决定，不是消费模型决定）。 -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

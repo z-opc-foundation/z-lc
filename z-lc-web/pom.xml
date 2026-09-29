@@ -11,11 +11,13 @@
 
     <artifactId>z-lc-web</artifactId>
 
-    <properties>
-        <maven.compiler.source>8</maven.compiler.source>
-        <maven.compiler.target>8</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
+    <!-- 迁移改动（逐条同值或有明确归属，判据见根 pom 的 properties / DM 注释）：
+         · 那块 <properties>（maven.compiler.source/target + sourceEncoding）删了，父链同值供给。
+         · 三处 <version> 删了：knife4j-openapi3-spring-boot-starter 4.1.0（地板同值 4.1.0）、
+           z-boot-datasource-starter 1.0.17（parent 下发 1.0.19，同 z-lc-core 那一处）、
+           z-agent-llm-gateway-core ${project.version}（收进根 DM 同坐标同值，仍是 test 作用域）。
+         · z-util-core / z-util-expr-obj 无版本，由 fleet 下发 1.0.13，与基线树同值。
+         · 自家 4 个 sibling 依赖本来就不写版本，走根 DM 的 ${project.version}。 -->
 
     <dependencies>
         <!-- Log4j2 API (本模块 src/main/java 含 LogManager.getLogger 调用) -->
@@ -83,14 +85,12 @@
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
             <artifactId>knife4j-openapi3-spring-boot-starter</artifactId>
-            <version>4.1.0</version>
         </dependency>
 
         <!-- 数据源 starter (ModuleDataSourceTemplate / Druid) — 替代 mybatis-plus -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-boot-datasource-starter</artifactId>
-            <version>1.0.17</version>
         </dependency>
 
         <!-- 测试: Spring Boot Test (JUnit5 + MockMvc + AssertJ + Jackson) -->
@@ -126,7 +126,6 @@
         <dependency>
             <groupId>com.zifang</groupId>
             <artifactId>z-agent-llm-gateway-core</artifactId>
-            <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
