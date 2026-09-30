@@ -1869,7 +1869,7 @@ DOCKER / GIT_PUSH / SQL 各带一句"服务器为什么做不了"），写入口
 能兑现那一种**真的同步执行**（`schemaAdminService.provisionAllTables`）并把结局 + 四计数汇总写回那一行，
 `trigger` 返回**重读后**的那一行；`/deployment/vocabulary` 成为界面下拉项的唯一来源
 （`_deployment.ts` + `DeploymentsPage` 从它长清单，被拒的那几种摆在窗里并点名原因）。
-全貌与裁定记在 `_doc/003_待办事项/feature001_workflow_binding_fires/TASK.md` §2.12。
+全貌与裁定记在 `_doc/007_backlog/feature001_workflow_binding_fires/TASK.md` §2.12。
 
 **注入自证（永久量具 `_e2e/mutate_deployment_guard.py`，7 支 / 19 条具名红）**：
 J1a 摘写入口闸、J1b 摘"执行完把结局写回"、J2 摘 vocabulary 的可执行面、J3 让 `trigger` 返回伪造行、

@@ -76,9 +76,9 @@ docker-compose.override.yml
 
 # ============ 跨仓借鉴 / 内部演进过程文档 (不上传) ============
 # 跨仓借鉴 / 内部演进过程涉及商业代码 / 内部决策, 不上传
-_doc/004_skill/*-distill-plan.md
-_doc/004_skill/distill-*.md
-_doc/004_skill/ace-platform-*
-_doc/004_skill/model-evolution-plan.md
-_doc/004_skill/ace-*
+_doc/001_arch/*-distill-plan.md
+_doc/001_arch/distill-*.md
+_doc/001_arch/ace-platform-*
+_doc/001_arch/model-evolution-plan.md
+_doc/001_arch/ace-*
 

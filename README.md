@@ -283,16 +283,14 @@ _Maintained by the z-opc-foundation organization._
     读它当历史，别当现状；现状以本 README 与根 POM 为准。
     规范里常见的 `00-overview.md` / `02-api.md` / `03-db-schema.md` / `05-frontend.md` / `07-roadmap.md`
     在本仓 **都不存在**，没有对应实现或文档就不写链接。
-- [`_doc/002_deploy/`](_doc/002_deploy/) — 目前为**空目录**（部署 SQL 实际在
-  `z-lc-admin/src/main/resources/db/`，不在这里）。
-- [`_doc/003_script/`](_doc/003_script/) — 目前为**空目录**（脚本实际在 `_e2e/`）。
-- `_doc/003_待办事项/` — ⚠ 非规范目录（收口规范只认 `001_arch` / `002_deploy` /
-  `003_script` / `004_skill`），但它确实在仓里，如实登记：
-  - [`_doc/003_待办事项/README.md`](_doc/003_待办事项/README.md) — 待办索引与取数命令
-  - [`feature001_workflow_binding_fires/TASK.md`](_doc/003_待办事项/feature001_workflow_binding_fires/TASK.md) — 缺陷 #61：流程绑定这条链其余四层覆盖面
-  - [`feature002_http_status_not_checked/TASK.md`](_doc/003_待办事项/feature002_http_status_not_checked/TASK.md) — 缺陷 #62：`isSuccess()` 不含状态码
-  - [`feature003_dead_envelope_parses/TASK.md`](_doc/003_待办事项/feature003_dead_envelope_parses/TASK.md) — 缺陷 #63：5 处 `fromJson` 结构上必抛
-- `_doc/004_skill/` — 目录里那份 `model-evolution-plan.md` **本机存在但被 `.gitignore`（第 82 行）排除**，
+- `002_deploy` / `003_script` / `004_skill` — **槽位不建**：部署 SQL 实际在
+  `z-lc-admin/src/main/resources/db/`，脚本实际在 `_e2e/`，本仓没有真 SKILL 定义。
+- [`_doc/007_backlog/`](_doc/007_backlog/) — 待办与缺陷覆盖面，如实登记：
+  - [`_doc/007_backlog/README.md`](_doc/007_backlog/README.md) — 待办索引与取数命令
+  - [`feature001_workflow_binding_fires/TASK.md`](_doc/007_backlog/feature001_workflow_binding_fires/TASK.md) — 缺陷 #61：流程绑定这条链其余四层覆盖面
+  - [`feature002_http_status_not_checked/TASK.md`](_doc/007_backlog/feature002_http_status_not_checked/TASK.md) — 缺陷 #62：`isSuccess()` 不含状态码
+  - [`feature003_dead_envelope_parses/TASK.md`](_doc/007_backlog/feature003_dead_envelope_parses/TASK.md) — 缺陷 #63：5 处 `fromJson` 结构上必抛
+- 私有演进稿 `_doc/001_arch/model-evolution-plan.md` **本机存在但被 `.gitignore`（第 82 行）排除**，
   不在 git 索引里、clone 下来看不到，所以这里不给链接；按规范口径这一层等于**无已提交文档**。
 
 跨文档之外的验证面另见 [`_e2e/README.md`](_e2e/README.md)（端到端续跑清单、四层闸门的读数与坑）。

@@ -480,7 +480,7 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 
 ⚠ **编号这一段是查号时发现的，别照抄"59"**：`git grep` 实测 #59/#60 已被 `4fee620`（#52 那一窗，
 09-26 19:23）占走 —— 那两号指的是"`healthproof` 不许写死端口"与"`trap` 的最后一条状态当退出码"；
-#62/#63 是另一会话的 adapter 战役（`_doc/003_待办事项/README.md` 里两行），#61 是本轮。
+#62/#63 是另一会话的 adapter 战役（`_doc/007_backlog/README.md` 里两行），#61 是本轮。
 下一个真空号是 **#64**（`#64` 在全仓只以 `&#64;` 的 HTML 转义出现，不是编号），这一支记作 #64。
 
 `step_status` 里那句归因（`app.pid=… 端口 18090 上=…`）尾随一个 `| sed "s/\$/APP_PORT/$APP_PORT/"`：
