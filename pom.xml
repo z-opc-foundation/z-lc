@@ -27,14 +27,19 @@
         <relativePath/>
     </parent>
 
-    <!-- groupId 与 version 必须自己写出来：这两格以前是从幻影 parent com.zifang:z-opc 继承的。
-         不写就落到新 parent 的 io.github.yuku123:z-boot-parent:1.0.19 上，那 6 个子 pom 的
-         `<parent>com.zifang:z-lc:1.0.0-SNAPSHOT</parent>` 当场指不回来，z-opc 单体也是按
-         com.zifang:z-lc-core 这一坐标引用本仓的。这里只做"把隐式坐标改成显式、逐字同值"：
-         不换 groupId、不抬版本（换命名空间与批量抬号都是另外的决定）。 -->
-    <groupId>com.zifang</groupId>
+    <!-- 自家这两格必须自己写出来（以前是从幻影 parent com.zifang:z-opc 继承的，不写就落到
+         新 parent 的 io.github.yuku123:z-boot-parent 那一格上，6 个子 pom 的 parent 当场指不回来）。
+         迁移那一轮只做"隐式坐标改成显式、逐字同值"；2026-09-30 CEO 裁定"上到中央仓库"，
+         现在把换号这一刀做完：
+           groupId com.zifang → io.github.yuku123（与本组织已发布的 26 个仓同一 namespace）
+           版本 1.0.0-SNAPSHOT → 1.0.0（Central 不收 SNAPSHOT；repo1 实测 z-lc 与 6 个模块坐标
+             在两个 namespace 下 maven-metadata 全 404 ⇒ 1.0.0 是第一个号，不顶掉任何已发布件）
+         Java 包名保持 com.zifang.*：换的是 Maven 坐标，不是 namespace（同 z-cache/z-util）。
+         仓内自家坐标（根 dependencyManagement 那 7 格 + 子 pom 的 parent/sibling）一起换；
+         全组织 pom grep 实测除 z-opc 那份单体副本外没有别的仓引用这几个构件 ⇒ 对已发布件零影响。 -->
+    <groupId>io.github.yuku123</groupId>
     <artifactId>z-lc</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>pom</packaging>
 
     <!-- 身份元数据自报（写法照 z-ext/pom.xml:30-55、z-meta/pom.xml:42-75）：加了 <parent> 之后常开
@@ -54,6 +59,23 @@
             <distribution>repo</distribution>
         </license>
     </licenses>
+
+    <!-- developers 这一格以前没有：flatten(oss) 会把父链的 developers 抄进每份发布 pom，
+         父链那格是 z-boot 的身份 ⇒ 自报本仓的（写法与面值同 z-cache/pom.xml、z-meta/pom.xml，
+         id/email 与本组织已上中央的 26 个仓逐字一致）。 -->
+    <developers>
+        <developer>
+            <id>yuku123</id>
+            <name>yuku123</name>
+            <email>1340947819@qq.com</email>
+            <organization>z-opc-foundation</organization>
+            <organizationUrl>https://github.com/z-opc-foundation</organizationUrl>
+            <timezone>+08:00</timezone>
+            <roles>
+                <role>owner</role>
+            </roles>
+        </developer>
+    </developers>
 
     <scm>
         <connection>scm:git:https://github.com/z-opc-foundation/z-lc.git</connection>
@@ -101,39 +123,39 @@
                  6 个 jar 模块迁移前就在，逐字未动；新增的是聚合 pom 那一格，必须带
                  <type>pom</type>：受管项按 g:a:type:classifier 匹配（z-meta/pom.xml:113-115 同一实测）。 -->
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc</artifactId>
                 <version>${project.version}</version>
                 <type>pom</type>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-common</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-sdk</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-design</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-web</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- z-lc-spring-boot-starter 已迁移至 z-boot/z-boot-integration-starters -->
             <dependency>
-                <groupId>com.zifang</groupId>
+                <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-admin</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -177,22 +199,21 @@
                 </exclusions>
             </dependency>
 
-            <!-- com.zifang:z-agent-llm-gateway-core：仓外坐标（z-agent 仓的单体侧构件），新链不供这个
-                 groupId：fleet 管的是 io.github.yuku123 那一族，幻影父链的 178 条里也没有这一格
-                 （实测 grep -c z-agent-llm-gateway = 0）。迁移前它靠 3 个子 pom 各写一次版本
-                 （z-lc-core `${project.version}` optional、z-lc-web `${project.version}` test、
-                 z-lc-admin 字面 `1.0.0-SNAPSHOT`），那是 trap 3 点名的"模块侧版本压过一切 DM"的形状。
-                 收上来钉 ${project.version}=1.0.0-SNAPSHOT 与迁移前**逐字同值**，三处模块侧的
-                 <version> 一起删。
-                 ⚠ 这一格今天只存在于本机 ~/.m2（repo1 实测 com/zifang/z-agent-llm-gateway-core
-                 maven-metadata.xml = 404），而它自己的 pom 又写着 `<parent>com.zifang:z-agent-llm-gateway:
-                 1.0.0-SNAPSHOT</parent>`（同样只在 ~/.m2）⇒ 它是本仓 cold room 清单里的幻影坐标，
-                 基线那遍一样红，不在迁移里顺手改坐标。 -->
-            <dependency>
-                <groupId>com.zifang</groupId>
-                <artifactId>z-agent-llm-gateway-core</artifactId>
-                <version>${project.version}</version>
-            </dependency>
+            <!-- 2026-09-30：这条 com.zifang:z-agent-llm-gateway-core:${project.version} 删掉，
+                 三个模块侧声明（z-lc-core optional / z-lc-web test / z-lc-admin compile）一起换成
+                 io.github.yuku123:z-llm-core + z-llm-api，版本交给继承来的 parent（fleet 面值 0.1.7，
+                 repo1 可读，实测 jar 里有 ChatGatewayService / UnifiedRequest / UnifiedMessage /
+                 UnifiedResponse）。
+                 为什么这次不是"顺手改坐标"而是没有别的解：那条构件的**源码在组织里已经不存在**
+                 —— z-agent 仓现在的模块是 api/core/starter/admin，z-opc 里的单体副本叫
+                 z-agent-llm-center，`z-agent-llm-gateway` 只剩 ~/.m2 里那三个 1.0.0-SNAPSHOT jar，
+                 repo1 两个 namespace 下 maven-metadata 全 404。也就是说 z-lc 的 AI 建模那条路
+                 编译依赖的是一台机器上的陈旧字节码，而它自己的 pom 又挂着同族的幻影 parent。
+                 FEATURE066 那次拆分给出的接手面就是 z-llm 的 ChatGatewayService.chat(UnifiedRequest)
+                 （它的 javadoc 原文点名"in-process 调用方兼容入口 (z-team / z-agent / z-lc)"），
+                 z-opc 侧 ZAgentLlmTextProvider / EvolutionAgent 已经是这个写法；本仓 AiModelingService
+                 跟着改到同一形状，行为面差别只在模型标识要交给网关解析（改成可配属性，默认值沿用
+                 原来那句 "default"）。 -->
 
             <!-- 以下都是**删除**，留字说明删了什么、为什么顶不住（README 步骤 3、5、10）：
                  1) org.springframework.boot:spring-boot-dependencies:${spring-boot.version} 的
@@ -313,4 +334,142 @@
         </plugins>
     </build>
 
+    <!-- ═══════ 中央发布通道（2026-09-30 CEO 裁定「上到中央仓库」）═══════
+         逐件抄 z-cache/pom.xml 的 central profile，插件版本面值一件不改：
+         distributionManagement 指 https://central.sonatype.com（server id central 的凭据只在
+         ~/.m2/settings.xml，值不落仓）；maven-deploy-plugin 3.1.4 skip=true，上传由
+         central-publishing-maven-plugin 0.7.0 接管（tokenAuth + autoPublish + waitUntil=uploaded）；
+         maven-source-plugin 3.3.0、maven-javadoc-plugin 3.11.2（doclint=none + failOnError=false）、
+         maven-gpg-plugin 3.2.7（passphrase 只从 -Dgpg.passphrase 传，不写进 pom 也不写进命令行历史）。
+         发布用 pom 的自包含由上面常开的 flatten(oss) + updatePomFile 负责。 -->
+    <profiles>
+        <profile>
+            <id>central</id>
+            <properties>
+                <maven.javadoc.skip>false</maven.javadoc.skip>
+                <central.gpg.skip>false</central.gpg.skip>
+            </properties>
+            <distributionManagement>
+                <repository>
+                    <id>central</id>
+                    <url>https://central.sonatype.com</url>
+                </repository>
+                <snapshotRepository>
+                    <id>central</id>
+                    <url>https://central.sonatype.com</url>
+                </snapshotRepository>
+            </distributionManagement>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-deploy-plugin</artifactId>
+                        <version>3.1.4</version>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-source-plugin</artifactId>
+                        <version>3.3.0</version>
+                        <executions>
+                            <execution>
+                                <id>attach-sources</id>
+                                <goals>
+                                    <goal>jar-no-fork</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.11.2</version>
+                        <configuration>
+                            <doclint>none</doclint>
+                            <failOnError>false</failOnError>
+                            <failOnWarnings>false</failOnWarnings>
+                            <quiet>true</quiet>
+                            <!-- Java 口径由 parent 的 pluginManagement 下发（z-cache 这里原先引的是
+                                 本仓没定义过的 compile.version，配 failOnError=false 后静默变成无效参数） -->
+                            <source>${maven.compiler.source}</source>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.7</version>
+                        <configuration>
+                            <skip>${central.gpg.skip}</skip>
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                                <arg>--no-tty</arg>
+                            </gpgArguments>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.7.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <tokenAuth>true</tokenAuth>
+                            <autoPublish>true</autoPublish>
+                            <!-- 本插件不认 maven.deploy.skip，没排除的模块照样进 bundle
+                                 （实测结论见 z-schedule/pom.xml 同位置注释）⇒ 不可发布的模块点名列出。
+                                  · z-lc-admin：repackage 指定 mainClass ZLcBootstrapApplication ⇒ 产物是 standalone 端到端入口的 fat jar，不是库件
+                                  -->
+                            <excludeArtifacts>
+                                <excludeArtifact>z-lc-admin</excludeArtifact>
+                            </excludeArtifacts>
+                            <waitUntil>uploaded</waitUntil>
+                            <waitMaxTime>1800</waitMaxTime>
+                            <waitPollingInterval>10</waitPollingInterval>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- 真发前的形状检查：同一套 distributionManagement，只跳 javadoc 与签名。
+             与 central 一起开（-Pcentral,central-dryrun）时后者的 properties 覆盖 skip 两格。 -->
+        <profile>
+            <id>central-dryrun</id>
+            <properties>
+                <maven.javadoc.skip>true</maven.javadoc.skip>
+                <central.gpg.skip>true</central.gpg.skip>
+            </properties>
+            <distributionManagement>
+                <repository>
+                    <id>central</id>
+                    <url>https://central.sonatype.com</url>
+                </repository>
+                <snapshotRepository>
+                    <id>central</id>
+                    <url>https://central.sonatype.com</url>
+                </snapshotRepository>
+            </distributionManagement>
+        </profile>
+    </profiles>
 </project>

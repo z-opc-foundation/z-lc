@@ -12,7 +12,7 @@ DB 驱动的通用 CRUD 引擎 (Phase 1), 后续扩展为可视化低代码平�
 |------|-----|
 | **项目** | z-lc |
 | **分类** | 业务应用 · 低代码 |
-| **父项目** | z-opc (com.zifang:z-opc:1.0.0-SNAPSHOT) |
+| **父项目** | z-boot-parent (io.github.yuku123:z-boot-parent:1.0.21) |
 | **默认端口** | `8088` |
 | **文档维护** | z-opc-foundation |
 | **最近更新** | 2026-09-06 |

@@ -4,12 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.zifang</groupId>
+        <groupId>io.github.yuku123</groupId>
         <artifactId>z-lc</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>z-lc-web</artifactId>
+
+    <name>z-lc-web</name>
+    <description>低代码平台 Web 层：控制器、数据源健康探测与 spring.factories 自动配置注册，供宿主 embed；本模块的 spring-boot-maven-plugin 没有 repackage execution，入库的是普通 library jar</description>
 
     <!-- 迁移改动（逐条同值或有明确归属，判据见根 pom 的 properties / DM 注释）：
          · 那块 <properties>（maven.compiler.source/target + sourceEncoding）删了，父链同值供给。
@@ -53,19 +56,19 @@
 
         <!-- z-lc 内部依赖 -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-common</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-sdk</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-design</artifactId>
         </dependency>
 
@@ -117,15 +120,17 @@
         </dependency>
 
         <!--
-            z-lc-core 把 z-agent-llm-gateway-core 声明成 <optional>true</optional>, 所以它不会传递进来.
-            AiModelingService 是 core.ai 包下的 @Component 且方法签名引用了 LlmGatewayService,
+            z-lc-core 把 io.github.yuku123:z-llm-core 声明成 optional, 所以它不会传递进来.
+            AiModelingService 是 core.ai 包下的 @Component 且方法签名引用了 ChatGatewayService,
             LcAutoConfiguration 整包扫 core 之后, 缺这个类会让上下文 introspect 直接失败
-            (NoClassDefFoundError: LlmGatewayService). 生产 standalone 由 z-lc-admin 显式引;
+            (NoClassDefFoundError: ChatGatewayService). 生产 standalone 由 z-lc-admin 显式引;
             这里补齐 test scope 让集成测试能起上下文.
+            坐标 2026-09-30 从 com.zifang:z-agent-llm-gateway-core 换过来（那条只在 ~/.m2、
+            repo1 两个 namespace 均 404，组织里也没有它的源码了），理由与类集判据见根 pom 那条注释。
         -->
         <dependency>
-            <groupId>com.zifang</groupId>
-            <artifactId>z-agent-llm-gateway-core</artifactId>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-llm-core</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -4,12 +4,16 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.zifang</groupId>
+        <groupId>io.github.yuku123</groupId>
         <artifactId>z-lc</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>z-lc-core</artifactId>
+
+    <name>z-lc-core</name>
+    <description>低代码引擎核心：字段类型处理器、DB 驱动的通用 CRUD、适配器注册与流水线/事件处理，
+        含可选的 z-llm AI 建模建议</description>
 
     <!-- 迁移改动（逐条同值或有明确归属，判据见根 pom 的 properties / DM 注释）：
          · 那块 <properties>（maven.compiler.source/target + project.build.sourceEncoding）删了，父链同值供给。
@@ -37,13 +41,13 @@
         </dependency>
         <!-- 本模块 DTO -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-common</artifactId>
         </dependency>
 
         <!-- z-lc-sdk: SPI 接口 + 注解 + 抽象基类 -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-sdk</artifactId>
         </dependency>
 
@@ -163,10 +167,17 @@
             <artifactId>caffeine</artifactId>
         </dependency>
 
-        <!-- z-agent LLM Gateway (optional - AI建模功能需要) -->
+        <!-- z-llm 网关（optional —— AI 建模功能需要，没有它 AiModelingService 走模板 fallback）。
+             原来是 com.zifang:z-agent-llm-gateway-core：那条构件在 repo1 两个 namespace 下都是 404、
+             组织里也已经没有它的源码（z-agent 现在的模块是 api/core/starter/admin），只在本机 ~/.m2
+             解析得到 ⇒ 换到 FEATURE066 之后的接手面 io.github.yuku123:z-llm-core（ChatGatewayService），
+             DTO 在 z-llm-api，由 z-llm-core 的 compile 依赖带进来（repo1 回读那份 pom 实测）。
+             版本不写字面：fleet 按坐标管着 z-llm 这一族，继承来的 parent 下发。
+             判据：本仓对 com.zifang.z.agent.llm.gateway.* 的 import 只有 AiModelingService 一处，
+             已一并改到 z-llm 的 ChatGatewayService.chat(UnifiedRequest) 形状。 -->
         <dependency>
-            <groupId>com.zifang</groupId>
-            <artifactId>z-agent-llm-gateway-core</artifactId>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-llm-core</artifactId>
             <optional>true</optional>
         </dependency>
 

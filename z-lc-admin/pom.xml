@@ -5,9 +5,9 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.zifang</groupId>
+        <groupId>io.github.yuku123</groupId>
         <artifactId>z-lc</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>z-lc-admin</artifactId>
@@ -66,32 +66,39 @@
     </dependencyManagement>
 
     <dependencies>
-        <!-- 下面 5 处 com.zifang 依赖的 <version> 都删了（z-boot README「消费模型」步骤 3 / trap 3：
-             模块侧写版本压过一切 DM）：4 个自家模块原本写 ${project.version}、
-             z-agent-llm-gateway-core 原本写字面 1.0.0-SNAPSHOT，现在一律从根 pom 的
-             <dependencyManagement> 拿同一个 ${project.version}=1.0.0-SNAPSHOT，逐字同值。
+        <!-- 下面几处自家依赖都不写版本（z-boot README「消费模型」步骤 3 / trap 3：模块侧写版本压过
+             一切 DM）：4 个自家模块由根 pom 的 dependencyManagement 钉 project.version，
+             z-llm-core 由继承来的 parent（fleet 面值）供。迁移那一轮这里删掉的是
+             z-agent-llm-gateway-core 那条字面 1.0.0-SNAPSHOT —— 2026-09-30 那条坐标整体退役，
+             换成交手面 z-llm-core（见下面那条注释）。
              本模块的 maven.compiler.source/target/encoding 那三格也删了（父链供 8/8/UTF-8 同值）。 -->
         <!-- z-lc-web (含 LcModuleDataSource 数据源 + 全部 controller) -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-web</artifactId>
         </dependency>
         <!-- z-lc-design (含 PageTemplateController + LowCodeModelService 收集器) -->
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-design</artifactId>
         </dependency>
-        <!-- z-lc-core 内部依赖传递到 admin: z-agent-llm-gateway-core (AiModelingService 用到) -->
+        <!-- z-lc-core 内部依赖传递到 admin: z-llm-core（AiModelingService 的方法签名要用）。
+             原来这一格是 com.zifang:z-agent-llm-gateway-core，那条构件 repo1 两个 namespace 均 404、
+             组织里源码也已不存在 ⇒ 换到接手面 io.github.yuku123:z-llm-core（判据见根 pom）。
+             刻意只引 core、不引 z-llm-starter：AiModelingService 那个字段是
+             @Autowired(required=false) + Qualifier("zLlmChatGatewayService")，而 starter 的自动装配
+             没进来时它就是 null ⇒ 走模板 fallback。这与迁前的实际运行形状一致（迁前 admin 也只引
+             core，qualifier 指的是 zAgentLlmGatewayLlmGatewayService，同样没有 bean 供它）。 -->
         <dependency>
-            <groupId>com.zifang</groupId>
-            <artifactId>z-agent-llm-gateway-core</artifactId>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-llm-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-sdk</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.zifang</groupId>
+            <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-common</artifactId>
         </dependency>
 

@@ -4,12 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>com.zifang</groupId>
+        <groupId>io.github.yuku123</groupId>
         <artifactId>z-lc</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>z-lc-common</artifactId>
+
+    <name>z-lc-common</name>
+    <description>低代码平台公共层：DTO/枚举/工具与业务域模型（应用、菜单、印章、数据资产等），不含引擎与 Web 接口</description>
 
     <!-- 迁移删掉了这一块 <properties>（maven.compiler.source/target=8、
          project.build.sourceEncoding=UTF-8）：父链 z-boot-parent:1.0.19 的 properties 就是

@@ -2,9 +2,10 @@ package com.zifang.z.lc.core.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zifang.util.core.json.JsonMapperFactory;
-import com.zifang.z.agent.llm.gateway.adapter.UnifiedRequest;
-import com.zifang.z.agent.llm.gateway.adapter.UnifiedResponse;
-import com.zifang.z.agent.llm.gateway.service.LlmGatewayService;
+import com.zifang.z.llm.api.dto.UnifiedMessage;
+import com.zifang.z.llm.api.dto.UnifiedRequest;
+import com.zifang.z.llm.api.dto.UnifiedResponse;
+import com.zifang.z.llm.core.service.ChatGatewayService;
 import com.zifang.z.lc.core.app.AppAdminService;
 import com.zifang.z.lc.core.event.EventService;
 import com.zifang.z.lc.mapper.executor.LcAppEntityMapper;
@@ -43,11 +44,18 @@ public class AiModelingService {
     private LcAppEntityMapper appEntityMapper;
 
     /**
-     * LLM Gateway - optional dependency, may be null if z-agent-llm-gateway not on classpath
+     * LLM Gateway - optional dependency, may be null if z-llm not on classpath
      */
     @Autowired(required = false)
-    @org.springframework.beans.factory.annotation.Qualifier("zAgentLlmGatewayLlmGatewayService")
+    @org.springframework.beans.factory.annotation.Qualifier("zLlmChatGatewayService")
     private Object llmGatewayServiceRaw;
+
+    /**
+     * 交给网关解析的模型标识。迁前这里是硬编码的 "default"，z-llm 的 ModelRouter 对空值直接
+     * 抛 modelNotFound，所以留同一个默认值、开一个属性让部署方能指到具体 vendor/模型。
+     */
+    @org.springframework.beans.factory.annotation.Value("${z.lc.ai.model-code:default}")
+    private String modelCode;
 
     /**
      * T10: 对话式建模 - 解析用户自然语言描述，生成实体定义建议
@@ -55,7 +63,7 @@ public class AiModelingService {
     public Map<String, Object> generateModelSuggestion(String appCode, String userDescription) {
         log.info("AI modeling suggestion requested: app={} desc={}", appCode, userDescription);
 
-        LlmGatewayService llmService = getLlmGatewayService();
+        ChatGatewayService llmService = getChatGatewayService();
         if (llmService != null) {
             return generateModelSuggestionViaLlm(appCode, userDescription, llmService);
         }
@@ -77,22 +85,22 @@ public class AiModelingService {
      * Call LLM to generate model suggestion
      */
     private Map<String, Object> generateModelSuggestionViaLlm(String appCode, String userDescription,
-                                                              LlmGatewayService llmService) {
+                                                              ChatGatewayService llmService) {
         try {
             UnifiedRequest request = new UnifiedRequest();
-            request.setModelCode("default");
+            request.setModel(modelCode);
 
-            List<UnifiedRequest.Message> messages = new ArrayList<>();
-            messages.add(new UnifiedRequest.Message("system", buildModelingPrompt()));
-            messages.add(new UnifiedRequest.Message("user", userDescription));
+            List<UnifiedMessage> messages = new ArrayList<>();
+            messages.add(message("system", buildModelingPrompt()));
+            messages.add(message("user", userDescription));
             request.setMessages(messages);
             request.setTemperature(0.3);
             request.setMaxTokens(2000);
 
-            UnifiedResponse response = llmService.chat(request, null);
-
-            if (response.isSuccess() && response.getContent() != null) {
-                String content = response.getContent().trim();
+            // z-llm 这个 chat(UnifiedRequest) 是 in-process 入口，正文在 choices[0].message
+            String content = firstContent(llmService.chat(request));
+            if (content != null) {
+                content = content.trim();
                 // Try to parse as JSON
                 if (content.startsWith("```json")) {
                     content = content.substring(7);
@@ -130,7 +138,7 @@ public class AiModelingService {
                     return suggestion;
                 }
             } else {
-                log.warn("LLM call failed: {}", response.getError());
+                log.warn("LLM call returned no content (model={})", modelCode);
             }
         } catch (Exception e) {
             log.warn("LLM call exception: {}", e.getMessage());
@@ -328,12 +336,31 @@ public class AiModelingService {
     }
 
     /**
-     * Safely get LlmGatewayService (may not be on classpath)
+     * Safely get ChatGatewayService (may not be on classpath)
      */
-    private LlmGatewayService getLlmGatewayService() {
-        if (llmGatewayServiceRaw instanceof LlmGatewayService) {
-            return (LlmGatewayService) llmGatewayServiceRaw;
+    private ChatGatewayService getChatGatewayService() {
+        if (llmGatewayServiceRaw instanceof ChatGatewayService) {
+            return (ChatGatewayService) llmGatewayServiceRaw;
         }
         return null;
+    }
+
+    private static UnifiedMessage message(String role, String text) {
+        UnifiedMessage m = new UnifiedMessage();
+        m.setRole(role);
+        m.setContent(text);
+        return m;
+    }
+
+    /** z-llm 的回复没有 isSuccess()/getContent() 这一层，正文取 choices[0].message.content。 */
+    private static String firstContent(UnifiedResponse response) {
+        if (response == null || response.getChoices() == null || response.getChoices().isEmpty()) {
+            return null;
+        }
+        UnifiedMessage message = response.getChoices().get(0).getMessage();
+        if (message == null || message.getContent() == null || message.getContent().trim().isEmpty()) {
+            return null;
+        }
+        return message.getContent();
     }
 }

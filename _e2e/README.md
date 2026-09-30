@@ -180,7 +180,8 @@ cd z-lc-admin-ui && python3 e2e/mutate_workflow_browser_guard.py # #61 的**浏�
    表现为「编译通过、bean 注入失败、启动直接挂」，且报错完全不指向根因。已改成整包扫 `core`。
    副作用（都已处理）：`core.lifecycle.ScriptLifecycleService` 硬依赖 z-script 的
    `DynamicApiExecutor` → 改 `required=false` + 空值放行；`core.ai.AiModelingService` 依赖
-   `<optional>true</optional>` 的 `z-agent-llm-gateway-core` → z-lc-web 补了 test scope。
+   optional 的 LLM 网关件 → z-lc-web 补了 test scope。2026-09-30 那件从 `com.zifang:z-agent-llm-gateway-core`
+   换成交手面 `io.github.yuku123:z-llm-core`（前者 repo1 404、源码已不在组织里），形状没变。
    也就是说 lifecycle 钩子在整个历史上从未生效过。
 4. **`z-util` 抬到 1.0.12 是"本机装过"才有的前提**（`pom.xml` 的 `util.version`；父 pom `z-opc`
    仍是 1.0.9，其它仓不受影响）。数据源注册/探活/方言/动态查询/内存 SQL 引擎收口在 `z-util-jdbc`，
