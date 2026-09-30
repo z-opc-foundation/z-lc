@@ -1,7 +1,7 @@
 # dev profile: H2 内存库 (MODE=MySQL), 本地零外部依赖启动 — 端到端验证用
 # 用法: java -jar z-lc-admin.jar --spring.profiles.active=dev
 # H2 2.x 实测可直接吃 z-opc 的 MySQL DDL (ENGINE=InnoDB / UNIQUE KEY / 内联 KEY / COMMENT / 反引号),
-# 因此 schema-h2.sql 就是从 _doc/004_sql 原样抽取的, 不需要人工翻译维护.
+# 因此 schema-h2.sql 就是从 z-opc/_doc/004_sql 原样抽取的, 不需要人工翻译维护.
 spring:
   datasource:
     driver-class-name: org.h2.Driver

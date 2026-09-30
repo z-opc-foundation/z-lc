@@ -82,3 +82,6 @@ _doc/001_arch/ace-platform-*
 _doc/001_arch/model-evolution-plan.md
 _doc/001_arch/ace-*
 
+
+/.cache/
+*.pyc

@@ -212,7 +212,7 @@ public class CtcAdapter implements Adapter {
      * 09-26 23:1x 实测 10 处）：{@code CtcAdapter} 的 fetchContext/ping、{@code MetaAdapter} 两处、
      * {@code ScriptAdapter} 一处、{@code MistAdapter} 两处、{@code OssAdapter} 三处，
      * 各自要配自己的测试，单列为缺陷 #62（见
-     * {@code _doc/003_待办事项/feature002_http_status_not_checked/TASK.md}）。
+     * {@code _doc/007_backlog/feature002_http_status_not_checked/TASK.md}）。
      */
     static boolean httpAccepted(HttpExecutionResult res) {
         if (res == null || !res.isSuccess()) {
