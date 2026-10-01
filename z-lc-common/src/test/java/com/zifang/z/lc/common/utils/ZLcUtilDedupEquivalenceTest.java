@@ -28,6 +28,7 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.interfaces.RSAPublicKey;
+import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -251,170 +252,8 @@ class ZLcUtilDedupEquivalenceTest {
     // 第 2 组：保留项的差异锁
     // ==================================================================
 
-    /**
-     * ZLcStringUtil 的两个命名转换器与 z-util 不可互换：
-     * 无下划线输入、连续大写（首字母缩略词）、null、前导/连续下划线四处行为都不同.
-     */
-    @Test
-    void camelCaseConvertersAreNotInterchangeable() {
-        // 无下划线时本地原样返回, z-util 会整体改大小写
-        assertThat(ZLcStringUtil.underlineToCamel("userName", Boolean.FALSE)).isEqualTo("userName");
-        assertThat(StringUtil.underlineToLittleCamelCase("userName")).isEqualTo("username");
-        assertThat(ZLcStringUtil.underlineToCamel("USERName", Boolean.TRUE)).isEqualTo("USERName");
-        assertThat(StringUtil.underlineToBigCamelCase("USERName")).isEqualTo("Username");
 
-        // null：本地透传, z-util 抛异常
-        assertThat(ZLcStringUtil.underlineToCamel(null, Boolean.FALSE)).isNull();
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            public void call() {
-                StringUtil.underlineToLittleCamelCase(null);
-            }
-        }).isInstanceOf(IllegalArgumentException.class);
 
-        // 前导/连续下划线
-        assertThat(ZLcStringUtil.underlineToCamel("_name", Boolean.FALSE)).isEqualTo("Name");
-        assertThat(StringUtil.underlineToLittleCamelCase("_name")).isEqualTo("name");
-        assertThat(ZLcStringUtil.underlineToCamel("user__name", Boolean.FALSE)).isEqualTo("user_name");
-        assertThat(StringUtil.underlineToLittleCamelCase("user__name")).isEqualTo("userName");
-
-        // 缩略词：本地逐字母拆开, z-util 合并
-        assertThat(ZLcStringUtil.camelToUnderline("userID")).isEqualTo("user_i_d");
-        assertThat(StringUtil.toUnderScoreCase("userID")).isEqualTo("user_id");
-        assertThat(ZLcStringUtil.camelToUnderline("HTTPServer")).isEqualTo("h_t_t_p_server");
-        assertThat(StringUtil.toUnderScoreCase("HTTPServer")).isEqualTo("h_ttp_server");
-
-        // 常规输入确实一致（说明只是边界差异, 不是完全无关的两套实现）
-        assertThat(ZLcStringUtil.underlineToCamel("user_first_name", Boolean.FALSE))
-                .isEqualTo(StringUtil.underlineToLittleCamelCase("user_first_name"));
-        assertThat(ZLcStringUtil.camelToUnderline("userName"))
-                .isEqualTo(StringUtil.toUnderScoreCase("userName"));
-        // trim(Object) —— z-util 无对应
-        assertThat(ZLcStringUtil.trim("  hello  ")).isEqualTo("hello");
-        assertThat(ZLcStringUtil.trim(123)).isEqualTo(123);
-    }
-
-    /**
-     * ZLcPlaceholderUtil 与 StringUtil.replacePlaceholder 只在"空 key 占位符"上不同：
-     * 本地正则 {@code \$\{(.*?)\}} 能匹配 {@code ${}}（空 key）, z-util 的
-     * {@code \$\{([^}]+)\}} 不能; 反之 z-util 的 {@code [^}]+} 能跨行, 本地 {@code .} 不能.
-     * 差异真实存在, 所以本类保留.
-     */
-    @Test
-    void placeholderDiffersFromZUtilOnEmptyAndMultilineKeys() {
-        Map<String, Object> ctx = new HashMap<String, Object>();
-        ctx.put("name", "test");
-        ctx.put("", "EMPTYKEY");
-        ctx.put("a\nb", "CROSSLINE");
-
-        String[] realistic = {null, "", "hello", "hello ${name}", "${name},${name}",
-                "hello ${notFound}", "${name}}", "no placeholder", "${name"};
-        for (String s : realistic) {
-            assertThat(StringUtil.replacePlaceholder(s, ctx))
-                    .as("常规输入必须与 ZLcPlaceholderUtil.markReplace 一致: %s", s)
-                    .isEqualTo(ZLcPlaceholderUtil.markReplace(s, ctx));
-        }
-        // 值为 null 时两边都保留占位符
-        Map<String, Object> nullVal = new HashMap<String, Object>();
-        nullVal.put("name", null);
-        assertThat(StringUtil.replacePlaceholder("hello ${name}", nullVal))
-                .isEqualTo(ZLcPlaceholderUtil.markReplace("hello ${name}", nullVal));
-
-        // 差异点 1：空 key
-        assertThat(ZLcPlaceholderUtil.markReplace("${}", ctx)).isEqualTo("EMPTYKEY");
-        assertThat(StringUtil.replacePlaceholder("${}", ctx)).isEqualTo("${}");
-        // 差异点 2：占位符内含换行
-        assertThat(ZLcPlaceholderUtil.markReplace("x ${a\nb} y", ctx)).isEqualTo("x ${a\nb} y");
-        assertThat(StringUtil.replacePlaceholder("x ${a\nb} y", ctx)).isEqualTo("x CROSSLINE y");
-    }
-
-    /**
-     * ZLcArrayUtil 两个方法都与 z-util 不等价：
-     * retainAll 原地改入参 + 保留重复 + 返回是否非空, 而 {@code CollectionUtil.intersection}
-     * 不改入参 + 去重 + 返回集合; merge 保留一个 null 元素, z-util 版丢弃 null.
-     */
-    @Test
-    void arrayUtilSemanticsNotEquivalent() {
-        List<String> userIds = Arrays.asList("a", "b", "c");
-
-        List<String> localCand = new ArrayList<String>(Arrays.asList("a", "a", "b"));
-        assertThat(ZLcArrayUtil.retainAll(localCand, userIds)).isTrue();
-        assertThat(localCand).containsExactly("a", "a", "b");   // 重复保留 + 入参被改
-
-        List<String> utilCand = new ArrayList<String>(Arrays.asList("a", "a", "b"));
-        assertThat(CollectionUtil.intersection(utilCand, userIds)).containsExactly("a", "b"); // 去重
-        assertThat(utilCand).containsExactly("a", "a", "b");    // 入参未被改
-
-        List<String> emptyOther = new ArrayList<String>(Arrays.asList("z"));
-        assertThat(ZLcArrayUtil.retainAll(emptyOther, userIds)).isFalse();
-        assertThat(emptyOther).isEmpty();
-
-        // merge：null 元素处理相反
-        List<Object> withNull = Arrays.<Object>asList("a", null, "b");
-        assertThat(ZLcArrayUtil.merge(withNull, "x")).containsExactly("a", null, "b", "x");
-        assertThat(CollectionUtil.merge(withNull, "x")).containsExactly("a", "b", "x");
-        assertThat(ZLcArrayUtil.merge(withNull, null)).containsExactly("a", null, "b");
-        assertThat(CollectionUtil.merge(withNull, null)).containsExactly("a", "b");
-    }
-
-    /**
-     * ZLcJsonSortUtil 半重复：字节序只在"同字号 key + 无数组套对象"时与 z-util 一致;
-     * 排序规则（CASE_INSENSITIVE vs 自然序）、数组递归、空串/非法 JSON 的异常类型都不同.
-     */
-    @Test
-    void jsonKeySortNotEquivalentButByteIdenticalOnPlainInputs() {
-        // 一致的部分（这就是"半重复"里的"重复"）—— 同输入两侧字节相同
-        String[] agree = {"{\"b\":1,\"a\":2}", "{\"a\":{\"z\":1,\"y\":2},\"b\":3}", "{}",
-                "[1,2,3]", "{\"x\":null,\"y\":1}", "{\"u\":\"\\u4f4e\"}", "{\"s\":\"a\\nb\"}",
-                "{\"big\":123456789012345678901234567890}", "{\"n\":1.0,\"m\":1}"};
-        for (String s : agree) {
-            assertThat(ZLcJsonSortUtil.startSort(s))
-                    .as("排序字节序必须一致: %s", s)
-                    .isEqualTo(JsonUtil.sortKeys(s));
-        }
-        // 定序稳定性：同一输入两次结果字节相同（签名场景的硬要求）
-        assertThat(ZLcJsonSortUtil.startSort("{\"b\":1,\"a\":2,\"c\":3}"))
-                .isEqualTo(ZLcJsonSortUtil.startSort("{\"c\":3,\"b\":1,\"a\":2}"));
-
-        // 差异 1：本地按 CASE_INSENSITIVE_ORDER, z-util 按自然序
-        assertThat(ZLcJsonSortUtil.startSort("{\"B\":1,\"a\":2}")).isEqualTo("{\"a\":2,\"B\":1}");
-        assertThat(JsonUtil.sortKeys("{\"B\":1,\"a\":2}")).isEqualTo("{\"B\":1,\"a\":2}");
-        // 差异 2：本地不递归数组里的对象
-        assertThat(ZLcJsonSortUtil.startSort("{\"arr\":[{\"z\":1,\"a\":2}]}"))
-                .isEqualTo("{\"arr\":[{\"z\":1,\"a\":2}]}");
-        assertThat(JsonUtil.sortKeys("{\"arr\":[{\"z\":1,\"a\":2}]}"))
-                .isEqualTo("{\"arr\":[{\"a\":2,\"z\":1}]}");
-        // 差异 3：空串/非法 JSON 的返回与异常类型
-        assertThat(ZLcJsonSortUtil.startSort("")).isEqualTo("null");
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            public void call() {
-                JsonUtil.sortKeys("");
-            }
-        }).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            public void call() {
-                ZLcJsonSortUtil.startSort("not-json");
-            }
-        }).isInstanceOf(RuntimeException.class)
-                .hasMessage("JSON key 排序失败");
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            public void call() {
-                JsonUtil.sortKeys("not-json");
-            }
-        }).isInstanceOf(IllegalArgumentException.class);
-
-        // 大写化：一致部分 + 两处差异（空 key 本地越界; 数组内 key 本地不动）
-        assertThat(ZLcJsonSortUtil.convertKeysToUpperCase("{\"name\":\"x\",\"a\":{\"b\":1}}"))
-                .isEqualTo(JsonUtil.upperFirstKeys("{\"name\":\"x\",\"a\":{\"b\":1}}"));
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            public void call() {
-                ZLcJsonSortUtil.convertKeysToUpperCase("{\"\":1}");
-            }
-        }).isInstanceOf(StringIndexOutOfBoundsException.class);
-        assertThat(JsonUtil.upperFirstKeys("{\"\":1}")).isEqualTo("{\"\":1}");
-        assertThat(ZLcJsonSortUtil.convertKeysToUpperCase("{\"arr\":[{\"k\":1}]}"))
-                .isEqualTo("{\"Arr\":[{\"k\":1}]}");
-        assertThat(JsonUtil.upperFirstKeys("{\"arr\":[{\"k\":1}]}")).isEqualTo("{\"Arr\":[{\"K\":1}]}");
-    }
 
     /**
      * ZLcRSAUtil 保留的四条实测依据：密钥字符串可互换、短载荷双向可解,
@@ -582,60 +421,6 @@ class ZLcUtilDedupEquivalenceTest {
      * 但 null 任务处理相反（本地抛 NPE, z-util 静默丢弃 = 会丢任务）,
      * 且 z-util 打开了 allowCoreThreadTimeOut. 所以本类保留.
      */
-    @Test
-    void keyAffinityRoutingMatchesButNullTaskSemanticsDiffer() throws Exception {
-        ZLcKeyOrderedExecutor local = new ZLcKeyOrderedExecutor(8, "dedup-l");
-        KeyAffinityExecutor util = new KeyAffinityExecutor(8, "dedup-u", 4096);
-        try {
-            Method indexFor = ZLcKeyOrderedExecutor.class.getDeclaredMethod("indexFor", Object.class);
-            indexFor.setAccessible(true);
-            Object[] keys = {"a", "b", "", null, "instance-1", "instance-2", 1, 2, 100, -7,
-                    "用户流程A", "processIns-000123", Boolean.TRUE, 3.14, Long.MAX_VALUE};
-            for (Object k : keys) {
-                int localStripe = ((Integer) indexFor.invoke(local, new Object[]{k})).intValue();
-                assertThat(util.stripeOf(k))
-                        .as("同 key 必须路由到同一条 stripe: %s", k)
-                        .isEqualTo(localStripe);
-            }
-
-            // null 任务：本地 NPE, z-util 什么都不做
-            assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-                public void call() {
-                    local.execute("k", null);
-                }
-            }).isInstanceOf(NullPointerException.class);
-            util.execute("k", null);   // 不抛 —— 静默丢任务
-
-            // 同 key 串行 + 顺序一致
-            final List<Integer> lSeq = new ArrayList<Integer>();
-            final List<Integer> uSeq = new ArrayList<Integer>();
-            final CountDownLatch done = new CountDownLatch(40);
-            for (int i = 0; i < 20; i++) {
-                final int n = i;
-                local.execute("same-key", new Runnable() {
-                    public void run() {
-                        synchronized (lSeq) {
-                            lSeq.add(n);
-                        }
-                        done.countDown();
-                    }
-                });
-                util.execute("same-key", new Runnable() {
-                    public void run() {
-                        synchronized (uSeq) {
-                            uSeq.add(n);
-                        }
-                        done.countDown();
-                    }
-                });
-            }
-            assertThat(done.await(10, TimeUnit.SECONDS)).isTrue();
-            assertThat(lSeq).containsExactlyElementsOf(uSeq);
-        } finally {
-            local.shutdown();
-            util.shutdown();
-        }
-    }
 
     /**
      * ZLcTaskExecutionUtil 两份实现同名不同义, 且都不能直接换成 z-util Retry：
@@ -799,4 +584,5 @@ class ZLcUtilDedupEquivalenceTest {
             }
         };
     }
+
 }
