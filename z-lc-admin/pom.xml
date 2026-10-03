@@ -162,11 +162,6 @@
         <!-- 2026-10-01 补的 test 域: 让 z-lc-admin 自己有测试能力, 不依赖 z-lc-common 把 DevMainDataSourceConfigTest 等覆盖上来.
              junit-jupiter 版本由 z-lc 根 pom 的 junit BOM (5.9.3) 顶住. -->
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
