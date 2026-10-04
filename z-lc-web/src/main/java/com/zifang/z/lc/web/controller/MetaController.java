@@ -40,7 +40,10 @@ import java.util.Map;
  * bundle 不带 appCode 时仅返回 {fieldTypes}, 且任何情况下都不会 500.
  */
 @Tag(name = "低代码-元数据聚合")
-@RestController
+// 显式 bean 名: z-opc 同 JVM 里还有 z-gw-admin 的 MetaController, 两边默认 bean 名都是
+// metaController ⇒ ConflictingBeanDefinitionException 让整个宿主起不来(2026-10-03 实测)。
+// 路径不冲突(/api/lc/meta vs /gw/admin), 只是名字撞。
+@RestController("lcMetaController")
 @RequestMapping("/api/lc/meta")
 public class MetaController {
 
