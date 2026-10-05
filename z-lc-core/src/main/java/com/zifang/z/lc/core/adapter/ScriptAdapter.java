@@ -2,6 +2,7 @@ package com.zifang.z.lc.core.adapter;
 
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.json.JsonUtil;
+import com.zifang.util.json.model.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
@@ -56,19 +57,21 @@ public class ScriptAdapter implements Adapter {
 
         log.debug("ScriptAdapter → POST {} code={}", url, scriptCode);
         HttpExecutionResult res = CtcAdapter.doPostJson(url, headers, jsonBody);
-        if (!res.isSuccess()) {
+        if (!CtcAdapter.httpAccepted(res)) {
             log.warn("ScriptAdapter.eval failed: scriptCode={}, status={} err={}",
                     scriptCode, res.getStatus(), res.getError());
             throw new RuntimeException("Script eval failed: status=" + res.getStatus()
                     + " err=" + res.getError());
         }
         try {
-            Map<?, ?> resp = JsonUtil.fromJson(res.getBody(), Map.class);
-            if (resp == null) {
+            // 逐格读而非 JsonUtil.fromJson(body, Map.class)：实测那份引擎连接口都建不出来
+            // （NoSuchMethodException: java.util.Map.<init>()，CtcAdapter.ENVELOPE_NOTE 有完整记录）。
+            // 结果再经 toPlainJava 还原成普通 Map/List/标量，不把 JSON 库的类型漏给调用方。
+            JsonObject envelope = JsonUtil.parseObject(res.getBody());
+            if (envelope == null) {
                 return null;
             }
-
-            return resp.get("data");
+            return CtcAdapter.toPlainJava(envelope.get("data"));
         } catch (Exception ex) {
             log.warn("ScriptAdapter.eval parse failed: scriptCode={}, msg={}", scriptCode, ex.getMessage());
             throw new RuntimeException("Script eval response parse failed: " + ex.getMessage(), ex);

@@ -5,6 +5,11 @@
 这一支和 #61 是同一族：`CamudaAdapter` 修的时候顺手把整个 adapter 层的读法都对了一遍，
 发现**同样一句话在别处还有 5 个写法，每一个都必然抛**。
 
+> **2026-10-05：§2 的 5 处已全部改为 `JsonUtil.parseObject` 逐格读，§2 关闭；§3 仍等拍板。**
+> 本轮复测（两个 JDK 都跑，结论一致）：§1 那张表的四条**全部复现**，无一例外。
+> 这次顺带测到**两条原表里没有、但会让"照抄 CamudaAdapter 改法"翻车**的事实，见 §5。
+
+
 ---
 
 ## 1. 库侧事实（本轮实测，不是推测）
@@ -69,3 +74,33 @@ grep -rn "JsonUtil.fromJson" z-lc/z-lc-core/src/main/java/com/zifang/z/lc/core/a
 鉴权实际落在 z-ctc 的网关/过滤器上（不在本仓）。
 ⇒ 后果：`fetchContext` 那条死解析目前**没有可观察的损害**，别把它当成"用户登录坏了"。
    但它同时也是"低代码权限矩阵在服务端到底靠谁判"这一问的答案缺失项，归 #48/#49 那一族继续追。
+
+## 5. 2026-10-05 补测：照抄 `CamudaAdapter` 改法之前必须先知道的两件事
+
+§1 那张表只说了"`parseObject` 可用"，没说完**逐格读回来的值是什么形状**。这一层不量清楚，
+改完会安静地引入新缺陷——两条都是本轮实际撞上的：
+
+### 5.1 `JsonObject` 不是 `Map`，`JsonArray` 不是 `List`（两个都不实现）
+
+z-util-parser-json（z-lc 实际解析到的是 **1.0.14**）的 `JsonObject` 只有 `implements Iterable` 一条尾巴
+都没有，`JsonArray` 同理。它们**都不实现** `java.util.Map` / `java.util.List`。三个立刻踩得到的后果：
+
+| 写法 | 静默错在哪 |
+|---|---|
+| `if (o instanceof List) { … }` | `JsonArray` 不满足 ⇒ 一份形状完全正确的 `"roles":["admin"]` **安静变成空列表**，日志上一行异常都没有（`CtcAdapter.asStringList` 原本就是这个形状，已补 `JsonArray` 分支） |
+| `return envelope.get("data");` 直接递出去 | 调用方若 `((Map) result).get("x")` ⇒ **当场 ClassCastException**。旧写法（若它曾经能工作）交出去的是 fastjson 的 `JSONObject`，那**是**实打实的 `Map`——所以直接把 `JsonObject` 递出去是**契约回退**。已加 `CtcAdapter.toPlainJava` 把边界收成普通 `Map`/`List`/标量 |
+| 想把 `JsonObject` 拷进 `LinkedHashMap` | **没有 `entrySet()`、没有 `keySet()`、没有 `values()`**。唯一的迭代入口是 `getAllKeyValue()`，返回 `List<Map.Entry<String,Object>>` |
+
+⇒ 一句话：**逐格读解决的是"读得出来"，`toPlainJava` 解决的是"递出去的东西还是不是调用方要的类型"。**
+只做前者，等于把缺陷从"静默 null"换成"静默 ClassCastException"。
+
+### 5.2 `getString` 只对 String 生效，数字会被读成 null
+
+`JsonObject.getString(k)` 的实现是 `v instanceof String ? (String) v : null`——**不做任何 toString**。
+所以 `sortOrder: 1` 这种数字用 `getString` 读出来就是 `null`。数值字段一律走
+`getInt`/`getLong`（内部是 `instanceof Number`）。
+
+顺带把口径对齐了一处：`DictItemDTO.itemValue` 缺失时回落到 `itemCode`，
+依据是 `DictResolveProcessor.matches` 本身的口径（先看 `itemValue` 再看 `itemCode`，已读源码确认），
+两边一致，调用方不会因为这个回落而多出一条匹配。
+

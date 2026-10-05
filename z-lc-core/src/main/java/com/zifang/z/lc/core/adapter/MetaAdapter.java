@@ -1,9 +1,9 @@
 package com.zifang.z.lc.core.adapter;
 
-import com.zifang.util.core.meta.Result;
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.json.JsonUtil;
-import com.zifang.util.json.define.TypeReference;
+import com.zifang.util.json.model.JsonArray;
+import com.zifang.util.json.model.JsonObject;
 import com.zifang.z.lc.common.dto.DictItemDTO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -11,6 +11,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -74,29 +75,68 @@ public class MetaAdapter implements Adapter {
         }
         log.debug("MetaAdapter → GET {}", url);
         HttpExecutionResult res = CtcAdapter.doGet(url, headers);
-        if (!res.isSuccess()) {
+        if (!CtcAdapter.httpAccepted(res)) {
             log.warn("MetaAdapter.listDictItems failed for dictCode={}: status={} err={}",
                     dictCode, res.getStatus(), res.getError());
             return Collections.emptyList();
         }
         try {
-            Result<List<DictItemDTO>> r = JsonUtil.fromJson(
-                    res.getBody(),
-                    new TypeReference<Result<List<DictItemDTO>>>() {
-                    });
-            if (r == null || r.getData() == null) {
+            // 逐格读而非 JsonUtil.fromJson(body, new TypeReference<Result<List<DictItemDTO>>>(){})：
+            // 实测那份引擎反序列化不出 Result 与泛型（CtcAdapter.ENVELOPE_NOTE 有完整记录），
+            // 旧写法恒抛 ClassCastException 并被吞成空列表 —— 而本方法是全仓唯一有真实
+            // 调用方的适配器方法（DictResolveProcessor:57/:89），等于字典标签从来没解析出来过。
+            JsonObject envelope = JsonUtil.parseObject(res.getBody());
+            if (envelope == null) {
                 return Collections.emptyList();
             }
-            if (r.getCode() != 200) {
+            Integer code = envelope.getInt("code");
+            if (code != null && code != 200) {
                 log.warn("MetaAdapter.listDictItems business error for dictCode={}: code={} msg={}",
-                        dictCode, r.getCode(), r.getMessage());
+                        dictCode, code, envelope.getString("message"));
                 return Collections.emptyList();
             }
-            return r.getData();
+            Object data = envelope.get("data");
+            if (!(data instanceof JsonArray)) {
+                return Collections.emptyList();
+            }
+            JsonArray arr = (JsonArray) data;
+            List<DictItemDTO> out = new ArrayList<>(arr.size());
+            for (Object item : arr) {
+                if (item instanceof JsonObject) {
+                    DictItemDTO dto = toDictItem((JsonObject) item);
+                    if (dto != null) {
+                        out.add(dto);
+                    }
+                }
+            }
+            return out;
         } catch (Exception ex) {
             log.warn("MetaAdapter.listDictItems parse error for dictCode={}: {}", dictCode, ex.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * 逐格读回 {@link DictItemDTO}。
+     * <p>
+     * {@code sortOrder} 用 {@code getInt}（内部 {@code instanceof Number}）而不是 {@code getString}：
+     * 后者对非 String 一律返回 null，JSON 里的 {@code 1} 是数字，会被悄悄读成 null。
+     * <b>itemValue 缺省回落到 itemCode</b>：字典项没显式配存储值时按编码用，与
+     * {@code DictResolveProcessor.matches} 的取值口径一致（它先看 itemValue 再看 itemCode）。
+     */
+    private static DictItemDTO toDictItem(JsonObject o) {
+        DictItemDTO dto = new DictItemDTO();
+        Long id = o.getLong("id");
+        dto.setId(id);
+        dto.setTenantCode(o.getString("tenantCode"));
+        dto.setDictCode(o.getString("dictCode"));
+        dto.setItemCode(o.getString("itemCode"));
+        dto.setItemLabel(o.getString("itemLabel"));
+        String value = o.getString("itemValue");
+        dto.setItemValue(value == null ? o.getString("itemCode") : value);
+        dto.setSortOrder(o.getInt("sortOrder"));
+        dto.setDescription(o.getString("description"));
+        return dto;
     }
 
     /**
@@ -107,7 +147,7 @@ public class MetaAdapter implements Adapter {
             HttpExecutionResult res = CtcAdapter.doGet(
                     baseUrl + "/app/list?pageNum=1&pageSize=1",
                     JwtAwareHttpSupport.currentAuthHeaders());
-            return res.isSuccess();
+            return CtcAdapter.httpAccepted(res);
         } catch (Exception ex) {
             log.warn("MetaAdapter.ping failed: {}", ex.getMessage());
             return false;

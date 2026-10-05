@@ -1,8 +1,8 @@
 package com.zifang.z.lc.core.adapter;
 
-import com.zifang.util.core.meta.Result;
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.json.JsonUtil;
+import com.zifang.util.json.model.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,17 +60,23 @@ public class OssAdapter implements Adapter {
         Map<String, String> headers = JwtAwareHttpSupport.currentAuthHeaders();
         log.debug("OssAdapter → GET {}", url);
         HttpExecutionResult res = CtcAdapter.doGet(url, headers);
-        if (!res.isSuccess()) {
+        if (!CtcAdapter.httpAccepted(res)) {
             log.warn("OssAdapter.generateDownloadUrl failed: status={} err={}",
                     res.getStatus(), res.getError());
             return null;
         }
         try {
-            Result<?> r = JsonUtil.fromJson(res.getBody(), Result.class);
-            if (r == null || r.getData() == null) {
+            // 逐格读而非 JsonUtil.fromJson(body, Result.class)：实测那份引擎反序列化不出 Result
+            // （CtcAdapter.ENVELOPE_NOTE 有完整实测记录）。
+            JsonObject envelope = JsonUtil.parseObject(res.getBody());
+            if (envelope == null) {
                 return null;
             }
-            return r.getData().toString();
+            Object data = envelope.get("data");
+            if (data == null) {
+                return null;
+            }
+            return data.toString();
         } catch (Exception ex) {
             log.warn("OssAdapter.generateDownloadUrl parse error: {}", ex.getMessage());
             return null;
@@ -93,7 +99,7 @@ public class OssAdapter implements Adapter {
         headers.put("Content-Type", "application/json; charset=UTF-8");
         log.debug("OssAdapter → DELETE {}", url);
         HttpExecutionResult res = CtcAdapter.doRequest("DELETE", url, headers, null);
-        if (!res.isSuccess()) {
+        if (!CtcAdapter.httpAccepted(res)) {
             log.warn("OssAdapter.deleteObject failed: status={} err={}",
                     res.getStatus(), res.getError());
             return false;
@@ -109,7 +115,7 @@ public class OssAdapter implements Adapter {
             HttpExecutionResult res = CtcAdapter.doGet(
                     baseUrl + "/api/v1/bucket/list",
                     JwtAwareHttpSupport.currentAuthHeaders());
-            return res.isSuccess();
+            return CtcAdapter.httpAccepted(res);
         } catch (Exception ex) {
             return false;
         }

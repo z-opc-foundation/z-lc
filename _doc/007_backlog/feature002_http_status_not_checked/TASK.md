@@ -3,6 +3,13 @@
 登记时间：2026-09-26 23:1x。性质：**已定方向、只欠工程量**（不需要拍板，但要一批配 10 支带猎物的测试）。
 本轮已经在 `CamudaAdapter` 这一条链上修好并钉住，**其余 10 处原样保留**。
 
+> **2026-10-05 收口：10 处已全部替换为 `CtcAdapter.httpAccepted(res)`，本条关闭。**
+> 新增 `HttpStatusGateTest`（判据自证，5 道）+ 5 个 adapter 各配正反两支。
+> 变异验证：把 10 处退回 `res.isSuccess()` 后**首跑 15 条红**（CtcAdapter 3 / MetaAdapter 3 /
+> MistAdapter 3 / OssAdapter 4 / ScriptAdapter 2），10 个调用点全覆盖；`HttpStatusGateTest`
+> 保持绿是正确的——它测闸门本体，而闸门本体不在变异范围内。
+> 变异时踩到的一个坑记在 §6。
+
 ## 1. 库侧事实（不是我推的，是库自己写明的）
 
 ```bash
@@ -46,3 +53,26 @@ grep -n "res.isSuccess()" z-lc/z-lc-core/src/main/java/com/zifang/z/lc/core/adap
 
 `ScriptLifecycleService` 里那句 `result.isSuccess()` 是 **z-script 的 `ApiExecutionResult`**，
 不是 HTTP 结果 —— 别顺手改，改了是另一件事（要单独证伪它的语义）。
+
+## 6. 变异验证时踩到的坑（记下来给下一个做反向验证的人）
+
+把 10 处退回 `res.isSuccess()` 时，`sed 's/!httpAccepted(res)/!res.isSuccess()/g'` **只打中 6 处**，
+且**顺手把 `httpAccepted` 自己的方法体也改了**（它的实现里本来就有一句 `!res.isSuccess()`）。
+两个后果都值得记：
+
+1. **4 个 `ping()` 是 `return httpAccepted(res);`，不带取反** —— 只写取反形式的 pattern 会漏掉它们。
+   ⇒ 改完必须数命中数（期望 10），并且**把闸门方法体那两处合法内容扣掉再对账**。
+2. **闸门本体被 sed 打穿，比"没变异"更坏** —— 它会让所有测试表现得像旧代码，红绿全乱。
+   ⇒ 施加变异后先 `grep -n "static boolean httpAccepted"` 确认方法体完好，再跑测试。
+
+同一个"形状张冠李戴"家族：只按**你记得的写法**写 pattern，不按**文件里实际存在的写法**写。
+
+## 7. 一条不是缺陷、但一开始误判成缺陷的（留给以后查 204/205 的人）
+
+`HttpStatusGateTest` 最初把 **204** 写进"2xx 应当放行"，第一次跑是红的。
+红的原因不在闸门，在夹具：**OkHttp 见到 `HTTP 204 had non-zero Content-Length: 2`
+会判定整个响应非法**（实测 `isSuccess()=false`、`status=0`、`err=Execute failed: HTTP 204 had
+non-zero Content-Length: 2`）——按 HTTP 规范 204/205 本就不得带 body，是 `CamudaStubServer` 发了畸形报文。
+⇒ 这两个码在测试里必须用空 body。**又一次"红灯先分三类"（实现 bug / 断言过死 / 夹具不完整），
+这次是第三类。**
+

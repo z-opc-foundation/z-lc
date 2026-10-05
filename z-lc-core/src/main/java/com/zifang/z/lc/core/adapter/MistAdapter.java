@@ -1,8 +1,8 @@
 package com.zifang.z.lc.core.adapter;
 
-import com.zifang.util.core.meta.Result;
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.json.JsonUtil;
+import com.zifang.util.json.model.JsonObject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,21 +60,26 @@ public class MistAdapter implements Adapter {
         Map<String, String> headers = JwtAwareHttpSupport.currentAuthHeaders();
         log.debug("MistAdapter → GET {}", url);
         HttpExecutionResult res = CtcAdapter.doGet(url, headers);
-        if (!res.isSuccess()) {
+        if (!CtcAdapter.httpAccepted(res)) {
             log.warn("MistAdapter.decrypt failed: status={} err={}", res.getStatus(), res.getError());
             return null;
         }
         try {
-            Result<?> r = JsonUtil.fromJson(res.getBody(), Result.class);
-            if (r == null || r.getData() == null) {
+            // 逐格读而非 JsonUtil.fromJson(body, Result.class)：实测那份引擎反序列化不出 Result
+            // （CtcAdapter.ENVELOPE_NOTE 有完整实测记录）。
+            JsonObject envelope = JsonUtil.parseObject(res.getBody());
+            if (envelope == null) {
+                return null;
+            }
+            Object data = envelope.get("data");
+            if (data == null) {
                 return null;
             }
             // z-mist 返回的 data 是 Map, 其中 encryptedValue 是加密值, decryptValue 是解密值
-            Object data = r.getData();
-            if (data instanceof Map) {
-                Object plain = ((Map<?, ?>) data).get("decryptValue");
+            if (data instanceof JsonObject) {
+                Object plain = ((JsonObject) data).get("decryptValue");
                 if (plain == null) {
-                    plain = ((Map<?, ?>) data).get("encryptedValue");
+                    plain = ((JsonObject) data).get("encryptedValue");
                 }
                 return plain == null ? null : plain.toString();
             }
@@ -93,7 +98,7 @@ public class MistAdapter implements Adapter {
             HttpExecutionResult res = CtcAdapter.doGet(
                     baseUrl + "/api/secret/list?pageNum=1&pageSize=1",
                     JwtAwareHttpSupport.currentAuthHeaders());
-            return res.isSuccess();
+            return CtcAdapter.httpAccepted(res);
         } catch (Exception ex) {
             return false;
         }

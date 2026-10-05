@@ -1,6 +1,5 @@
 package com.zifang.z.lc.core.adapter;
 
-import com.zifang.util.core.meta.Result;
 import com.zifang.util.http.base.define.RequestMethod;
 import com.zifang.util.http.base.pojo.HttpRequestDefinition;
 import com.zifang.util.http.base.pojo.HttpRequestHeader;
@@ -8,7 +7,8 @@ import com.zifang.util.http.base.pojo.HttpRequestLine;
 import com.zifang.util.http.client.HttpExecutionResult;
 import com.zifang.util.http.client.HttpExecutor;
 import com.zifang.util.json.JsonUtil;
-import com.zifang.util.json.define.TypeReference;
+import com.zifang.util.json.model.JsonArray;
+import com.zifang.util.json.model.JsonObject;
 import com.zifang.z.lc.common.dto.AuthContextDTO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,7 +46,24 @@ public class CtcAdapter implements Adapter {
         return o == null ? null : String.valueOf(o);
     }
 
+    /**
+     * 取一个字符串列表。
+     * <p>
+     * <b>{@code JsonArray} 分支不是可有可无的</b>：逐格读信封时，JSON 数组解析出来是
+     * {@code JsonArray}，而它<b>只实现 {@code Iterable}、不实现 {@code List}</b>。
+     * 只判 {@code instanceof List} 的话，一份形状完全正确的 {@code "roles":["admin"]}
+     * 会安静地变成空列表——角色判空、权限判不过，且日志上什么异常都没有。
+     */
     private static List<String> asStringList(Object o) {
+        if (o instanceof JsonArray) {
+            List<String> out = new ArrayList<>();
+            for (Object item : (JsonArray) o) {
+                if (item != null) {
+                    out.add(String.valueOf(item));
+                }
+            }
+            return out;
+        }
         if (o instanceof List) {
             List<String> out = new ArrayList<>();
             for (Object item : (List<?>) o) {
@@ -58,6 +75,60 @@ public class CtcAdapter implements Adapter {
             return out;
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * 本仓所有出站适配器共同的读信封约定（缺陷 #63 的根因，集中写在这里）。
+     * <p>
+     * z-util-parser-json 1.0.14 实测（JDK 8 与 JDK 17 结果一致，三条路径全部失败）：
+     * <ul>
+     *   <li>{@code JsonUtil.fromJson(body, Result.class)} ⇒ {@code RuntimeException: deserializePojo failed:
+     *       com.zifang.util.core.meta.Result}（{@code Result} 只有 private 构造，引擎建对象走
+     *       {@code getDeclaredConstructor().newInstance()} 且没有 setAccessible）；</li>
+     *   <li>{@code JsonUtil.fromJson(body, new TypeReference<Result<Map<String,Object>>>(){})} ⇒
+     *       {@code ClassCastException: ParameterizedTypeImpl cannot be cast to Class}；</li>
+     *   <li>{@code JsonUtil.fromJson(body, Map.class)} ⇒ {@code deserializePojo failed: java.util.Map}
+     *       （接口没有无参构造）。</li>
+     * </ul>
+     * 唯一走得通的是 {@link JsonUtil#parseObject(String)} 逐格读——
+     * {@code get("k") / getString("k") / getJsonObject("k") / getJsonArray("k")}。
+     * <p>
+     * 后果不是"解析失败"这么轻：这些调用点都把异常吞成 null/空列表，
+     * 于是<b>远端明明答得好好的，适配器一律报"没有数据"</b>——
+     * 静默降级，没有任何一行 WARN 说得清是它挂了还是我们没读出来。
+     */
+    static final String ENVELOPE_NOTE =
+            "出站信封一律 parseObject 逐格读：这份 JSON 引擎反序列化不出 Result/泛型/Map 接口";
+
+    /**
+     * 把 {@link JsonUtil#parseObject(String)} 读出来的值递归还原成普通 JDK 类型。
+     * <p>
+     * <b>为什么要这一步：</b>{@link JsonObject} 与 {@link JsonArray} 都<b>不实现</b>
+     * {@code java.util.Map} / {@code java.util.List}（前者只 {@code implements Iterable}）。
+     * 旧写法（若它曾经能工作）交出去的是 fastjson 的 {@code JSONObject}，那是实打实的
+     * {@code Map}——调用方 {@code ((Map) result).get("x")} 拿得到东西。
+     * 直接把 {@code JsonObject} 递出去的话，同样的调用方当场 ClassCastException。
+     * 所以这里把边界收干净：<b>适配器的出参永远是 {@code Map}/{@code List}/标量</b>，
+     * JSON 库的类型不外泄。
+     */
+    static Object toPlainJava(Object value) {
+        if (value instanceof JsonObject) {
+            // JsonObject 没有 entrySet()/keySet()，只有 getAllKeyValue()（实测其返回
+            // List<Map.Entry<String,Object>>）——迭代入口只有这一个。
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : ((JsonObject) value).getAllKeyValue()) {
+                out.put(e.getKey(), toPlainJava(e.getValue()));
+            }
+            return out;
+        }
+        if (value instanceof JsonArray) {
+            List<Object> out = new ArrayList<>();
+            for (Object item : (JsonArray) value) {
+                out.add(toPlainJava(item));
+            }
+            return out;
+        }
+        return value;
     }
 
     /**
@@ -185,25 +256,28 @@ public class CtcAdapter implements Adapter {
         Map<String, String> headers = new HashMap<>();
         headers.put("Authorization", token);
         HttpExecutionResult res = doGet(url, headers);
-        if (!res.isSuccess()) {
+        if (!httpAccepted(res)) {
             log.warn("CtcAdapter.fetchContext failed: status={} err={}", res.getStatus(), res.getError());
             return null;
         }
         try {
-            Result<Map<String, Object>> r = JsonUtil.fromJson(
-                    res.getBody(),
-                    new TypeReference<Result<Map<String, Object>>>() {
-                    });
-            if (r == null || r.getData() == null) {
+            // 信封必须逐格读，不能用 JsonUtil.fromJson(body, new TypeReference<Result<Map<String,Object>>>(){})：
+            // 这份 JSON 引擎反序列化不出 Result 与泛型（z-util-parser-json 1.0.14 实测，见类注释
+            // ENVELOPE_NOTE）。改用 parseObject + JsonObject 逐格取，CamudaAdapter 已用同一手法。
+            JsonObject envelope = JsonUtil.parseObject(res.getBody());
+            if (envelope == null) {
                 return null;
             }
-            Map<String, Object> data = r.getData();
+            Object data = envelope.get("data");
+            if (!(data instanceof JsonObject)) {
+                return null;
+            }
+            JsonObject d = (JsonObject) data;
             AuthContextDTO ctx = new AuthContextDTO();
-            Object userId = data.get("userId");
-            ctx.setUserId(userId == null ? null : String.valueOf(userId));
-            ctx.setUserName(asString(data.get("username")));
-            ctx.setTenantCode(asString(data.get("tenantCode")));
-            ctx.setRoles(asStringList(data.get("roles")));
+            ctx.setUserId(asString(d.get("userId")));
+            ctx.setUserName(asString(d.get("username")));
+            ctx.setTenantCode(asString(d.get("tenantCode")));
+            ctx.setRoles(asStringList(d.get("roles")));
             ctx.setPermissions(Collections.emptyList());
             return ctx;
         } catch (Exception ex) {
@@ -237,7 +311,7 @@ public class CtcAdapter implements Adapter {
     public boolean ping() {
         try {
             HttpExecutionResult res = doGet(baseUrl + "/api/app/list", JwtAwareHttpSupport.currentAuthHeaders());
-            return res.isSuccess();
+            return httpAccepted(res);
         } catch (Exception ex) {
             log.warn("CtcAdapter.ping failed: {}", ex.getMessage());
             return false;
