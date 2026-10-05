@@ -5,6 +5,7 @@ import com.zifang.z.lc.core.executor.entity.FieldEntity;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 代码模板引擎 (FEATURE006 T1).
@@ -46,15 +47,40 @@ public class CodeTemplateEngine {
 
     /**
      * snake_case → camelCase
+     * <p>
+     * <b>空段必须跳过，不能直接 charAt(0)</b>。旧写法在 {@code parts[i]} 为空串时
+     * 抛 {@code StringIndexOutOfBoundsException: String index out of range: 0}，
+     * 而<b>连续下划线是合法输入</b>——字段码的正则 {@code FIELD_CODE_RE = ^[A-Za-z][A-Za-z0-9_]*$}
+     * 明确放行 {@code a__b} / {@code user__id} / {@code a___b}；实体码则连这道正则都没有
+     * （{@code SchemaAdminBizService} 里搜不到任何针对 entityCode 的校验）。
+     * 实测（JDK 8）：{@code a__b}、{@code user__id}、{@code a___b} 三条全部抛。
+     * <p>
+     * 后果不只是这一个字段生成不出来：物化是
+     * {@code MaterializationService.run} 里逐 entity 循环生成、<b>循环结束后才统一写文件</b>，
+     * 所以任何一个 entity 里的一个坏字段码会让<b>整批物化零产出</b>，
+     * 而记进 {@code error_message} 的是 {@code String index out of range: 0}——看不出是哪个字段。
+     * <p>
+     * {@code toLowerCase(Locale.ROOT)}：不带 Locale 的 {@code toLowerCase()} 走默认区域，
+     * 土耳其语区域下 {@code "I"} 会小写成无点 {@code ı}，同一份字段码在两种 JVM 上生成出不同标识符。
      */
     public static String camelCase(String s) {
         if (s == null || s.isEmpty()) {
             return s;
         }
-        String[] parts = s.toLowerCase().split("_");
-        StringBuilder sb = new StringBuilder(parts[0]);
-        for (int i = 1; i < parts.length; i++) {
-            sb.append(Character.toUpperCase(parts[i].charAt(0))).append(parts[i].substring(1));
+        String[] parts = s.toLowerCase(Locale.ROOT).split("_");
+        StringBuilder sb = new StringBuilder();
+        boolean first = true;
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                // 连续/首尾下划线: 这一段不贡献字符, 但下一个非空段仍要抬首字母
+                continue;
+            }
+            if (first) {
+                sb.append(part);
+                first = false;
+            } else {
+                sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+            }
         }
         return sb.toString();
     }

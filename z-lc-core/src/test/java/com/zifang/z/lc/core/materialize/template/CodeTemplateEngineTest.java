@@ -6,6 +6,8 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -346,5 +348,125 @@ public class CodeTemplateEngineTest {
         field.setFieldType(type);
         field.setRequired(required);
         return field;
+    }
+
+    // ======================================================================
+    // 缺陷 #64：camelCase 在合法输入上抛 StringIndexOutOfBoundsException
+    // ======================================================================
+
+    /**
+     * <b>反向：连续下划线是合法字段码，旧写法在这里抛。</b>
+     * {@code SchemaAdminBizService.FIELD_CODE_RE = ^[A-Za-z][A-Za-z0-9_]*$} 明确放行这些，
+     * 所以这不是"非法输入的容错"，而是<b>正常输入的崩溃</b>。
+     * 下面每一个都是实测抛 {@code StringIndexOutOfBoundsException: String index out of range: 0} 的那一个。
+     */
+    @Test
+    public void camelCaseSurvivesConsecutiveUnderscores() {
+        assertEquals("aB", CodeTemplateEngine.camelCase("a__b"));
+        assertEquals("userId", CodeTemplateEngine.camelCase("user__id"));
+        assertEquals("aB", CodeTemplateEngine.camelCase("a___b"));
+        assertEquals("aBC", CodeTemplateEngine.camelCase("a__b__c"));
+    }
+
+    /**
+     * 首尾下划线同样不抛。
+     * <p>
+     * <b>这一支含一处有意的行为变更，不是"保持原样"：</b>
+     * 旧写法的 {@code parts[0]} 拿到的是空串、抬首字母从 index 1 开始，所以 {@code _a} 过去返回
+     * {@code "A"}；新写法把空段整个跳过，{@code a} 成为"第一个非空段"因而保持小写 ⇒ {@code "a"}。
+     * 取 {@code "a"} 是对的：本方法的三个用处（Java 字段名、Controller 的 URL 段、React prop 名）
+     * 都要求首字母小写，写成 {@code "A"} 虽能编译但违背命名约定，
+     * 且与 {@code toPascalCase("_a") == "A"} 一起用会让 getter 变成 {@code getA()} 配字段 {@code A}。
+     */
+    @Test
+    public void camelCaseSurvivesLeadingAndTrailingUnderscores() {
+        assertEquals("a", CodeTemplateEngine.camelCase("_a"));
+        assertEquals("a", CodeTemplateEngine.camelCase("a_"));
+        assertEquals("a", CodeTemplateEngine.camelCase("_a_"));
+        assertEquals("aB", CodeTemplateEngine.camelCase("_a_b"));
+    }
+
+    /**
+     * 大小写折叠不能受 JVM 默认区域影响。
+     * <p>
+     * 土耳其语区域（tr-TR）下 {@code "I".toLowerCase()} 是无点 {@code ı}，
+     * 同一份字段码在两种 JVM 上会生成出两个不同的标识符，产物与源码对不上。
+     * 所以这里固定住 {@code Locale.ROOT}，并在土耳其语区域下重跑一遍。
+     */
+    @Test
+    public void camelCaseIsLocaleIndependent() {
+        Locale original = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.ROOT);
+            String underRoot = CodeTemplateEngine.camelCase("INDEX_CODE");
+
+            Locale.setDefault(new Locale("tr", "TR"));
+            String underTurkish = CodeTemplateEngine.camelCase("INDEX_CODE");
+
+            assertEquals("区域不应改变标识符（tr-TR 下 I 会变成无点 ı）", underRoot, underTurkish);
+            assertEquals("indexCode", underRoot);
+        } finally {
+            Locale.setDefault(original);
+        }
+    }
+
+    /** {@code toPascalCase} 逐字符走，遇 {@code _} 只置标记不取下标 —— 连续下划线对它无害（钉住"本来就没坏"）。 */
+    @Test
+    public void toPascalCaseToleratesConsecutiveUnderscores() {
+        assertEquals("AB", CodeTemplateEngine.toPascalCase("a__b"));
+        assertEquals("UserId", CodeTemplateEngine.toPascalCase("user__id"));
+        assertEquals("A", CodeTemplateEngine.toPascalCase("_a"));
+    }
+
+    /**
+     * <b>本次缺陷的正面证据</b>：一个含 {@code user__id} 字段的实体，
+     * {@code renderEntity} 必须真的吐出源码，而不是在中途炸掉。
+     * <p>
+     * 旧写法在这里抛 {@code StringIndexOutOfBoundsException}，
+     * 而物化是<b>逐 entity 循环生成、循环结束后才统一写文件</b>
+     * （{@code MaterializationService.run} 第 2/3 步），所以这一个字段会让整批物化零产出，
+     * 记进 {@code error_message} 的还只是 {@code String index out of range: 0}。
+     */
+    @Test
+    public void renderEntityProducesSourceForAFieldWithConsecutiveUnderscores() {
+        EntityEntity entity = makeEntity("order_item", "z_lc_order_item");
+        List<FieldEntity> fields = Arrays.asList(
+                makeField("user__id", "用户", "LONG", null),
+                makeField("amount", "金额", "DECIMAL", null));
+
+        String src = engine.renderEntity(entity, fields);
+
+        assertNotNull(src);
+        assertTrue("坏字段那一行必须真的生成出来: " + src, src.contains("private Long userId;"));
+        assertTrue("@TableField 要保留数据库里的原字段名: " + src, src.contains("@TableField(\"user__id\")"));
+        assertTrue("getter/setter 也要跟着走: " + src,
+                src.contains("getUserId()") && src.contains("setUserId("));
+        assertTrue("相邻的正常字段不能被带坏: " + src,
+                src.contains("private java.math.BigDecimal amount;"));
+    }
+
+    /**
+     * Controller 的 URL 段也吃 {@code camelCase(entityCode)}，
+     * 而实体码连 {@code FIELD_CODE_RE} 都没有（{@code SchemaAdminBizService} 里搜不到任何 entityCode 校验）。
+     */
+    @Test
+    public void renderControllerSurvivesAnEntityCodeWithConsecutiveUnderscores() {
+        EntityEntity entity = makeEntity("order__item", "z_lc_order_item");
+
+        String src = engine.renderController(entity);
+
+        assertTrue("URL 段要生成出来: " + src, src.contains("/api/generated/orderItem"));
+        assertTrue("类名也要生成出来: " + src, src.contains("public class OrderItemController"));
+    }
+
+    @Test
+    public void renderMapperAndPageAlsoSurviveOddFieldCodes() {
+        EntityEntity entity = makeEntity("order__item", "z_lc_order_item");
+        List<FieldEntity> fields = Collections.singletonList(
+                makeField("user__id", "用户", "LONG", null));
+
+        assertTrue(engine.renderMapper(entity).contains("interface OrderItemMapper"));
+        assertTrue("React 页面那份也吃 camelCase: ",
+                engine.renderReactPage(entity, fields).contains("userId"));
     }
 }
