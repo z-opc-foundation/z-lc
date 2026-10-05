@@ -1080,10 +1080,21 @@ public class DynamicSqlBuilder {
     }
 
     /**
-     * SQL 标识符加反引号 (防止保留字冲突).
-     * 严格要求标识符仅字母数字下划线 (由 validateTable 兜底).
+     * SQL 标识符加反引号 (防止保留字冲突)。
+     * <p>
+     * <b>加引号不是校验</b>：反引号本身可以出现在标识符里，所以含反引号的输入会闭合引号
+     * 逃逸出去。原实现只做拼接、不做校验，javadoc 却写"由 validateTable 兜底"——而
+     * validateTable 只校验 tableName，不校验 fieldCode / refEntity。
+     * <p>
+     * 写入门（{@code SchemaAdminBizService.validateFieldCodes}）已按同一白名单收口，
+     * 这里再校验一道是纵深防御：同时覆盖事件重放（EventReplayService 直接从事件 JSON
+     * 取 refEntity）与库里已存在的历史数据。遇到不合规标识符必须<b>响亮失败</b>，
+     * 不能静默拼出一条会被数据库以令人困惑的方式拒绝的 SQL。
      */
     private String quote(String ident) {
+        if (ident == null || !ident.matches(IDENT_REGEX)) {
+            throw new IllegalArgumentException("Illegal SQL identifier: " + ident);
+        }
         return "`" + ident + "`";
     }
 

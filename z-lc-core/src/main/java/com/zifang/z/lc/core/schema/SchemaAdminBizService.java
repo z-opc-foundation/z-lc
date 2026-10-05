@@ -693,6 +693,18 @@ public class SchemaAdminBizService implements SchemaAdminService {
                 throw new IllegalArgumentException("字段编码不是合法列名: " + code
                         + " (需字母开头, 仅含字母/数字/下划线)");
             }
+            // refEntity 会被 DynamicSqlBuilder.buildJoinClauses 直接当 JOIN 的表名拼进 SQL,
+            // 而 quote() 只加反引号不做校验 —— 含反引号的 refEntity 会闭合引号逃逸出去,
+            // 于是"定义一个实体"就等价于往 list/count SQL 里注入任意 SQL (实测可把
+            // `t.deleted = 0` 一起注释掉)。它与 fieldCode 同为元数据标识符, 口径必须一致。
+            // 这里刻意不 trim: quote() 用的是原始值, 写入点若放行 " z_lc_app ",
+            // 读取时仍会被 quote() 拒掉, 实体就变成"能建不能用"。
+            String refEntity = f.getRefEntity();
+            if (refEntity != null && !refEntity.isEmpty()
+                    && !FIELD_CODE_RE.matcher(refEntity).matches()) {
+                throw new IllegalArgumentException("引用实体编码不是合法表名: " + refEntity
+                        + " (需字母开头, 仅含字母/数字/下划线)");
+            }
             if (SYSTEM_COLUMN_CODES.contains(code.toLowerCase(Locale.ROOT))) {
                 throw new IllegalArgumentException("字段编码撞了引擎自建列: " + code
                         + " (保留列: " + String.join(", ", SYSTEM_COLUMN_CODES) + ")");

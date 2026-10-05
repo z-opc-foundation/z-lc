@@ -422,6 +422,72 @@ public class SchemaAdminBizServiceTest {
         }
     }
 
+    /**
+     * 回归：refEntity 会被 DynamicSqlBuilder.buildJoinClauses 当作 LEFT JOIN 的表名拼进 SQL，
+     * 而当时的写入闸只校验 fieldCode。含反引号的 refEntity 能闭合引号逃逸，于是
+     * "定义一个实体"就等价于往 list/count SQL 注入任意 SQL（实测可把 `t.deleted = 0`
+     * 一起注释掉，连软删除过滤一并绕过）。refEntity 与 fieldCode 同为元数据标识符，
+     * 必须在同一个写入点按同一白名单收口。
+     */
+    @Test
+    public void createEntityShouldRejectRefEntityThatIsNotALegalTableName() {
+        service.createApp(appReq());
+        String[] bad = {
+                "x` JOIN z_lc_app a ON 1=1 --",     // 反引号逃逸（原缺陷）
+                "t1, t2", "t1; DROP TABLE z_lc_app", "t1 t2", "1=1",
+                "(SELECT 1)", "z_lc_app`", "`z_lc_app", "   ", " z_lc_app ",
+        };
+        for (String ref : bad) {
+            try {
+                service.createEntity("t1", "crm", entityWithRef("ref1", ref));
+                throw new AssertionError("非法引用实体编码应当在写入处就被拒: [" + ref + "]");
+            } catch (IllegalArgumentException expected) {
+                assertNotNull("拒了就要给原因", expected.getMessage());
+            }
+        }
+    }
+
+    @Test
+    public void createEntityShouldAcceptLegalRefEntity() {
+        service.createApp(appReq());
+        assertNotRejected("合法 refEntity 不该被写入门拒掉",
+                entityWithRef("ref1", "z_lc_customer"));
+    }
+
+    /** refEntity 为 null / 空串 = 该字段没有引用语义，不是非法输入。 */
+    @Test
+    public void createEntityShouldAcceptEmptyRefEntity() {
+        service.createApp(appReq());
+        // 一次建实体带两个字段：夹具的 entityCode 固定为 "task"，同一测试里建两次会撞重名
+        EntityDefDTO def = entityWith("ref1", "ref2");
+        def.getFields().get(0).setFieldType("REF");
+        def.getFields().get(0).setRefEntity(null);
+        def.getFields().get(1).setFieldType("REF");
+        def.getFields().get(1).setRefEntity("");
+        assertNotRejected("空 refEntity 表示无引用语义，不该被拒", def);
+    }
+
+    /**
+     * 只断言"没被写入门拒掉"，不断言读回内容。
+     * 夹具里 entityMapper 是 noop，{@code createEntity} 末尾的 {@code getEntity}
+     * 读不回行、返回 null，那是 mock 细节，与本组用例要验的性质无关。
+     */
+    private void assertNotRejected(String why, EntityDefDTO def) {
+        try {
+            service.createEntity("t1", "crm", def);
+        } catch (IllegalArgumentException e) {
+            throw new AssertionError(why + "，实际被拒: " + e.getMessage());
+        }
+    }
+
+    /** 建一个带单个 REF 字段的实体定义。 */
+    private EntityDefDTO entityWithRef(String fieldCode, String refEntity) {
+        EntityDefDTO def = entityWith(fieldCode);
+        def.getFields().get(0).setFieldType("REF");
+        def.getFields().get(0).setRefEntity(refEntity);
+        return def;
+    }
+
     @Test
     public void updateEntityShouldRejectCollidingCodeBeforeAnyWrite() throws Exception {
         service.createApp(appReq());
