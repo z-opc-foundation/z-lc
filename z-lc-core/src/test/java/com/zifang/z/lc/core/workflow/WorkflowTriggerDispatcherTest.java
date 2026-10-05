@@ -319,6 +319,89 @@ public class WorkflowTriggerDispatcherTest {
         assertEquals(1, adapter.calls.get());
     }
 
+    // ---------------- 缺陷 #65：形状不对的绑定行不许把用户的写入带走 ----------------
+
+    /**
+     * <b>这一支钉的是类注释承诺的"这个方法不抛"。</b>
+     * <p>
+     * 旧写法把 {@code binding.getProcessDefinitionKey().trim()} 放在 try <b>外面</b>，
+     * 于是 {@code processDefinitionKey} 为 null 时 NPE 会一路穿出
+     * {@code fire()} → {@code afterCreate()} → {@code RuntimeCrudController:188}（那个调用点没有 try），
+     * 把"<b>记录已写成功 + undo 已记</b>"的用户写入变成一个 500 ——
+     * 客户端看到失败就重试，于是<b>同一份数据被写两遍</b>。
+     * <p>
+     * 当下走 API 写不出这种行（{@code WorkflowTriggers.validateForWrite} 的 requireText 拒 null/空白），
+     * 但 DDL 里 {@code process_definition_key} 没有 NOT NULL，一次数据订正就能造出来。
+     * 所以这里直接替身喂一行坏的，钉住"引擎这一层永远是 FAILED 行，不是异常"。
+     */
+    @Test
+    public void aBindingRowWithoutAProcessKeyBecomesAFailedRowNotAnException() {
+        bindings.add(binding(7L, null));
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-should-not-happen");
+
+        int attempted;
+        try {
+            attempted = dispatch();
+        } catch (RuntimeException ex) {
+            fail("形状不对的绑定行不许把用户的写入带走（类注释承诺不抛）: " + ex);
+            return;
+        }
+
+        assertEquals("仍然算一次尝试（它确实被查出来了）: ", 1, attempted);
+        assertEquals("根本没该发出去的请求: ", 0, adapter.calls.get());
+        WorkflowFireEntity row = onlyFire();
+        assertEquals(WorkflowFireEntity.STATUS_FAILED, row.getStatus());
+        assertNotNull("要说得出是绑定行自己的问题: " + row.getDetail(), row.getDetail());
+        assertTrue("失败原因要指向绑定行而不是引擎: " + row.getDetail(),
+                row.getDetail().contains("绑定行不可用") && row.getDetail().contains("7"));
+    }
+
+    /**
+     * 同一族的另一个输入，但结论与上一条<b>不同</b>，要说清楚差别在哪。
+     * <p>
+     * {@code appCode} 为 null 时 Java 的字符串拼接给出 {@code "null:order:42"}，
+     * <b>不抛 NPE</b>——所以旧写法在这一条上也是"不抛"的，本测试钉的不是修复而是既有行为。
+     * 顺带记下一个<b>观察</b>（不在本次修复范围内，appCode 在 DDL 里是 NOT NULL、
+     * 也被 {@code requireText} 拒，双重不可达）：businessKey 会退化成带字面量 "null" 的串。
+     * 真要收紧应该是在写入口拒，而不是在这里截断。
+     */
+    @Test
+    public void aBindingRowWithoutAnAppCodeStillDoesNotEscape() {
+        WorkflowBindingEntity broken = binding(8L, PROCESS);
+        broken.setAppCode(null);
+        bindings.add(broken);
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-8");
+
+        int attempted;
+        try {
+            attempted = dispatch();
+        } catch (RuntimeException ex) {
+            fail("appCode 为 null 同样不许把用户的写入带走: " + ex);
+            return;
+        }
+        assertEquals(1, attempted);
+        assertEquals("旧写法在这一条上也不抛，所以请求照样发得出去: ", 1, adapter.calls.get());
+        assertEquals("且有结局行可回读: ", 1, fires.rows.size());
+        assertEquals(WorkflowFireEntity.STATUS_STARTED, fires.rows.get(0).getStatus());
+    }
+
+    /**
+     * 一行坏的不能吃掉同一批里其它行 —— 坏的那条记 FAILED，好的那条照常发起。
+     * （旧写法下 NPE 会在第一行就终止整个循环，后面那行连尝试都不会被记。）
+     */
+    @Test
+    public void oneBrokenRowDoesNotSwallowTheHealthyOnes() {
+        bindings.add(binding(1L, null));
+        bindings.add(binding(2L, PROCESS));
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-ok");
+
+        assertEquals("两行都算尝试: ", 2, dispatch());
+        assertEquals("只有好的那行真的发了出去: ", 1, adapter.calls.get());
+        assertEquals("两行都要有结局: ", 2, fires.rows.size());
+        assertEquals(WorkflowFireEntity.STATUS_FAILED, fires.rows.get(0).getStatus());
+        assertEquals(WorkflowFireEntity.STATUS_STARTED, fires.rows.get(1).getStatus());
+    }
+
     // ---------------- 替身 ----------------
 
     private static final class Ask {

@@ -169,18 +169,26 @@ public class WorkflowTriggerDispatcher {
     private CamudaAdapter.ProcessStart fire(final WorkflowBindingEntity binding, String entityCode,
                                         final Long recordId, final Map<String, Object> fieldValues,
                                         final String initiator) {
-        final String businessKey = binding.getAppCode() + ":" + entityCode + ":" + recordId;
-        final Map<String, Object> variables = new LinkedHashMap<String, Object>();
-        if (fieldValues != null) {
-            variables.putAll(fieldValues);
-        }
-        variables.put("lcAppCode", binding.getAppCode());
-        variables.put("lcEntityCode", entityCode);
-        variables.put("lcRecordId", recordId);
-        final String processKey = binding.getProcessDefinitionKey().trim();
-        final String title = entityCode + "#" + recordId;
-
+        // ⚠ 整段预处理（含下面那句 .trim()）必须落在 try **里面**。
+        // processDefinitionKey 为 null 时 .trim() 抛 NPE；若 try 从后面才开始，
+        // NPE 会一路穿出 fire() → afterCreate() → RuntimeCrudController:188（那个调用点没有 try），
+        // 把"记录已写成功 + undo 已记"的用户写入变成一个 500，客户端看到失败就重试 ⇒ 重复记录。
+        // 类注释承诺的是"这个方法不抛"。
+        // 当下走 API 写不进来这种行（WorkflowTriggers.validateForWrite 的 requireText 拒 null/空白，
+        // create 与 update 都走它），但 DDL 里 process_definition_key 没有 NOT NULL ——
+        // 一次数据订正/迁移/管理面 SQL 就能造出来，所以这里按"不可信输入"处理。
         try {
+            final String businessKey = binding.getAppCode() + ":" + entityCode + ":" + recordId;
+            final Map<String, Object> variables = new LinkedHashMap<String, Object>();
+            if (fieldValues != null) {
+                variables.putAll(fieldValues);
+            }
+            variables.put("lcAppCode", binding.getAppCode());
+            variables.put("lcEntityCode", entityCode);
+            variables.put("lcRecordId", recordId);
+            final String processKey = binding.getProcessDefinitionKey().trim();
+            final String title = entityCode + "#" + recordId;
+
             Future<CamudaAdapter.ProcessStart> future = workers.submit(new Callable<CamudaAdapter.ProcessStart>() {
                 @Override
                 public CamudaAdapter.ProcessStart call() {
@@ -201,7 +209,21 @@ public class WorkflowTriggerDispatcher {
             }
         } catch (RejectedExecutionException ex) {
             return CamudaAdapter.ProcessStart.failed("并发发起已达上限（2 个在飞、不排队），这条记录没有发起");
+        } catch (RuntimeException ex) {
+            // 兜住的是"绑定行本身的形状不对"（缺 processDefinitionKey / appCode 为 null 等），
+            // 不是引擎的错 —— 但对调用方是同一种结局：记一行 FAILED，不把用户的写入带走。
+            // 另有一层收益：一行坏的不再吃掉同一批里后面的行（旧写法下 NPE 在第一行就终止整个循环）。
+            return CamudaAdapter.ProcessStart.failed("绑定行不可用（binding=" + binding.getId()
+                    + "），本次没有发起: " + messageOf(ex));
         }
+    }
+
+    private static String messageOf(RuntimeException ex) {
+        String message = ex.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            message = ex.getCause() == null ? null : ex.getCause().getMessage();
+        }
+        return message == null || message.trim().isEmpty() ? ex.getClass().getSimpleName() : message;
     }
 
     private void record(WorkflowBindingEntity binding, CamudaAdapter.ProcessStart start, String tenantCode,
