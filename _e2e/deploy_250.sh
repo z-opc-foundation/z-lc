@@ -145,7 +145,7 @@ api_with_bridge() {
   ZLC_EXTRA_ENV="ZLC_WF_BASE_URL=http://127.0.0.1:$BRIDGE_PORT" rssh env && rssh start
   tunnel
   echo "=== API 层门禁打远程（桩 = 本机 :$BRIDGE_PORT，jar 经反向隧道打过来）==="
-  LC_WF_STUB_PORT="$BRIDGE_PORT" python3 -u "$REPO/_e2e/e2e_api_test.py" "http://localhost:$LOCAL_TUNNEL"
+  LC_CAMUDA_STUB_PORT="$BRIDGE_PORT" python3 -u "$REPO/_e2e/e2e_api_test.py" "http://localhost:$LOCAL_TUNNEL"
 }
 
 case "${1:-all}" in
@@ -169,8 +169,8 @@ case "${1:-all}" in
   healthproof) rssh healthproof ;;
   # 闸 6（缺陷 #61 §2.6）：流程发起那本账在真 MySQL 8 上写不写得进、读不读得出。
   # 判据读的是库（information_schema + z_lc_workflow_fire），不是应用的转述；桩要先在 250 本机起来：
-  #   scp _e2e/wf_stub.py 250:~/zlc-deploy/ && ssh 250 'cd ~/zlc-deploy && nohup python3 wf_stub.py \
-  #     --port 18888 --hit-file ~/zlc-deploy/logs/wf_hits.jsonl --pid-file ~/zlc-deploy/wf_stub.pid &'
+  #   scp _e2e/camuda_stub.py 250:~/zlc-deploy/ && ssh 250 'cd ~/zlc-deploy && nohup python3 camuda_stub.py \
+  #     --port 18888 --hit-file ~/zlc-deploy/logs/wf_hits.jsonl --pid-file ~/zlc-deploy/camuda_stub.pid &'
   # 且 env/start 两步要带 ZLC_EXTRA_ENV='ZLC_WF_BASE_URL=http://localhost:18888'（闸 1 现在不给默认值）。
   fireprobe) rssh fireprobe ;;
   collate) rssh collate ;;

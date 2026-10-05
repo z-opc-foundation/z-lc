@@ -17,7 +17,7 @@ import java.util.Map;
  * 实现规范: 实现类必须标 <code>@Component</code> + <code>@InterfaceMapping</code>
  * — 引擎通过 (group="工作流", code="WorkflowLogicAssigneeInjectService") 自动索引.
  * <p>
- * z-wf 模块应实现这些 SPI 以桥接工作流引擎.
+ * z-camuda 模块应实现这些 SPI 以桥接工作流引擎.
  */
 @InterfaceMapping(name = "工作流审批人注入", code = "WorkflowLogicAssigneeInjectService", group = "工作流")
 public interface WorkflowLogicAssigneeInjectService {

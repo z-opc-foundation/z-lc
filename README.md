@@ -65,13 +65,13 @@
 | 部署 | `DeploymentController` `/api/lc/deployment` | 定义版本落库与部署态对账 |
 | 撤销 | `UndoController` `/api/lc/undo` | 快照式 undo |
 | 处理流水线 | `PipelineConfigController` `/api/lc/pipeline-config` | `core/pipeline` 的 processor 链真的执行 |
-| 流程绑定与触发 | `WorkflowBindingController` `/api/lc/workflow-binding`、`WorkflowTriggerDispatcher`、`WfAdapter` | 绑定关系 + 触发派发；远端 z-wf 的审批中心路径由 `z-lc.adapter.wf.base-url` 指 |
+| 流程绑定与触发 | `WorkflowBindingController` `/api/lc/workflow-binding`、`WorkflowTriggerDispatcher`、`CamudaAdapter` | 绑定关系 + 触发派发；远端 z-camuda 的审批中心路径由 `z-lc.adapter.camuda.base-url` 指 |
 | 权限 | `PermissionController` `/api/lc/permission` | 授权/回收（`PermissionService`） |
 | 元数据与探活 | `MetaController` `/api/lc/meta`、`HealthController` `/api/lc/health` | `/health` 的 `data.status` 由每个连接池真探一次推出来（`DataSourceHealthProber`），配置不成串就拒起 |
 | AI 建模建议 | `AiModelingController` `/api/lc/ai`、`core/ai/AiModelingService` | 走 `io.github.yuku123:z-llm-core` 的 `ChatGatewayService.chat(UnifiedRequest)`；`optional` 依赖，容器里没有该 bean 时退回模板建议 |
 | 模型/页面设计框架 | `z-lc-design`：`@LowCodeModel`、`@LowCodeModelService`、`LowCodeModelServiceCollector`、`PageTemplateController` `/api/lc/design` | 注解 + 收集器把类注册成平台模型；knife4j OpenAPI 也在这层开 |
 | SPI 扩展点 | `z-lc-sdk` 的 `spi/{form,approve,model,task,sign,workflow}` | `rg 'public interface' z-lc-sdk/src/main/java/com/zifang/z/lc/sdk/spi` 现数 **27** 支接口 + 抽象基类与 RPC 适配器 |
-| 外部系统适配 | `z-lc-core/adapter`（12 个类：`CtcAdapter` / `MetaAdapter` / `ScriptAdapter` / `MistAdapter` / `OssAdapter` / `MqAdapter` / `WfAdapter` / `AdapterRegistry` / `JwtRelayInterceptor` …） | 每个 adapter 的地址走 `z-lc.adapter.<name>.base-url`，缺省 `http://localhost:8888`；`MetaAdapter`/`CtcAdapter` 用 Caffeine 2.9.3 做本地缓存 |
+| 外部系统适配 | `z-lc-core/adapter`（12 个类：`CtcAdapter` / `MetaAdapter` / `ScriptAdapter` / `MistAdapter` / `OssAdapter` / `MqAdapter` / `CamudaAdapter` / `AdapterRegistry` / `JwtRelayInterceptor` …） | 每个 adapter 的地址走 `z-lc.adapter.<name>.base-url`，缺省 `http://localhost:8888`；`MetaAdapter`/`CtcAdapter` 用 Caffeine 2.9.3 做本地缓存 |
 
 `z-lc-web` 的 `META-INF/spring.factories` 注册 `LcAutoConfiguration` 与 `LcModuleDataSource`，
 所以宿主只需 embed `z-lc-web` 就能拿到全部 Controller；`z-lc-admin` 只是把这条链真的跑起来的入口。
@@ -205,7 +205,7 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0.jar --spring.profiles.active=dev
 | `/api/lc/ai` | `AiModelingController` | z-lc-web |
 | `/api/lc/design` | `PageTemplateController` | z-lc-design |
 
-`/api/approval-center` **不是**本仓的端点，它是 `WfAdapter` 调用远端 z-wf 的路径（只出现在注释里）。
+`/api/approval-center` **不是**本仓的端点，它是 `CamudaAdapter` 调用远端 z-camuda 的路径（只出现在注释里）。
 
 ---
 

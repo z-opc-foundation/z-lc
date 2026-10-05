@@ -3,7 +3,7 @@
 登记时间：2026-09-26 23:12（`date` 现测）。仓库 HEAD 见文末"取数命令"，**别信本文任何数字，按命令现测**。
 
 一句话现状：**java 侧这条链已经通了，本轮新写/重写的四支测试合计 68 例全绿
-（`WfAdapterTest` 18 + `WorkflowBindingServiceTest` 25 + `WorkflowTriggerDispatcherTest` 17 + `WorkflowTriggersTest` 8，
+（`CamudaAdapterTest` 18 + `WorkflowBindingServiceTest` 25 + `WorkflowTriggerDispatcherTest` 17 + `WorkflowTriggersTest` 8，
 同窗 `z-lc-core` 全量 1326 例 / 0 失败 / BUILD SUCCESS），
 但从 HTTP 契约层到浏览器层到 250 真库，还没有一层碰过它** —— 也就是说
 "绑定行真的换出一次流程实例"这件事，目前只在进程内的单测里发生过。
@@ -19,10 +19,10 @@
 | 写后派发：2 槽有界、不排队、任何失败都不抛，每次都落一行账 | `WorkflowTriggerDispatcherTest` **17 例全绿** |
 | 证据面：新表 `z_lc_workflow_fire`（STARTED/FAILED + instance_id + detail） | 两份 schema 均已追加（`z_lc_workflow_fire` 在 `git show --stat ae07610` 里可见） |
 | 接线点：`RuntimeCrudController` 在记录写成功之后调 `workflowTriggerDispatcher.afterCreate(...)` | 同一提交 |
-| `WfAdapter` 三处契约错（路径 / body 键名 / 应答读法）已按 z-wf 源码改对 | `WfAdapterTest` **18 例全绿**（本轮 23:10 复测） |
-| 出站 HTTP 从未真的发出去过：`HttpRequestDefinition` 是裸 POJO，`getHttpRequestHeader()` 返回 null ⇒ 每个带头的请求 NPE | `CtcAdapter.doRequest` 改为先 `new HttpRequestHeader()`；猎物＝`WfAdapterTest.headersReachTheWire` |
-| 应答只能逐格读：`JsonUtil.fromJson(body, Result.class)` 恒抛（`Result` 默认构造 private，引擎不 setAccessible），`TypeReference<Result<…>>` 恒抛 ClassCastException | `WfAdapter` 改用 `JsonUtil.parseObject` + `getBoolean("success")`/`getJsonObject("data")` |
-| 状态码不看就等于"远端受理了"：`HttpExecutionResult:47` 库自己写明"success 始终为 true，5xx 不会让 isSuccess()=false" | 新增 `CtcAdapter.httpAccepted(res)`，`WfAdapter` 已接；猎物＝`non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope`（500 + 一份成功信封 ⇒ 必须判失败） |
+| `CamudaAdapter` 三处契约错（路径 / body 键名 / 应答读法）已按 z-camuda 源码改对 | `CamudaAdapterTest` **18 例全绿**（本轮 23:10 复测） |
+| 出站 HTTP 从未真的发出去过：`HttpRequestDefinition` 是裸 POJO，`getHttpRequestHeader()` 返回 null ⇒ 每个带头的请求 NPE | `CtcAdapter.doRequest` 改为先 `new HttpRequestHeader()`；猎物＝`CamudaAdapterTest.headersReachTheWire` |
+| 应答只能逐格读：`JsonUtil.fromJson(body, Result.class)` 恒抛（`Result` 默认构造 private，引擎不 setAccessible），`TypeReference<Result<…>>` 恒抛 ClassCastException | `CamudaAdapter` 改用 `JsonUtil.parseObject` + `getBoolean("success")`/`getJsonObject("data")` |
+| 状态码不看就等于"远端受理了"：`HttpExecutionResult:47` 库自己写明"success 始终为 true，5xx 不会让 isSuccess()=false" | 新增 `CtcAdapter.httpAccepted(res)`，`CamudaAdapter` 已接；猎物＝`non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope`（500 + 一份成功信封 ⇒ 必须判失败） |
 
 ⇒ **本文件 §2 之后所有事项的前提都已经成立**，剩下的是覆盖面、界面兑现和拍板。
 
@@ -42,7 +42,7 @@ grep -rln workflow-binding --include='*.java' z-lc-web/src/test z-lc-admin/src  
 
 要补的断言（一条都不能少，且每条要有反向猎物）：
 
-- [x] 起服务时带 `--z-lc.adapter.wf.base-url=<本地桩>`，**走真 HTTP**：`/api/lc/workflow-binding/create` 存下绑定
+- [x] 起服务时带 `--z-lc.adapter.camuda.base-url=<本地桩>`，**走真 HTTP**：`/api/lc/workflow-binding/create` 存下绑定
       → 运行时 `/create` 写一条记录 → 桩确实收到那一句话（路径逐字 `/api/approval-center/processes/start`、
       body 里 `processKey`/`businessKey`/`initiator`/`title` 四格齐）
       → `GET /api/lc/workflow-binding/fires` 回读出一行 `STARTED` 且 `instanceId` 就是桩给的那个 id。
@@ -121,7 +121,7 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
     （502 + 成功 body ⇒ 必须一行 FAILED、detail 带 `http=502`、不许留下 body 里那个实例号，
     另配"状态码换回 200、body 一字不动 ⇒ STARTED"的阳性对照），契约层从 12 条变 13 条，
     复跑 M5 才出上面那条 web 1 红。
-  * 顺带抓出一条**软断言**（已按实测记账，未改）：`WfAdapterTest.httpFailureCarriesStatusAndPath` 里
+  * 顺带抓出一条**软断言**（已按实测记账，未改）：`CamudaAdapterTest.httpFailureCarriesStatusAndPath` 里
     "要说清是 http 几"在 M5 下**假绿** —— 失败消息把整个 body 抄进文案，而那个 body 里正好有 "404"；
     真红的是同一条方法里"要带上打的是哪条路径"。文案里混入回显内容 = 断言被写软。
 - 量具规则（原文照抄在上）已按实测口径实现：原始字节读进内存、还原只从内存写回 + 逐文件 md5 对账
@@ -132,11 +132,11 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 ### 2.4 接口层 E2E（部署在跑的那个 jar，不是测试进程）
 
 - [x] `_e2e/e2e_api_test.py` 的 `[15w]` 一节（09-27 01:0x–01:3x 写完并量过）。
-      开局实测：**18090 上跑的 jar 是 #61 之前的**（nested `z-lc-core` 09-26 18:51、`WfAdapter.class` 4969B、
-      根本没有 `WorkflowTriggerDispatcher`）⇒ 从 HEAD 重打（`78aeba1b…`、`WfAdapter.class` 7794B），
+      开局实测：**18090 上跑的 jar 是 #61 之前的**（nested `z-lc-core` 09-26 18:51、`CamudaAdapter.class` 4969B、
+      根本没有 `WorkflowTriggerDispatcher`）⇒ 从 HEAD 重打（`78aeba1b…`、`CamudaAdapter.class` 7794B），
       并且**先按字节比对 fat jar 里那个 class 与 `target/classes/` 的**，再信任何读数。
       分母：全量 **532**（其中 `[15w]` **63**，63 = 532−469 与加这一节之前的基线逐条对齐）。
-      这一节自己起 z-wf 桩（`http.server` 指 8888，模式 ok/reject/http5xx/hang），断言的形状：
+      这一节自己起 z-camuda 桩（`http.server` 指 8888，模式 ok/reject/http5xx/hang），断言的形状：
       桥（写一条 ⇒ 桩正好收到一句）+ 报文（路径 / 剪过空白的 processKey / businessKey / title /
       initiator / variables 带 lc* 坐标）+ `/fires` 回读 STARTED 与实例号 + 登记本身不发单 +
       未登记实体一句不发 + 6 次写入口被拒（每次带"点名为什么兑现不了"，且**一行都没落库**）+
@@ -154,7 +154,7 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
       | 注入 | 摘掉的是什么 | 实测红（全部落在 `[15w]` 内） |
       |---|---|---|
       | W1 `RuntimeCrudController` | `afterCreate(...)` 调用点 ⇒ `int fired = 0` | 501/532，**31 条** |
-      | W2 `WfAdapter.START_PATH` | 退回 #61 之前那条路径 | 531/532，**1 条**（只红路径那一条：形状对、门牌错） |
+      | W2 `CamudaAdapter.START_PATH` | 退回 #61 之前那条路径 | 531/532，**1 条**（只红路径那一条：形状对、门牌错） |
       | W3 `CtcAdapter.httpAccepted(res)` | 退回 `res.isSuccess()`（任意完成的响应都算成功） | 530/532，**2 条**（5xx 被当成功那一族） |
       | W4 `data.getString("processInstanceId")` | 退回 `data.toString()` | 531/532，**1 条**（实例号那一格） |
       | W5 派发预算 `future.get(timeoutMs)` | 放大 60 倍（180s） | 528/532，**4 条**（"到点判 FAILED 并点名预算"那一族） |
@@ -163,7 +163,7 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
       两支**记账而非缺陷**的读法：
       ① W5 原本要打的形状是"无上限的 `future.get()`"，**javac 直接拒**（`catch (TimeoutException)`
       变不可达，01:32 那一轮整场战役崩在这里）⇒ 语言替这个洞上了一道闸；改成"预算放大 60 倍"之后
-      "到点判 FAILED"红，而"写入口在预算内返回"**没红** —— 因为它另有一根独立的桩（`WfAdapter`
+      "到点判 FAILED"红，而"写入口在预算内返回"**没红** —— 因为它另有一根独立的桩（`CamudaAdapter`
       传输层 socket = `timeoutMs + 500ms`，W5 碰不到）。两道界各名下各的检查，不是量具漏判。
       ② W6 摘闸后落库那行 `auto_submit=0` 被 `listByEvent` 的 `auto_submit = 1` 挡在发起之外 ⇒
       写入口那道管"别让装饰进库"、读侧那道管"别让它发单"，两层各有名。
@@ -263,16 +263,16 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
       （"15 条 DROP 不可照跑"说的是另一个文件 `init.sql`。）
       ⚠ 只 scp schema 不 scp jar：那一次 `sync` 会把 `target/` 里**正被 18090 进程按需读取**的 jar 原地重写，
       边跑边换会让在飞的测量读出与代码无关的红 —— 所以 `sync` 走 jar 那条路要等在飞的那轮收线。
-- [ ] **250 的 `:8888` 不是 z-wf，是别人的服务**（09-27 04:0x 实测：`ss -ltnp` 显示 `*:8888` 由 pid 1622
+- [ ] **250 的 `:8888` 不是 z-camuda，是别人的服务**（09-27 04:0x 实测：`ss -ltnp` 显示 `*:8888` 由 pid 1622
       那个 java 持有 —— `z-opc-main-starter`，已跑 1 天 16 小时；对它 POST `/api/approval-center/processes/start`
-      回的是 **404 + 一段 Tomcat HTML**）。而 `z-lc.adapter.wf.base-url` 的默认值正是 `http://localhost:8888`
+      回的是 **404 + 一段 Tomcat HTML**）。而 `z-lc.adapter.camuda.base-url` 的默认值正是 `http://localhost:8888`
       ⇒ **把当前这一版 jar 部署上去而不动这个参数，就等于每写一条记录都往别人在跑的服务发一次 POST**，
       账上还落一条"应答不是可解析的 JSON/404"的 FAILED —— 那个原因不是产品的结论，是我打错了门。
-      ⇒ 250 这一腿开火前必须显式带 `--z-lc.adapter.wf.base-url=<自己起的桩>`（或真 z-wf），
+      ⇒ 250 这一腿开火前必须显式带 `--z-lc.adapter.camuda.base-url=<自己起的桩>`（或真 z-camuda），
       README 里写死是哪一种，不许留默认值。
       **落点已定位**（09-27 04:1x 现读）：`_e2e/deploy_250_remote.sh:163-176` 那段 `nohup java -jar` 里
       `ctc` / `meta` / `script` 三个 adapter 都显式给了 `http://localhost:$APP_PORT`，**唯独 wf 没有**
-      ⇒ 今天这份部署脚本原样跑，就是把 wf 留在默认值上。补一行 `--z-lc.adapter.wf.base-url="$ZLC_WF_BASE_URL"`，
+      ⇒ 今天这份部署脚本原样跑，就是把 wf 留在默认值上。补一行 `--z-lc.adapter.camuda.base-url="$ZLC_WF_BASE_URL"`，
       并且**没有默认值就 die**（"忘了带参数"要红在部署当场，而不是红成一条 FAILED 账）。
 - [ ] 04:1x–04:2x 复测（同一把尺第二次落到盘上）：`z_lc` 里仍是 **71 张表 / 只有 `z_lc_workflow_binding`**、
       `*:8888` 仍在监听、**18888 空着**（桩可以起在这一格，不跟 8888 上那个别人的 starter 抢）。
@@ -347,8 +347,8 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
           ⚠ 这是本机群里第二台出现"ping 得到、管理面进不去"的盒子（前例：zifang002 硬死机，
           靠 `arm-watchdog.service` 才 69s 自愈）。**这一条属于用户的基建，不由我代修，也不该由我重启。**
 - [ ] **`deploy_250.sh api` 这一条走不通，且不通在"桥"上**（09-27 05:0x 现读 `_e2e/e2e_api_test.py`）：
-      第 `[15w]` 节的桩是**测试进程自己**起的 —— `WF_PORT = int(os.environ.get("LC_WF_STUB_PORT","8888"))`
-      (:2134)、`_WfStub(WF_PORT)` (:2193/:2434) 绑在**跑脚本这台机**的端口上，而 app 的 BASE 是 `sys.argv[1]`
+      第 `[15w]` 节的桩是**测试进程自己**起的 —— `CAMUDA_PORT = int(os.environ.get("LC_CAMUDA_STUB_PORT","8888"))`
+      (:2134)、`_WfStub(CAMUDA_PORT)` (:2193/:2434) 绑在**跑脚本这台机**的端口上，而 app 的 BASE 是 `sys.argv[1]`
       (:21，默认 `http://localhost:18090`，250 腿会换成隧道口)。把 BASE 指到 250 之后，250 上那个 jar 发的是
       **它自己的** `localhost:8888`（也就是 pid 1622 那个别人的 starter），永远打不到我本地的桩 ⇒
       `WF_LIVE = bool(WF) and wf_count() == 1` (:2315) 恒假 ⇒ 这一节所有走 `wfc()` 的断言整排判红、
@@ -356,7 +356,7 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
       记清两件事：①**这是真红不是假绿** —— :2121 那句注释定的规矩就是"桥没通就没有绿"，
       负断言（"一条都没发"）在这种形状下不会蒙过去；②但**63 条整排红不是 250 这条腿的结论**，
       它只说明这把尺的桩和 app 不在同一台机上。⇒ 250 这一腿**不要**跑整节 `[15w]`，
-      改跑一支聚焦的真库探针：桩起在 250（`_e2e/wf_stub.py`，见 §2.6.2）、`ZLC_WF_BASE_URL` 显式指它、
+      改跑一支聚焦的真库探针：桩起在 250（`_e2e/camuda_stub.py`，见 §2.6.2）、`ZLC_WF_BASE_URL` 显式指它、
       写一条记录后**从 MySQL 自己**读回 `z_lc_workflow_fire` 的行（STARTED 与 FAILED 各一），
       再经 `/fires` 读回同一份，最后清场。
 - [ ] ⚠ **09-27 05:4x 把"线上那套库在哪"量成了一个否定结论**：本会话早先有一条账写着"`z_opc_lc` 是线上库、
@@ -375,34 +375,34 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
       就是 250 上我起的这一套（§2.6.2/§2.6.3）。这一问归用户：线上/常驻的那套 z-lc 到底部署在哪台机、
       哪一库，我不去猜着 ALTER 别人的库。
 
-#### 2.6.1 "起真 z-wf 还是只跑桩"这一问，04:2x 已经量到答案的一半
+#### 2.6.1 "起真 z-camuda 还是只跑桩"这一问，04:2x 已经量到答案的一半
 
-工单原文要求"别留成谜"。09-27 04:2x 实测：**真 z-wf 在同一.foundation 里，而且契约是对得上的**：
+工单原文要求"别留成谜"。09-27 04:2x 实测：**真 z-camuda 在同一.foundation 里，而且契约是对得上的**：
 
-- `z-opc-foundation/z-wf`（4 模块 admin/core/starter/web，git HEAD `cc1a21b`）里
-  `z-wf-web/.../ApprovalCenterController.java:617` 就是 `@PostMapping("/processes/start")`，
+- `z-opc-foundation/z-camuda`（4 模块 admin/core/starter/web，git HEAD `cc1a21b`）里
+  `z-camuda-web/.../ApprovalCenterController.java:617` 就是 `@PostMapping("/processes/start")`，
   `:620` 收 `StartProcessRequestDTO`、回 `Result<Map<String,String>>`，`:664` 往 map 里放的是
-  `processInstanceId` ⇒ 与 `WfAdapter` 请求/解析的那几个字段同名（不是"看着像"，是逐字段读出来的）。
+  `processInstanceId` ⇒ 与 `CamudaAdapter` 请求/解析的那几个字段同名（不是"看着像"，是逐字段读出来的）。
 - **桩的 `reject` 那一支是从真引擎抄来的**：`:672-673` `catch (Exception e) { return Result.fail("流程启动失败: " + e.getMessage()); }`
   ⇒ 失败时 HTTP **200** + 信封 `success=false` + message 前缀 `流程启动失败: `。这正是浏览器层 (7b)
   与 deployed 层 W 系列钉的那个形状。**这一支不是桩的发明**，所以"200 而 success=false 时记录照写、
   界面把原话摆出来"两条测的是真结局。
-- 反过来，`http5xx`（502 + body 里带一个成功样的实例号）**不是** z-wf 这段代码能产出的形状 ——
+- 反过来，`http5xx`（502 + body 里带一个成功样的实例号）**不是** z-camuda 这段代码能产出的形状 ——
   它是"网关/容器层把连接掐了但留了个 body"那一族。留着它有独立价值（判"看状态码还是看信封"），
-  但账要记清：它证的是我们适配器的判据，不是 z-wf 的行为。
+  但账要记清：它证的是我们适配器的判据，不是 z-camuda 的行为。
 
 - [ ] 于是 250 这一腿的口径定为：**部署期显式指一个我自己起的桩**（专门端口，绝不留默认 `localhost:8888`），
       为的是量 MySQL 8 上那张 `z_lc_workflow_fire` 账真写得进、读得出；
-      **"跟真 z-wf 端到端打通"另立一票**（要在 250 上起 Camunda + 它自己的库 —— 上面那条契约证据说明
+      **"跟真 z-camuda 端到端打通"另立一票**（要在 250 上起 Camunda + 它自己的库 —— 上面那条契约证据说明
       那一票是**部署活**，不是改代码的活）。两种口径都不要把默认值留在配置文件里。
 
 #### 2.6.2 桩已建，且它自己的冒烟是量过的（09-27 05:0x）
 
-`_e2e/wf_stub.py`（新增，为 250 这条腿造的）：只绑 `127.0.0.1`（不对外开洞），`--port` 默认 18888
+`_e2e/camuda_stub.py`（新增，为 250 这条腿造的）：只绑 `127.0.0.1`（不对外开洞），`--port` 默认 18888
 （避开 pid 1622 那个 starter 的 8888），`--hit-file` 逐行落 JSONL（部署腿要证"发出去的那一句长什么样"），
 `--pid-file` 给收尾用；`GET /__mode` 读/翻旗、`GET /__hits` 数收到几句、未知模式名 **400**（不许静默收下 ——
-那等于"我翻了旗"是假的）。四种模式的形状各有出处：`ok` = `data.processInstanceId`（真 z-wf `:664`）、
-`reject` = HTTP **200** + `success:false` + 前缀「流程启动失败: 」（真 z-wf `:672-673`）、
+那等于"我翻了旗"是假的）。四种模式的形状各有出处：`ok` = `data.processInstanceId`（真 z-camuda `:664`）、
+`reject` = HTTP **200** + `success:false` + 前缀「流程启动失败: 」（真 z-camuda `:672-673`）、
 `http5xx` = 502 + body 里带一个成功样的号（**不冒充引擎行为**，它证的是适配器"看状态码还是看信封"的判据）、
 `hang` = 不答（超时那一支；单线程 `HTTPServer` 下会串行卡住后面的请求，文档里写明了）。
 
@@ -413,14 +413,14 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 → terminate 后端口真的没人答（阳性对照：收尾不留一个别人会被 redirect 打到的口）。
 
 第一版冒烟**是红的**，且红在桩自己身上：`FAIL 桩在挑到的空闲端口上起住了… << mode=None` 而手工复现看到
-`wf_stub listening 127.0.0.1:20889 mode=ok`、`curl` 拿回的却是 `http=000` —— 进程在听、也"答过了"，
+`camuda_stub listening 127.0.0.1:20889 mode=ok`、`curl` 拿回的却是 `http=000` —— 进程在听、也"答过了"，
 客户端只会等到超时。根因是 `_send` 里 `send_response`/`send_header` 之后**漏了 `end_headers()`**，
 头没写完就送 body ⇒ 应答永远不完整。补上那一句后八条全绿；这一处记进台账，是因为"服务在监听而客户端拿不到
 应答"这个形状，只判"端口起住了"的冒烟是抓不到的。
 
 - [ ] 部署脚本那一侧的闸已同步加硬（`_e2e/deploy_250_remote.sh`）：`require_app_env` 现在要求**显式**
       `ZLC_WF_BASE_URL`，没带就 die（"忘了带参数"红在部署当场，而不是红成一条 FAILED 账）；`step_env`
-      把它写进 `app.env`；`step_start` 的 `nohup java -jar` 那一串里补了 `--z-lc.adapter.wf.base-url=`
+      把它写进 `app.env`；`step_start` 的 `nohup java -jar` 那一串里补了 `--z-lc.adapter.camuda.base-url=`
       （ctc/meta/script 三个 adapter 原本都有、唯独 wf 缺）。双向实测过：`bash -n` 通过，
       在临时 CONF 上**不带**该变量 ⇒ rc=1 且报的是那一句具名 die，**带上** ⇒ rc=0。
 
@@ -430,10 +430,10 @@ grep -rn "fires\|vocabulary" --include='*.ts*' . | grep -i workflow   # ⇒ 0 �
 一趟实跑 23 条具名读数**（数目 05:31 用一段 `python` 现量的：从 `step_fireprobe()` 截到闭合 `}`、
 数 `fp_check "` 的调用点 = 21，其中实体那一组在 `for pair` 循环里、一趟实跑两遍 ⇒ +2 = 23），
 每条带读数、不 fail-fast（一本账只报第一处坏就等于把其余的坏藏起来）。四段归因先于判定：
-端口上的 pid == `app.pid`（构件）⇒ **那个进程的 argv 里真有 `--z-lc.adapter.wf.base-url=` 且等于桩**
+端口上的 pid == `app.pid`（构件）⇒ **那个进程的 argv 里真有 `--z-lc.adapter.camuda.base-url=` 且等于桩**
 （不看 `app.env`：进程是上一次 start 起来的，env 写了而 argv 没带是两种不同的事实）⇒ `ZLC_WF_BASE_URL`
 指向的端口就是探针翻旗/数 hits 那个口（wf 这一腿）⇒ **那个端口上听的就是我自己起的桩**
-（`ss` 的 pid == `$DIR/wf_stub.pid`，见下面"起点旗标"那一条）。之后才判据：物理表在 `information_schema` 里查得到、
+（`ss` 的 pid == `$DIR/camuda_stub.pid`，见下面"起点旗标"那一条）。之后才判据：物理表在 `information_schema` 里查得到、
 `/vocabulary` 的 `implemented` 含 `AFTER_CREATE`、写一条记录 ⇒ 桩**正好**收到一句、那一句带登记的 KEY
 且 `businessKey` 能定位回这条记录、**库里**多一行 `STARTED` 且 `instance_id` 等于桩回的那个号、
 `/fires` 读回同一行、翻 `reject` 后多一行 `FAILED` 且 `detail` 带引擎那句原话、两行各记各的账、
@@ -929,7 +929,7 @@ $ curl -s 'http://localhost:18090/api/lc/app/materialize/status?id=2'      # 同
 
 关联：[[#2.12 缺陷 #70 部署中心]]（同族另一半）、`_e2e/README.md` 的"部署演练"那一节（250 上跑的就是这条链路）。
 
-### 2.14 新撞到的量具缺陷：接口层那个 z-wf 桩只听 IPv4，而 jar 里的 JVM 往 IPv6 连 ⇒ `[15w]` 整节量不到，报的却是"jar 没打过来"（缺陷 **#72**，09-27 09:0x 实测并修）
+### 2.14 新撞到的量具缺陷：接口层那个 z-camuda 桩只听 IPv4，而 jar 里的 JVM 往 IPv6 连 ⇒ `[15w]` 整节量不到，报的却是"jar 没打过来"（缺陷 **#72**，09-27 09:0x 实测并修）
 
 **症状（现查）**：加上 #70 那 14 支探针之后重跑接口层，`516/546`、**30 条红**，全部落在 `[15w]`（#61 那一族），消息一律是「桥没通（桩没起来或 jar 没打过来）⇒ 这一条没有判定，不算绿」；而我新加的 14 支 #70 探针逐条 PASS。同一份 jar、同一个量具，08:50:51 那一跑还是 `532/532`。
 
@@ -941,7 +941,7 @@ $ curl -s 'http://localhost:18090/api/lc/app/materialize/status?id=2'      # 同
    ⇒ **派发发生了**，只是连不上；同一时刻 `lsof` 显示桩只在 `IPv4 127.0.0.1:8888`，而 `nc -z ::1 8888` = closed。
 3. 换成一根**同时**听得见 `::1` 与 `127.0.0.1` 的 loopback 桩，再写一条 ⇒ fire 行 id **51 `STARTED` / `PI-DIAG-1`**。
 
-**根因（能证到的那一层）**：`WfAdapter` 的默认 `base-url` 是 `http://localhost:8888`，传输是 z-util-http 的 `HttpExecutor`（okhttp 4.12，栈顶 `RealConnection.connectSocket`）；量具 `_WfStub` 只绑 `("127.0.0.1", port)`。这台 Mac 上 JVM 把 `localhost` 连到了 `::1`。
+**根因（能证到的那一层）**：`CamudaAdapter` 的默认 `base-url` 是 `http://localhost:8888`，传输是 z-util-http 的 `HttpExecutor`（okhttp 4.12，栈顶 `RealConnection.connectSocket`）；量具 `_WfStub` 只绑 `("127.0.0.1", port)`。这台 Mac 上 JVM 把 `localhost` 连到了 `::1`。
 
 **⚠ 没解释清的那一半（写明，别顺嘴编成因）**：同一根 v4-only 的桩在 08:50:51 那一跑是**通的**（`532/532`，`[15w]` 逐条 PASS），08:54:13 起就不通了 —— 同一个进程、同一份配置。中间"翻了一下"的那一下我没量到（JVM 侧 `localhost` 的解析/路由顺序是唯二候选，但我手里没有任何一把尺能回看当时的路由选择）。所以这条只记结论：**修完之后不依赖它翻哪一边**。
 
@@ -956,7 +956,7 @@ $ curl -s 'http://localhost:18090/api/lc/app/materialize/status?id=2'      # 同
 
 **同形状还留着的两处（只登记，本轮不动）**
 
-- `_e2e/wf_stub.py` 里那句 `HTTPServer(("127.0.0.1", args.port), Handler)` 是 250 部署腿用的桩，同一个形状。本机量不到 250 ⇒ **改一条不可复现的链路是拿猜测换代码**，等 §2.6 那条腿通了第一件事就是"绑两族 + 断言 `::1` 也答"。
+- `_e2e/camuda_stub.py` 里那句 `HTTPServer(("127.0.0.1", args.port), Handler)` 是 250 部署腿用的桩，同一个形状。本机量不到 250 ⇒ **改一条不可复现的链路是拿猜测换代码**，等 §2.6 那条腿通了第一件事就是"绑两族 + 断言 `::1` 也答"。
 - `z-lc-admin-ui/e2e/browser-e2e.mjs` 的 bundle 新鲜度闸拿 **mtime** 比（本轮被它挡下：`src 里最新的文件比 index-BMjMtCQR.js 新 274s —— 这份 bundle 不是当前源码构建出来的`）。注入量具按字节还原源码，而还原会把 mtime 刷新 ⇒ 这把尺会**误报**"bundle 不是当前源码建的"。它错得保守（拒跑，不产假绿），所以本轮只重新 `npm run build` 过闸、**没动它**；真要修是换成"src 内容哈希 vs bundle 内嵌哈希"，与 #69 是同一件事。
 
 ---
@@ -1158,8 +1158,8 @@ vitest `Test Files 30 passed` / `Tests 264 passed` + `built in 2.94s`）；
 |---|---|---|
 | #79 | `db.log`：`docker: Error response from daemon: Conflict. The container name "/z-lc-deploy-mysql" is already in use…`；负控另有一跑 `db_port_red.log`：`!! 容器 z-lc-deploy-mysql 映射在 127.0.0.1:33061，而这里要说的是 33999` | 机器重启后容器是"存在而停着"的，脚本只有"在跑/不在"两支 ⇒ 走到 `docker run` 必撞名；而"就绪"那一圈用 `docker exec mysqladmin ping`，**根本不碰宿主端口**，映射被改了查不出来 |
 | #80 | `gates.log`：`!! 闸1: SPRING_DATASOURCE_URL source 之后是空的 —— 配置文件里的值没加引号`、`!! 闸1: ZLC_WF_BASE_URL 是空的…`、`GATES_RC=1`（敲的就是 README 那条标题命令） | 闸 1 的"恢复"一步是重跑 `step_env`，而 `step_env` 要的 `ZLC_WF_BASE_URL` 只在调用者的环境里 ⇒ 还原步自己卡住，整批红在**量具自己留下的脏状态**上。改成按**本轮参照**还原字节 + `cmp` 对账 + 过一遍自己的校验才举旗 |
-| #81 | `fireprobe.log`：**21 ok / 2 红**、`!! 闸6: 2 条没过关`、`FIREPROBE_RC=1`；两条红分别印着 `key=None 期望=fp_expense_29115 body={… "processKey":"fp_expense_29115" …}` 与 `FAILED||z-wf ????: ??????: business key ???` | 三合一：判据读了 **DTO 侧的 `processDefinitionKey`** 而线上那一格叫 **`processKey`**；`docker exec mysql` 没有 LANG ⇒ 中文按 latin1 读成一串 `?`；"引擎原话"的期望串没带归属前缀 = **期望没有猎物** |
-| #82 | `api250.log`：`=== E2E RESULT: 515/555 passed ===`，40 条红逐条 `桥没通（桩没起来或 jar 没打过来）⇒ 这一条没有判定，不算绿`，而**同一段里 `PASS z-wf 桩绑得上 8888` 是绿的** | 那 40 条读的是**测试进程自己内存里**那本桩账，jar 在 250 上打的是它自己 `app.env` 点名的 18888 ⇒ **本地端口绑上 ≠ 桥通**。修 = `api` 默认建反向隧道（250:127.0.0.1:18899 → 本机同端口），把部署件的 wf 目标临时指过去，跑完按保存的原值还原并重启；不复用 8888 是因为 250 上 `*:8888` 是别人的 java（`ss -lntp` 现读 pid 1655） |
+| #81 | `fireprobe.log`：**21 ok / 2 红**、`!! 闸6: 2 条没过关`、`FIREPROBE_RC=1`；两条红分别印着 `key=None 期望=fp_expense_29115 body={… "processKey":"fp_expense_29115" …}` 与 `FAILED||z-camuda ????: ??????: business key ???` | 三合一：判据读了 **DTO 侧的 `processDefinitionKey`** 而线上那一格叫 **`processKey`**；`docker exec mysql` 没有 LANG ⇒ 中文按 latin1 读成一串 `?`；"引擎原话"的期望串没带归属前缀 = **期望没有猎物** |
+| #82 | `api250.log`：`=== E2E RESULT: 515/555 passed ===`，40 条红逐条 `桥没通（桩没起来或 jar 没打过来）⇒ 这一条没有判定，不算绿`，而**同一段里 `PASS z-camuda 桩绑得上 8888` 是绿的** | 那 40 条读的是**测试进程自己内存里**那本桩账，jar 在 250 上打的是它自己 `app.env` 点名的 18888 ⇒ **本地端口绑上 ≠ 桥通**。修 = `api` 默认建反向隧道（250:127.0.0.1:18899 → 本机同端口），把部署件的 wf 目标临时指过去，跑完按保存的原值还原并重启；不复用 8888 是因为 250 上 `*:8888` 是别人的 java（`ss -lntp` 现读 pid 1655） |
 
 **这一窗我自己又踩到 / 又看清的两条**（会复发，所以写进制度而不是只写进日志）：
 1. **"我验的是部署件"这句必须能在日志里被反驳**。#82 那一跑里，绿的那格 check 断言的只是"本机这个端口我绑上了"，
@@ -1263,5 +1263,5 @@ cd z-lc && git rev-parse --short HEAD
 mvn -o -B -pl z-lc-core test 2>&1 | grep -E "^\[INFO\] Tests run: [0-9]+, Fail" | tail -1
 grep -c workflow z-lc-web/src/test/java/com/zifang/z/lc/web/it/LcHttpContractTest.java
 grep -rn "AFTER_" z-lc-admin-ui/src/views/admin/WorkflowsPage.tsx
-ssh 192.168.31.250 'docker ps --format "{{.Names}}"; '   # 看 z-wf 在不在
+ssh 192.168.31.250 'docker ps --format "{{.Names}}"; '   # 看 z-camuda 在不在
 ```

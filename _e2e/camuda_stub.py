@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""z-wf 引擎的**桩**，给 250 那条部署腿用（`_e2e/deploy_250_remote.sh` 的 `stub` / `fire` 两步）。
+"""z-camuda 引擎的**桩**，给 250 那条部署腿用（`_e2e/deploy_250_remote.sh` 的 `stub` / `fire` 两步）。
 
-为什么要有这一支：`z-lc.adapter.wf.base-url` 的属性默认值是 `http://localhost:8888`，而 250 上那一格
+为什么要有这一支：`z-lc.adapter.camuda.base-url` 的属性默认值是 `http://localhost:8888`，而 250 上那一格
 是**别人的**进程（09-27 04:1x 实测：`ss -ltnp` 显示 `*:8888` 由 pid 1622 的 `z-opc-main-starter` 持有，
 对它 POST `/api/approval-center/processes/start` 回 404 + 一段 Tomcat HTML）。部署腿要么点名一个真引擎，
 要么点名自己的桩；留默认值 = 每写一条低代码记录就往别人的在跑服务发一次 POST。
 
-**桩的三种失败形状里有两种是从真 z-wf 抄来的**，不是编的：
+**桩的三种失败形状里有两种是从真 z-camuda 抄来的**，不是编的：
   `reject`  200 + `success:false` + `流程启动失败: ...`
-            = `z-wf/z-wf-web/.../ApprovalCenterController.java:672-673`
+            = `z-camuda/z-camuda-web/.../ApprovalCenterController.java:672-673`
               `catch (Exception e) { return Result.fail("流程启动失败: " + e.getMessage()); }`
             ⇒ 这一支证的是**真引擎会给的结局**（Camunda 撞 business key 就走这条路）。
   `http5xx` 502 + 一个成功样的 body
-            ≠ z-wf 这段代码能产出的形状（它任何结局都回 200 信封）。它证的是我们适配器的判据
+            ≠ z-camuda 这段代码能产出的形状（它任何结局都回 200 信封）。它证的是我们适配器的判据
             "看状态码还是看信封"，账要记清：这条不冒充引擎行为。
   `ok`      200 + `data.processInstanceId`，字段名同样取自 `ApprovalCenterController.java:664`。
 
@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 STATE = {"mode": "ok", "hits": [], "delay": 7.0}
 LOCK = threading.Lock()
 START = "/api/approval-center/processes/start"
-HIT_FILE = "/tmp/zlc_wf_stub_hits.jsonl"
+HIT_FILE = "/tmp/zlc_camuda_stub_hits.jsonl"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -120,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=18888)
-    ap.add_argument("--hit-file", default="/tmp/zlc_wf_stub_hits.jsonl")
+    ap.add_argument("--hit-file", default="/tmp/zlc_camuda_stub_hits.jsonl")
     ap.add_argument("--pid-file", default="")
     args = ap.parse_args()
     global HIT_FILE
@@ -129,7 +129,7 @@ def main():
         with open(args.pid_file, "w") as f:
             f.write(str(os.getpid()))
     srv = HTTPServer(("127.0.0.1", args.port), Handler)
-    print("wf_stub listening 127.0.0.1:%d mode=%s" % (args.port, STATE["mode"]), flush=True)
+    print("camuda_stub listening 127.0.0.1:%d mode=%s" % (args.port, STATE["mode"]), flush=True)
     srv.serve_forever()
 
 

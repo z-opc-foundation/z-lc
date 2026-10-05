@@ -2188,12 +2188,12 @@ call("POST", "/api/lc/app/delete", {"appCode": PM_APP})
 
 # -------------------------------------------------- 流程绑定（缺陷 #61，打的是在跑的那个 fat jar）
 # 缺陷 #82：桩绑在哪个端口，决定这一节量的是哪一种部署形状。默认 8888 = 「什么都没配」那一格
-# （WfAdapter 的 base-url 默认值，见下面那段注释）；显式给 LC_WF_STUB_PORT 则是「配置指到哪里」
+# （CamudaAdapter 的 base-url 默认值，见下面那段注释）；显式给 LC_CAMUDA_STUB_PORT 则是「配置指到哪里」
 # 那一格 —— 打 250 时只能走这条：桩是测试进程自己起的，而 jar 在 250 上只会打它自己 app.env
 # 点名的地址，中间由 _e2e/deploy_250.sh 的反向隧道接上。
 # 标题里那句端口身份必须跟着变：09-27 17:0x 那一跑打印的是「桩绑得上 18899（jar 的默认 base-url
 # 就去这里…）」，读日志的人会以为「没配」那一格也被测过了 —— 而它没有。
-_WF_STUB_ENV = os.environ.get("LC_WF_STUB_PORT")
+_WF_STUB_ENV = os.environ.get("LC_CAMUDA_STUB_PORT")
 print("\n[15w] 缺陷 #61: 一条绑定在部署件上真的换出一次发起（桩在 :%s，%s）"
       % (_WF_STUB_ENV or "8888",
          "由部署件显式指过来，不是默认值" if _WF_STUB_ENV
@@ -2202,8 +2202,8 @@ print("\n[15w] 缺陷 #61: 一条绑定在部署件上真的换出一次发起�
 # 有一个人调它"。#61 的原始形状恰恰是 listByEvent + startProcess 在生产代码里零调用者而全套测试绿。
 # 所以这里量的必须是 18090 上那个进程：真 HTTP、真发一句到桩、真从 /fires 回读结局。
 #
-# 桩为什么打在 8888：WfAdapter 的默认值就是 http://localhost:8888，而全仓没有任何一处 yml/properties
-# 覆盖它（09-27 实测 grep `adapter.wf` 只命中 WfAdapter.java:66 与测试里那句 @DynamicPropertySource）
+# 桩为什么打在 8888：CamudaAdapter 的默认值就是 http://localhost:8888，而全仓没有任何一处 yml/properties
+# 覆盖它（09-27 实测 grep `adapter.camuda` 只命中 CamudaAdapter.java:66 与测试里那句 @DynamicPropertySource）
 # —— 也就是"部署起来什么都没配"时这条链真正会去的地方。指默认值而不是自己塞一个端口，量的才是
 # 一个真实存在的部署形状。
 #
@@ -2220,7 +2220,7 @@ WF_TABLE = f"e2e_wf_{SUF}"
 #             否则同一个实体上挂两条绑定，"正好一句"这种计数断言从结构上就不成立。
 WF_ENT, WF_NONE, WF_TWO = "case", "plain", "second"
 WF_KEY = "expense_deployed"          # 登记时故意两端带空白，见 wf_bind 那一句
-WF_PORT = int(_WF_STUB_ENV or "8888")
+CAMUDA_PORT = int(_WF_STUB_ENV or "8888")
 WF_PATH = "/api/approval-center/processes/start"
 WF_INSTANCE = "wf-deployed-77"
 WF_ACTOR = "wf_e2e_" + SUF
@@ -2279,7 +2279,7 @@ class _WfStub(object):
     用 ThreadingHTTPServer 而不是单线程：派发池有 2 个槽，"挂死那一条"不能顺手把别的探针也按住 ——
     那会把量具自己的排队冒充成被测方的排队。
 
-    为什么要**同时**绑 127.0.0.1 和 ::1（09-27 09:0x 实测，本机）：`WfAdapter` 的默认 base-url
+    为什么要**同时**绑 127.0.0.1 和 ::1（09-27 09:0x 实测，本机）：`CamudaAdapter` 的默认 base-url
     写的是 `localhost`，而这台 Mac 上的 JVM（JDK 25 + okhttp 4.12，z-util-http 的 HttpExecutor）
     把 `localhost` 解析成 `[0:0:0:0:0:0:0:1]` 且**不回落到 IPv4** —— 只绑 127.0.0.1 时每一次发起都
     记成 `Failed to connect to localhost/[0:0:0:0:0:0:0:1]:8888`，接口层这一节 30 条判红，
@@ -2343,10 +2343,10 @@ WF = None
 WF_LIVE = False           # 桥通了没有：桩起得来 **且** jar 真打过来过一句
 _bridge_err = ""
 try:
-    WF = _WfStub(WF_PORT)
+    WF = _WfStub(CAMUDA_PORT)
 except OSError as ex:
     _bridge_err = str(ex)
-check("z-wf 桩绑得上 %d（%s；绑不上则本节全部没有判定）" % (WF_PORT,
+check("z-camuda 桩绑得上 %d（%s；绑不上则本节全部没有判定）" % (CAMUDA_PORT,
       "jar 的默认 base-url 就去这里" if not _WF_STUB_ENV
       else "部署件被反向隧道指到这里，量的不是「什么都没配」那一格"),
       WF is not None,
@@ -2510,7 +2510,7 @@ wfc("写一条记录 ⇒ 桩正好收到一句（这一条是整节的桥：它�
     wf_count() == 1, f"桩收到 {wf_count()} 句: {str(WF.requests if WF else [])[:220]} 信封: {str(env)[:160]}")
 _sent = WF.requests[0] if WF and WF.requests else ("", "", "")
 _body = _sent[2]
-wfc("打的必须是 z-wf 真映射的那条路径（少 /api 或 process 少个 s 都是 404）",
+wfc("打的必须是 z-camuda 真映射的那条路径（少 /api 或 process 少个 s 都是 404）",
     _sent[1] == WF_PATH, f"path={_sent[1]!r}")
 wfc("body 里是 DTO 真读的 processKey（不是 processDefKey），且空白剪掉",
     f'"processKey":"{WF_KEY}"' in _body, _body[:260])
@@ -2521,7 +2521,7 @@ wfc("title 在（缺席时审批中心里那一单没有名字）",
 # ⚠ 名字里不许带**每次运行都会变**的量（这一条原先写着 `（{WF_ACTOR}）`，而 WF_ACTOR 含时间后缀，
 #   于是部署件层的注入量具 `mutate_workflow_deployed_guard.py` 拿"检查名"当身份比对时，
 #   同一支检查每轮都换一个名字 —— 预期红集根本没法钉。具体是谁，写在 detail 里。
-wfc("initiator 用的是这次请求的那个人，不是让 z-wf 兜底成常量 \"1\"",
+wfc("initiator 用的是这次请求的那个人，不是让 z-camuda 兜底成常量 \"1\"",
     f'"initiator":"{WF_ACTOR}"' in _body, f"actor={WF_ACTOR} body={_body[:260]}")
 wfc("字段值整份当流程变量带走，并且留了低代码这一侧的坐标",
     '"ref":"WF-1"' in _body and f'"lcRecordId":{rid}' in _body
@@ -2530,7 +2530,7 @@ rows, srow, jrow = wf_fires(record_id=rid)
 wfc("/fires 读回这一条：正好一行", isinstance(rows, list) and len(rows) == 1,
     f"http={srow} body={str(jrow)[:200]} rows={str(rows)[:200]}")
 _row = (rows or [{}])[0]
-wfc("那一行是 STARTED，实例 id 就是 z-wf data.processInstanceId 那一格（不是整个 data 的 toString）",
+wfc("那一行是 STARTED，实例 id 就是 z-camuda data.processInstanceId 那一格（不是整个 data 的 toString）",
     _row.get("status") == "STARTED" and _row.get("instanceId") == WF_INSTANCE, str(_row)[:240])
 wfc("成功行不带失败原因，但带上它是哪条绑定的兑现",
     not (_row.get("detail") or "").strip() and str(_row.get("bindingId")) == str(_binding_id)
@@ -2625,7 +2625,7 @@ check("引擎不可达：账上留一行 FAILED 并说得出为什么",
 WF = None
 _rebind_err = ""
 try:
-    WF = _WfStub(WF_PORT)
+    WF = _WfStub(CAMUDA_PORT)
 except OSError as ex:
     _rebind_err = str(ex)
 check("桩能重新绑上（下一句的阳性对照要有猎物）", WF is not None, _rebind_err)
@@ -2636,7 +2636,7 @@ wfc("账上累积的行数与发出去的句子一样多（每一次尝试都留
 
 # 回得慢：这一支量的是**部署件的默认预算**（契约层那个 250ms 是自己塞的配置键，这里什么都没配）。
 # 默认 DEFAULT_TIMEOUT_MS = 3000，而共享 z-util-http 客户端的读超时是 60s —— 没有上限的话
-# 用户的"新建记录"会被一条挂死的 z-wf 按住 60 秒。
+# 用户的"新建记录"会被一条挂死的 z-camuda 按住 60 秒。
 wf_reset("hang", hang=7.0)
 _began = time.time()
 rid_slow, _ = wf_write({"ref": "SL-1"})

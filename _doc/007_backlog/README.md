@@ -21,8 +21,8 @@ z-mq 那边同类登记面用 `001_*.md`，两边都是"一事项一目录"）�
 ## 250 侧现状（09-26 23:1x 实测，会漂，重取见各文档命令）
 
 - 新表 `z_lc_workflow_fire` 在 250 的真 MySQL 8 里**还不存在**（同库里只有 `z_lc_workflow_binding`）。
-- 250 上**没有 z-wf 在跑**（`docker ps` 只有 mysql×2、z-ctc、z-vector、z-graph×2、registry×2），
-  而 `z-lc.adapter.wf.base-url` 默认 `http://localhost:8888` ⇒ 现在部署起来这条链必然落 `FAILED` 行。
+- 250 上**没有 z-camuda 在跑**（`docker ps` 只有 mysql×2、z-ctc、z-vector、z-graph×2、registry×2），
+  而 `z-lc.adapter.camuda.base-url` 默认 `http://localhost:8888` ⇒ 现在部署起来这条链必然落 `FAILED` 行。
 
 ## 归属
 

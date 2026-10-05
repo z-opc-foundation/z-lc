@@ -13,9 +13,9 @@ import java.util.Map;
  * <p>
  * 为什么要有这个类（缺陷 #61，与 #41 同一族）：{@code WorkflowsPage} 把触发时机做成三个选项
  * （创建后/更新后/删除后），而 {@code WorkflowBindingService.listByEvent} 与
- * {@code WfAdapter.startProcess} 在生产代码里<b>零调用者</b> —— 三个选项一个都不会执行。
- * 更糟的是那个"执行器"自己也是坏的：URL 与字段名对不上 z-wf 的真实契约（见
- * {@link com.zifang.z.lc.core.adapter.WfAdapter} 类注释），所以"接上"不是把调用点加回去就完事。
+ * {@code CamudaAdapter.startProcess} 在生产代码里<b>零调用者</b> —— 三个选项一个都不会执行。
+ * 更糟的是那个"执行器"自己也是坏的：URL 与字段名对不上 z-camuda 的真实契约（见
+ * {@link com.zifang.z.lc.core.adapter.CamudaAdapter} 类注释），所以"接上"不是把调用点加回去就完事。
  * <p>
  * 这一族的口径和 {@link com.zifang.z.lc.core.pipeline.config.PipelineStages} 一致：
  * <b>写入口拒掉兑现不了的形态</b>（一份永远不会发的绑定不该出生），运行期只做能兑现的那一件事。

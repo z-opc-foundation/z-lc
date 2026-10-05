@@ -20,7 +20,7 @@ import java.util.Date;
 @TableName("z_lc_workflow_fire")
 public class WorkflowFireEntity implements Serializable {
 
-    /** 流程真的起来了，instance_id 是 z-wf 给的实例 id。 */
+    /** 流程真的起来了，instance_id 是 z-camuda 给的实例 id。 */
     public static final String STATUS_STARTED = "STARTED";
     /** 尝试过但没起来（外部引擎不可达/拒绝/超时/并发上限），detail 里点名为什么。 */
     public static final String STATUS_FAILED = "FAILED";
@@ -56,7 +56,7 @@ public class WorkflowFireEntity implements Serializable {
     /** STARTED / FAILED. */
     private String status;
 
-    /** z-wf 的流程实例 id；FAILED 时为 null. */
+    /** z-camuda 的流程实例 id；FAILED 时为 null. */
     @TableField("instance_id")
     private String instanceId;
 

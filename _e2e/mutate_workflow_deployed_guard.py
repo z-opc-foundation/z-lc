@@ -48,10 +48,10 @@ sys.path.insert(0, str(ROOT / "z-lc-admin-ui" / "e2e"))
 from _mutlock import acquire as acquire_lock, release as release_lock  # noqa: E402
 
 CTRL = ROOT / "z-lc-web/src/main/java/com/zifang/z/lc/web/controller/RuntimeCrudController.java"
-WF_ADAPTER = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/adapter/WfAdapter.java"
+CAMUDA_ADAPTER = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/adapter/CamudaAdapter.java"
 DISPATCHER = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/workflow/WorkflowTriggerDispatcher.java"
 TRIGGERS = ROOT / "z-lc-core/src/main/java/com/zifang/z/lc/core/workflow/WorkflowTriggers.java"
-FILES = sorted({CTRL, WF_ADAPTER, DISPATCHER, TRIGGERS}, key=lambda p: str(p))
+FILES = sorted({CTRL, CAMUDA_ADAPTER, DISPATCHER, TRIGGERS}, key=lambda p: str(p))
 
 BAK = Path.home() / ".cache/zlc61/deployed_bak"
 LEDGER = Path.home() / ".cache/zlc61/deployed_ledger.json"
@@ -92,14 +92,14 @@ W6_REPL = '        if (false) {'
 RUNS = [
     ("W1", [(CTRL, W1_ANCHOR, W1_REPL)], [
                                            "写一条记录 ⇒ 桩正好收到一句（这一条是整节的桥：它不成立，本节其余没有判定）",
-                                           "打的必须是 z-wf 真映射的那条路径（少 /api 或 process 少个 s 都是 404）",
+                                           "打的必须是 z-camuda 真映射的那条路径（少 /api 或 process 少个 s 都是 404）",
                                            "body 里是 DTO 真读的 processKey（不是 processDefKey），且空白剪掉",
                                            "businessKey 能定位回这条记录",
                                            "title 在（缺席时审批中心里那一单没有名字）",
-                                           "initiator 用的是这次请求的那个人，不是让 z-wf 兜底成常量 \"1\"",
+                                           "initiator 用的是这次请求的那个人，不是让 z-camuda 兜底成常量 \"1\"",
                                            "字段值整份当流程变量带走，并且留了低代码这一侧的坐标",
                                            "/fires 读回这一条：正好一行",
-                                           "那一行是 STARTED，实例 id 就是 z-wf data.processInstanceId 那一格（不是整个 data 的 toString）",
+                                           "那一行是 STARTED，实例 id 就是 z-camuda data.processInstanceId 那一格（不是整个 data 的 toString）",
                                            "成功行不带失败原因，但带上它是哪条绑定的兑现",
                                            "登记绑定这件事本身不发单（只有写记录才发）",
                                            "second 上第一条记录发一句",
@@ -123,15 +123,15 @@ RUNS = [
                                            "复证链还通：批量导入之前 case 仍然正好一句",
                                            "批量导入今天不发单（发就是 N 条记录一次外部调用，且没有回滚路径）"
                                           ]),  # 实测 31 条（09-27 01:2x --only W1），抄自日志不是推的。派发调用点没了 => 本节所有依赖那条链的断言一起红
-    ("W2", [(WF_ADAPTER, W2_ANCHOR, W2_REPL)], [
-                                                 "打的必须是 z-wf 真映射的那条路径（少 /api 或 process 少个 s 都是 404）"
+    ("W2", [(CAMUDA_ADAPTER, W2_ANCHOR, W2_REPL)], [
+                                                 "打的必须是 z-camuda 真映射的那条路径（少 /api 或 process 少个 s 都是 404）"
                                                 ]),  # 实测 1 条（09-27 01:2x --only W2），抄自日志不是推的。只红路径那一条：形状对、只有门牌错
-    ("W3", [(WF_ADAPTER, W3_ANCHOR, W3_REPL)], [
+    ("W3", [(CAMUDA_ADAPTER, W3_ANCHOR, W3_REPL)], [
                                                  "引擎回 5xx 而 body 写着成功：仍是 FAILED（这一格形状是 §2.3 的 M5 逼出来的）",
                                                  "5xx 时 body 里那个实例号一个字都不许留下，且失败原因说清是 http 几"
                                                 ]),  # 实测 2 条（09-27 01:2x --only W3），抄自日志不是推的。5xx 被当成成功 => 只有那两支红
-    ("W4", [(WF_ADAPTER, W4_ANCHOR, W4_REPL)], [
-                                                 "那一行是 STARTED，实例 id 就是 z-wf data.processInstanceId 那一格（不是整个 data 的 toString）"
+    ("W4", [(CAMUDA_ADAPTER, W4_ANCHOR, W4_REPL)], [
+                                                 "那一行是 STARTED，实例 id 就是 z-camuda data.processInstanceId 那一格（不是整个 data 的 toString）"
                                                 ]),  # 实测 1 条（09-27 01:2x --only W4），抄自日志不是推的。实例 id 那一格漂成整个 data
     ("W5", [(DISPATCHER, W5_ANCHOR, W5_REPL)], [
                                                  "到点判 FAILED，而且原因点名的是那个默认预算本身",
@@ -139,9 +139,9 @@ RUNS = [
                                                  "复证链还通：批量导入之前 case 仍然正好一句",
                                                  "批量导入今天不发单（发就是 N 条记录一次外部调用，且没有回滚路径）"
                                                 ]),
-# 实测 4 条（09-27 01:3x --only W5）。两支「到点」检查红在派发侧那一句：预算点名（等待 z-wf 响应超过
+# 实测 4 条（09-27 01:3x --only W5）。两支「到点」检查红在派发侧那一句：预算点名（等待 z-camuda 响应超过
 # 3000ms）出自 future.get(timeoutMs) 的 TimeoutException 分支，放大预算后换成了传输层抛错那句。
-# 而「写入口在默认预算内返回」这一支**没红** —— 它另有一根独立的桩：WfAdapter.newTransport 的 socket
+# 而「写入口在默认预算内返回」这一支**没红** —— 它另有一根独立的桩：CamudaAdapter.newTransport 的 socket
 # 超时是 timeoutMs + SOCKET_GRACE_MS（同一个字段，W5 碰不到它），3.5s 就切掉那次挂死。两道界各自
 # 名下自己那一支检查：注入摘掉其中一道，只红那一道名下的。这不是量具漏判，是这一族本来有两层。
     ("W6", [(TRIGGERS, W6_ANCHOR, W6_REPL)], [

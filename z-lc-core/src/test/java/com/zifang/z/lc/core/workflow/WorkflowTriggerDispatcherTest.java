@@ -1,7 +1,7 @@
 package com.zifang.z.lc.core.workflow;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.zifang.z.lc.core.adapter.WfAdapter;
+import com.zifang.z.lc.core.adapter.CamudaAdapter;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowFireMapper;
@@ -55,7 +55,7 @@ public class WorkflowTriggerDispatcherTest {
         adapter = new FakeAdapter();
         fires = new RecordingFireMapper();
         dispatcher.setBindingService(bindings);
-        dispatcher.setWfAdapter(adapter);
+        dispatcher.setCamudaAdapter(adapter);
         dispatcher.setFireMapper(fires.mapper());
     }
 
@@ -101,7 +101,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void aBindingIsActuallyStartedAndTheOutcomeIsReadableBack() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-42");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-42");
 
         assertEquals(1, dispatch());
         WorkflowFireEntity row = onlyFire();
@@ -123,7 +123,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void theHookLookedUpIsTheOnesTheEngineHas() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-1");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-1");
         dispatch();
         List<Object> asked = bindings.lastAsk;
         assertEquals("派发器问了 " + asked + "，四格都该是记录自己的坐标", 4, asked.size());
@@ -138,7 +138,7 @@ public class WorkflowTriggerDispatcherTest {
     public void everyBindingOnTheHookGetsItsOwnRequestAndRow() {
         bindings.add(binding(1L, "first-flow"));
         bindings.add(binding(2L, "second-flow"));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-x");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-x");
 
         assertEquals("两条绑定就是两次尝试（返回值是尝试条数，不是成功条数）", 2, dispatch());
         assertEquals(2, adapter.calls.get());
@@ -155,7 +155,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void handsTheEngineTheCoordinatesThatIdentifyThisRecord() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-42");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-42");
         dispatch();
 
         Ask ask = adapter.lastAsk;
@@ -174,7 +174,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void trimsTheStoredProcessKeyBeforeSendingIt() {
         bindings.add(binding(1L, "  " + PROCESS + " "));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-1");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-1");
         dispatch();
         assertEquals("绑定里存的 KEY 带空白时不能原样发给引擎: ", PROCESS, adapter.lastAsk.processKey);
     }
@@ -184,7 +184,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void engineFailureBecomesAFailedRowNotAnException() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.failed("POST /api/approval-center/processes/start http=503");
+        adapter.answer = CamudaAdapter.ProcessStart.failed("POST /api/approval-center/processes/start http=503");
 
         try {
             assertEquals("外部引擎挂了也要把「尝试过」这件事如实报出来: ", 1, dispatch());
@@ -209,7 +209,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void waitingIsBoundedSoAHungEngineCannotHoldTheUserWrite() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-late");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-late");
         adapter.delayMs = 400L;
         dispatcher.setTimeoutMs(40L);
 
@@ -217,7 +217,7 @@ public class WorkflowTriggerDispatcherTest {
         assertEquals(1, dispatch());
         long spent = System.currentTimeMillis() - began;
         WorkflowFireEntity row = onlyFire();
-        assertEquals("z-wf 挂住时必须判 FAILED 而不是等它: ", WorkflowFireEntity.STATUS_FAILED, row.getStatus());
+        assertEquals("z-camuda 挂住时必须判 FAILED 而不是等它: ", WorkflowFireEntity.STATUS_FAILED, row.getStatus());
         assertTrue("要说是超时: " + row.getDetail(), row.getDetail().contains("40ms"));
         assertTrue("等待有上限（实测 " + spent + "ms）：共享 http 客户端的读超时是 60s，"
                 + "那条 60s 会把用户的「新建记录」按住一分钟", spent < 2_000L);
@@ -233,7 +233,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void concurrentDispatchSlotsAreBoundedAndRejectHonestly() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-1");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-1");
         ExecutorService exhausted = Executors.newSingleThreadExecutor();
         exhausted.shutdownNow();
         dispatcher.setWorkers(exhausted);
@@ -253,7 +253,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void ledgerWriteFailureDoesNotEscalateToTheBusinessWrite() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-1");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-1");
         fires.insertFailure = new IllegalStateException("z_lc_workflow_fire 不存在");
         try {
             assertEquals(1, dispatch());
@@ -287,7 +287,7 @@ public class WorkflowTriggerDispatcherTest {
     @Test
     public void nullFieldValuesStillProducesAUsableRequest() {
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-1");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-1");
         dispatcher.afterCreate(TENANT, APP, ENTITY, RECORD_ID, null, "u-7");
         assertEquals(1, adapter.calls.get());
         assertEquals("字段值缺席也要留下定位这条记录的三个变量: ", RECORD_ID,
@@ -300,7 +300,7 @@ public class WorkflowTriggerDispatcherTest {
         bindings.add(binding(1L, PROCESS));
         char[] blob = new char[800];
         Arrays.fill(blob, '崩');
-        adapter.answer = WfAdapter.ProcessStart.failed("引擎回了一大段栈: " + new String(blob));
+        adapter.answer = CamudaAdapter.ProcessStart.failed("引擎回了一大段栈: " + new String(blob));
         dispatch();
         String detail = onlyFire().getDetail();
         assertTrue("detail 列只有 512 字符，超长要截断而不是让落库失败: 实际长度 " + detail.length(),
@@ -314,7 +314,7 @@ public class WorkflowTriggerDispatcherTest {
     public void nullBindingRowsAreSkippedNotCounted() {
         bindings.add(null);
         bindings.add(binding(1L, PROCESS));
-        adapter.answer = WfAdapter.ProcessStart.started("wf-1");
+        adapter.answer = CamudaAdapter.ProcessStart.started("wf-1");
         assertEquals("null 行不该算一次尝试: ", 1, dispatch());
         assertEquals(1, adapter.calls.get());
     }
@@ -329,15 +329,15 @@ public class WorkflowTriggerDispatcherTest {
         Map<String, Object> variables;
     }
 
-    private static final class FakeAdapter extends WfAdapter {
-        WfAdapter.ProcessStart answer = WfAdapter.ProcessStart.started("wf-stub");
+    private static final class FakeAdapter extends CamudaAdapter {
+        CamudaAdapter.ProcessStart answer = CamudaAdapter.ProcessStart.started("wf-stub");
         RuntimeException thrown;
         long delayMs;
         final AtomicInteger calls = new AtomicInteger();
         volatile Ask lastAsk;
 
         @Override
-        public WfAdapter.ProcessStart startProcess(String processKey, String businessKey,
+        public CamudaAdapter.ProcessStart startProcess(String processKey, String businessKey,
                                                    String initiator, String title,
                                                    Map<String, Object> variables) {
             calls.incrementAndGet();

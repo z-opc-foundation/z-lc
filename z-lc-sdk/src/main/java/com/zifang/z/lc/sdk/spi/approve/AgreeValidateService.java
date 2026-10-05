@@ -16,7 +16,7 @@ import java.util.Map;
  * 实现规范: 实现类必须标 <code>@Component</code> + <code>@InterfaceMapping</code>
  * — 引擎通过 (group="审批", code="AgreeValidateService") 自动索引.
  * <p>
- * z-wf 模块应实现这些 SPI 以桥接工作流引擎.
+ * z-camuda 模块应实现这些 SPI 以桥接工作流引擎.
  */
 @InterfaceMapping(name = "同意校验", code = "AgreeValidateService", group = "审批")
 public interface AgreeValidateService {

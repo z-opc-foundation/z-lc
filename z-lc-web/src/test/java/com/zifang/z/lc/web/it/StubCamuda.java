@@ -15,9 +15,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 集成测试里的 z-wf 桩：把 {@code WfAdapter} 打出来的那一句原样记下来，再按脚本回话.
+ * 集成测试里的 z-camuda 桩：把 {@code CamudaAdapter} 打出来的那一句原样记下来，再按脚本回话.
  * <p>
- * 为什么放在 z-lc-web 而不是复用 {@code z-lc-core} 测试树里的 {@code WfStubServer}：
+ * 为什么放在 z-lc-web 而不是复用 {@code z-lc-core} 测试树里的 {@code CamudaStubServer}：
  * 两个模块的测试类互相不在对方 classpath 上（没有 test-jar 依赖），而为一个小工具去改
  * pom 的构建结构不划算 —— 这一份是刻意做小的（只记请求 + 三种回法）。
  * <p>
@@ -26,13 +26,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 这里的收尾是"关掉监听 socket ⇒ accept 立刻抛 ⇒ 守护线程自己结束"，没有等不掉的第三步。
  * <p>
  * 端口由 OS 分配（{@code new ServerSocket(0)}），再通过
- * {@code @DynamicPropertySource} 交给 {@code z-lc.adapter.wf.base-url} ——
+ * {@code @DynamicPropertySource} 交给 {@code z-lc.adapter.camuda.base-url} ——
  * 固定端口会和同一台机器上别的测试/服务撞，而撞了以后的表现是"桩没收到请求"，
  * 那种红会被误读成"链没接上"。
  */
-final class StubWf implements AutoCloseable {
+final class StubCamuda implements AutoCloseable {
 
-    /** z-wf 真实映射的那条路径（{@code ApprovalCenterController} 的 {@code /api/approval-center} + {@code /processes/start}）。 */
+    /** z-camuda 真实映射的那条路径（{@code ApprovalCenterController} 的 {@code /api/approval-center} + {@code /processes/start}）。 */
     static final String START_PATH = "/api/approval-center/processes/start";
 
     static final String OK_BODY =
@@ -68,7 +68,7 @@ final class StubWf implements AutoCloseable {
     private volatile long delayMs = 0L;
     private volatile boolean silence = false;
 
-    StubWf() throws IOException {
+    StubCamuda() throws IOException {
         this.server = new ServerSocket(0);
         this.acceptor = new Thread(this::serve, "lc-stub-wf-" + server.getLocalPort());
         this.acceptor.setDaemon(true);
@@ -87,7 +87,7 @@ final class StubWf implements AutoCloseable {
         silence = false;
     }
 
-    /** 引擎说"不"（HTTP 200 但信封里 success=false，z-wf 的拒绝就是这个形状）。 */
+    /** 引擎说"不"（HTTP 200 但信封里 success=false，z-camuda 的拒绝就是这个形状）。 */
     void rejectWith(String message) {
         this.status = 200;
         this.body = "{\"success\":false,\"code\":500,\"message\":\"" + message + "\"}";

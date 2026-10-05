@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 缺陷 #61 的契约层：绑定这一行到底换出了什么 —— 真起上下文、真打 HTTP、真发一句到桩、真回读账.
  * <p>
  * 为什么单独开一个类而不是往 {@code LcHttpContractTest} 里加几段：这个上下文要带
- * {@code @DynamicPropertySource}（把 {@code z-lc.adapter.wf.base-url} 指到 OS 分配的桩端口、
+ * {@code @DynamicPropertySource}（把 {@code z-lc.adapter.camuda.base-url} 指到 OS 分配的桩端口、
  * 把派发超时压到 250ms），那是整套上下文参数，混进去会把 2389 行的既有测试一起换个上下文。
  * <p>
  * 这一层存在的理由（与 #41/#43/#48 同一族）：java 单测里的 68 例证明的是"这些类自己会这么做"，
@@ -70,19 +70,19 @@ class WorkflowTriggerContractTest {
     private static final String BINDING_LIST = "/api/lc/workflow-binding/list";
 
     /** 静态初始化 ⇒ 端口在 Spring 上下文创建之前就存在，@DynamicPropertySource 才拿得到。 */
-    private static final StubWf STUB = newStub();
+    private static final StubCamuda STUB = newStub();
 
-    private static StubWf newStub() {
+    private static StubCamuda newStub() {
         try {
-            return new StubWf();
+            return new StubCamuda();
         } catch (IOException ex) {
-            throw new IllegalStateException("起不了 z-wf 桩，这一族断言全部无效", ex);
+            throw new IllegalStateException("起不了 z-camuda 桩，这一族断言全部无效", ex);
         }
     }
 
     @DynamicPropertySource
     static void wireTheEngineStub(DynamicPropertyRegistry registry) {
-        registry.add("z-lc.adapter.wf.base-url", STUB::baseUrl);
+        registry.add("z-lc.adapter.camuda.base-url", STUB::baseUrl);
         // 派发超时压到 250ms：一是让"回得慢"这一支测得起，二是这一句本身就是断言 ——
         // 这个键在类注释里宣称可配而实际没有任何地方绑过（契约层的超时那一条会红）。
         registry.add("z-lc.workflow.dispatch-timeout-ms", () -> "250");
@@ -122,7 +122,7 @@ class WorkflowTriggerContractTest {
     /* ------------------------------------------------------------------ */
 
     @Test
-    @DisplayName("#61 绑定真的换出一次发起：桩收到 z-wf 那一句，/fires 读回 STARTED 和实例 id")
+    @DisplayName("#61 绑定真的换出一次发起：桩收到 z-camuda 那一句，/fires 读回 STARTED 和实例 id")
     void bindingActuallyFiresAndTheLedgerReadsBackStarted() throws Exception {
         String app = provisionedApp("fire");
         JsonNode binding = createBinding(app, "{\"triggerEvent\":\"AFTER_CREATE\","
@@ -133,10 +133,10 @@ class WorkflowTriggerContractTest {
         long recordId = writeRecord(app, "{\"ref\":\"WF-1\"}");
         assertEquals(1, STUB.count(), "桩应该正好收到一句: " + STUB.requests());
 
-        StubWf.Recorded sent = STUB.requests().get(0);
+        StubCamuda.Recorded sent = STUB.requests().get(0);
         assertEquals("POST", sent.method);
-        assertEquals(StubWf.START_PATH, sent.path,
-                "打的必须是 z-wf 真映射的那条路径（少了 /api 或 process 少个 s 都是 404）");
+        assertEquals(StubCamuda.START_PATH, sent.path,
+                "打的必须是 z-camuda 真映射的那条路径（少了 /api 或 process 少个 s 都是 404）");
         assertTrue(sent.body.contains("\"processKey\":\"expense_approval\""),
                 "DTO 读的键是 processKey，且两端空白要剪掉: " + sent.body);
         assertTrue(sent.body.contains("\"businessKey\":\"" + app + ":" + ENTITY + ":" + recordId + "\""),
@@ -156,7 +156,7 @@ class WorkflowTriggerContractTest {
         JsonNode fire = fireRows(rows).get(0);
         assertEquals("STARTED", fire.path("status").asText(), fire.toString());
         assertEquals("wf-stub-77", fire.path("instanceId").asText(),
-                "实例 id 必须是 z-wf data.processInstanceId 那一格，不能是整个 data 的 toString: " + fire);
+                "实例 id 必须是 z-camuda data.processInstanceId 那一格，不能是整个 data 的 toString: " + fire);
         assertEquals(bindingId, fire.path("bindingId").asText(), fire.toString());
         assertEquals("AFTER_CREATE", fire.path("triggerEvent").asText(), fire.toString());
         assertEquals("expense_approval", fire.path("processDefinitionKey").asText(), fire.toString());

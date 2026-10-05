@@ -142,7 +142,7 @@ export function WorkflowsPage() {
   return (
     <AdminScaffold
       title="流程绑定"
-      description="把实体事件挂到工作流定义上（由 z-wf 承载流程引擎）：记录创建之后自动向审批中心发起一个流程实例。边界：只有新建单条记录会发起，批量导入与撤销/重做都不会。"
+      description="把实体事件挂到工作流定义上（由 z-camuda 承载流程引擎）：记录创建之后自动向审批中心发起一个流程实例。边界：只有新建单条记录会发起，批量导入与撤销/重做都不会。"
       appCode={appCode}
       onAppCode={setAppCode}
       appOptions={options}

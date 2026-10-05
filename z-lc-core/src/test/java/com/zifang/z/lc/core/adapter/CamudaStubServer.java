@@ -16,14 +16,14 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 测试用的 z-wf 桩服务：把请求原样记下来，再按脚本回话.
+ * 测试用的 z-camuda 桩服务：把请求原样记下来，再按脚本回话.
  * <p>
  * 为什么自己拿 {@link ServerSocket} 而不复用 JDK 的 {@code com.sun.net.httpserver.HttpServer}：
  * 后者在本仓的 JDK8 fork 里有过 {@code stop()} 卡在 preClose0 把整个 fork 挂死的先例（缺陷记录里
  * 那条"@After 收尾必须有上限"就是这么来的）。这里的收尾是"关掉监听 socket ⇒ accept 立刻抛 ⇒
  * 守护线程自己结束"，不存在等不掉的第三步。
  */
-public final class WfStubServer implements AutoCloseable {
+public final class CamudaStubServer implements AutoCloseable {
 
     /** 一次被收到的请求（headers 的键统一小写，取值不区分大小写地断言）。 */
     public static final class Recorded {
@@ -81,7 +81,7 @@ public final class WfStubServer implements AutoCloseable {
     private volatile Script script = new Script();
     private final Thread acceptor;
 
-    public WfStubServer(Script script) throws IOException {
+    public CamudaStubServer(Script script) throws IOException {
         this.script = script;
         this.server = new ServerSocket(0);
         this.acceptor = new Thread(this::serve, "wf-stub-" + server.getLocalPort());
@@ -89,8 +89,8 @@ public final class WfStubServer implements AutoCloseable {
         this.acceptor.start();
     }
 
-    public static WfStubServer ok() throws IOException {
-        return new WfStubServer(new Script());
+    public static CamudaStubServer ok() throws IOException {
+        return new CamudaStubServer(new Script());
     }
 
     public String baseUrl() {

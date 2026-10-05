@@ -27,7 +27,7 @@ public class ExtensionServiceContext implements Serializable {
      */
     private String modelCode;
     /**
-     * 工作流定义 key (z-wf 接入时填充)
+     * 工作流定义 key (z-camuda 接入时填充)
      */
     private String workflowDefinitionKey;
     /**
@@ -39,7 +39,7 @@ public class ExtensionServiceContext implements Serializable {
      */
     private String pageCode;
     /**
-     * 流程实例 id (z-wf 接入时填充)
+     * 流程实例 id (z-camuda 接入时填充)
      */
     private String processInstanceId;
     /**

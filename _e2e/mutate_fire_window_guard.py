@@ -176,7 +176,7 @@ EXPECT_API = {
         "没登记绑定的实体 plain 读回 total=0 —— 这一条是上一条的猎物：COUNT 若不看 entityCode，这里就会是 None",
         "账上累积的行数与发出去的句子一样多（每一次尝试都留痕，成功的也不例外）",
         "走完再往前一页：这一页没有行，而 total 仍然写着整张账那么多（空页 ≠ 这条链没发过单）",
-        "那一行是 STARTED，实例 id 就是 z-wf data.processInstanceId 那一格（不是整个 data 的 toString）",
+        "那一行是 STARTED，实例 id 就是 z-camuda data.processInstanceId 那一格（不是整个 data 的 toString）",
     ],
 }
 ONLY = {a for a in sys.argv[1:] if a.startswith("F")}

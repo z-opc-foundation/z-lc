@@ -329,7 +329,7 @@ export interface WorkflowFireEntity {
   processDefinitionKey: string;
   /** STARTED / FAILED —— 只有这两个值由写入方产生，别按它猜"在跑"。 */
   status: string;
-  /** z-wf 返回的实例 id；失败行为空。 */
+  /** z-camuda 返回的实例 id；失败行为空。 */
   instanceId?: string | null;
   /** 失败原因（引擎那句原话或"超过 Nms 没有回话"）；成功行为空。 */
   detail?: string | null;

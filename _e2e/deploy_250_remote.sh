@@ -47,7 +47,7 @@ require_app_env() {
     jdbc:mysql://*|jdbc:h2:*) ;;
     *) die "闸1: url 不像 JDBC 串（前 24 字符：${SPRING_DATASOURCE_URL:0:24}）—— 若是 HIDE_IN_REPO 则环境变量没设上" ;;
   esac
-  # wf 的 base-url **没有默认值**：`WfAdapter` 的属性默认是 `http://localhost:8888`，而 250 上那一格
+  # wf 的 base-url **没有默认值**：`CamudaAdapter` 的属性默认是 `http://localhost:8888`，而 250 上那一格
   # 是别人的进程（09-27 04:1x 实测：`ss -ltnp` 显示 `*:8888` 由 pid 1622 的 z-opc-main-starter 持有，
   # 对它 POST `/api/approval-center/processes/start` 回 404 + 一段 Tomcat HTML）。留着默认值部署上去 =
   # **每写一条低代码记录就往别人在跑的服务发一次 POST**，账上再落一条"应答不是 JSON/404"的 FAILED ——
@@ -200,7 +200,7 @@ step_start() {
     --z-lc.adapter.ctc.base-url="http://localhost:$APP_PORT" \
     --z-lc.adapter.meta.base-url="http://localhost:$APP_PORT" \
     --z-lc.adapter.script.base-url="http://localhost:$APP_PORT" \
-    --z-lc.adapter.wf.base-url="$ZLC_WF_BASE_URL" \
+    --z-lc.adapter.camuda.base-url="$ZLC_WF_BASE_URL" \
     > "$LOG" 2>&1 &
   local pid=$!
   echo "$pid" > "$pidfile"
@@ -415,7 +415,7 @@ sql_out() {
   # stdin 一律 /dev/null；只有 step_schema 灌 SQL 文件那一处该留 `-i`（它自己重定向了 stdin）。
   # **必须点名 --default-character-set=utf8mb4**：`docker exec` 里没有 LANG，mysql 客户端按 latin1
   # 请求结果 ⇒ 库里的中文逐字读成 `?`。09-27 16:5x 闸 6 第一次正向跑被它读出一条看不出真相的红：
-  # detail 读回 `z-wf ????: ??????: business key ???`。这一句只证明"**CLI 这一条读路**看不见中文"，
+  # detail 读回 `z-camuda ????: ??????: business key ???`。这一句只证明"**CLI 这一条读路**看不见中文"，
   # 不能反证库里存坏了 —— 写路（JDBC）与读路（CLI）是两件事，所以闸 6 另外用应用自己那条 JDBC
   # 读路（/fires）钉同一句原话，两条读路各自成立才算数（见 step_fireprobe 里那两支 fp_check）。
   docker exec "$DB_CONTAINER" mysql -uroot -p"$(root_pw)" -N -B --default-character-set=utf8mb4 -e "$1" </dev/null 2>&1 \
@@ -806,7 +806,7 @@ step_healthproof() {
 # ---- 闸 6：流程发起那本账在真 MySQL 8 上写不写得进、读不读得出（缺陷 #61 §2.6）----
 #
 # 为什么这一支不能只拿接口层那一节代替：`_e2e/e2e_api_test.py` 的 `[15w]` 桩是**测试进程自己**起的
-# （`WF_PORT` / `_WfStub(WF_PORT)`，绑在跑脚本那台机上），而 app 的 BASE 只是 `sys.argv[1]`。
+# （`CAMUDA_PORT` / `_WfStub(CAMUDA_PORT)`，绑在跑脚本那台机上），而 app 的 BASE 只是 `sys.argv[1]`。
 # 把 BASE 指到 250 而别的都不动 ⇒ 250 上那个 jar 发的是**它自己的** localhost，我本地的桩永远收不到，
 # `WF_LIVE = bool(WF) and wf_count()==1` 恒假 ⇒ 整节一律判"桥没通"。那是真红不是假绿（桥没通就没有绿
 # 是那一节自己定的规矩），但它说的只是"桩和 app 不在同一台机"，不是 250 的结论。
@@ -891,7 +891,7 @@ step_fireprobe() {
   # 只把 wf 那一个 token 切出来（argv 里有数据源口令，整行一律不落盘、不回显）。
   local argv wfarg
   argv=$(ps -o args= -p "$have" 2>/dev/null | tr ' ' '\n' || true)
-  wfarg=$(printf '%s\n' "$argv" | grep '^--z-lc.adapter.wf.base-url=' | head -1 || true)
+  wfarg=$(printf '%s\n' "$argv" | grep '^--z-lc.adapter.camuda.base-url=' | head -1 || true)
   fp_check "端口上那个进程自己带着 wf 的 base-url，且就是探针这个桩（读 argv 不读 app.env）" \
     "$([ -n "$wfarg" ] && [ "${wfarg#*=}" = "$ZLC_WF_BASE_URL" ] && echo 1 || echo 0)" \
     "argv 里那一句=${wfarg:-<没有这一项>}"
@@ -904,8 +904,8 @@ step_fireprobe() {
   # 250 上 `*:8888` 已经被人占过一次，桩端口这一格同样可能被别人拿去用 —— 那时"桩收到一句"
   # 量的就是别人的进程。pid-file 是起桩时写下的那一个（`deploy_250.sh` 的用法注释里带着）。
   local spid spidfile
-  spid=$(fp_port_pid); spidfile=$(cat "$DIR/wf_stub.pid" 2>/dev/null || true)
-  fp_check "被问的那个端口上就是我自己起的桩（ss 的 pid == $DIR/wf_stub.pid）" \
+  spid=$(fp_port_pid); spidfile=$(cat "$DIR/camuda_stub.pid" 2>/dev/null || true)
+  fp_check "被问的那个端口上就是我自己起的桩（ss 的 pid == $DIR/camuda_stub.pid）" \
     "$([ -n "$spid" ] && [ "$spid" = "$spidfile" ] && echo 1 || echo 0)" \
     "端口 $FP_STUB_PORT 上=${spid:-none} pid-file=${spidfile:-<无>}"
 
@@ -980,7 +980,7 @@ step_fireprobe() {
     "$(printf '%s' "$fires" | grep -q '"status":"STARTED"' && printf '%s' "$fires" | grep -q "wf250-$n1" && echo 1 || echo 0)" \
     "$(printf '%s' "$fires" | head -c 300)"
 
-  # 第二幕：引擎**答了但没成**（200 + success=false，形状抄自真 z-wf ApprovalCenterController:672-673）。
+  # 第二幕：引擎**答了但没成**（200 + success=false，形状抄自真 z-camuda ApprovalCenterController:672-673）。
   mode=$(fp_stub '/__mode?mode=reject' | sed -n 's/.*"mode":[[:space:]]*"\([a-z0-9]*\)".*/\1/p')
   fp_check "翻旗真的翻动了（reject 不是我没设上）" "$([ "$mode" = "reject" ] && echo 1 || echo 0)" "桩说 mode=${mode:-空}"
   rid=$(fp_post "/api/lc/runtime/create?entityCode=case" \
@@ -990,11 +990,11 @@ step_fireprobe() {
   failed=$(printf '%s' "$rows" | grep -c '^FAILED|' || true)
   fp_check "引擎答 200 而 success=false ⇒ 库里落一行 FAILED（这一单没成不该一个字都不留）" \
     "$([ "$failed" = "1" ] && echo 1 || echo 0)" "FAILED=$failed 全部行: $(printf '%s' "$rows" | tr '\n' ' ')"
-  # 引擎那句原话整句钉（桩的字面在 `_e2e/wf_stub.py` 的 reject 分支，前缀 `z-wf 拒绝发起` 是应用自己加的归属）。
-  # 前一版钉的是 `^FAILED||流程启动失败` —— 锚在错的那一头：库里的 detail 以 `z-wf 拒绝发起: ` 开头，
+  # 引擎那句原话整句钉（桩的字面在 `_e2e/camuda_stub.py` 的 reject 分支，前缀 `z-camuda 拒绝发起` 是应用自己加的归属）。
+  # 前一版钉的是 `^FAILED||流程启动失败` —— 锚在错的那一头：库里的 detail 以 `z-camuda 拒绝发起: ` 开头，
   # 于是这一条**永远红**（闸 6 从来没有一次正向跑完过，所以这颗雷一直没被踩到；本次 16:5x 才现形）。
   # 要求"整句连续出现"比原来的前缀锚强：既不许退化成笼统一句，也不许丢掉是谁拒的。
-  local engine_sentence="z-wf 拒绝发起: 流程启动失败: business key 已存在"
+  local engine_sentence="z-camuda 拒绝发起: 流程启动失败: business key 已存在"
   fp_check "FAILED 那一行带引擎那句原话（读库，且是「归属前缀 + 原话」整句，不是笼统一句「发起失败」）" \
     "$(printf '%s' "$rows" | grep -qF "$engine_sentence" && echo 1 || echo 0)" "$(printf '%s' "$rows" | tr '\n' ' ')"
   # 同一条换**应用自己那条 JDBC 读路**再读一次：上面那支读的是 mysql CLI。两条读路都成立才分得开

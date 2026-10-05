@@ -2,7 +2,7 @@
 
 登记时间：2026-09-26 23:1x。性质：**前 5 处已定方向、只欠工程量**；**后 3 处等拍板**。
 
-这一支和 #61 是同一族：`WfAdapter` 修的时候顺手把整个 adapter 层的读法都对了一遍，
+这一支和 #61 是同一族：`CamudaAdapter` 修的时候顺手把整个 adapter 层的读法都对了一遍，
 发现**同样一句话在别处还有 5 个写法，每一个都必然抛**。
 
 ---
@@ -38,9 +38,9 @@ grep -rn "JsonUtil.fromJson" z-lc/z-lc-core/src/main/java/com/zifang/z/lc/core/a
 | `MetaAdapter`（字典读） | `TypeReference<Result<List<DictItemDTO>>>` | ⇒ null ⇒ 字典值域解析静默什么都不做（`DictResolveProcessor` 是唯一消费方） |
 | `ScriptAdapter.eval` | `Map.class` | ⇒ **抛 RuntimeException**("Script eval response parse failed") |
 | `MistAdapter`（解密读） | `Result.class` | catch ⇒ `log.warn` ⇒ null |
-| `OssAdapter.generateDownloadUrl` | `Result.class` | catch ⇒ `log.warn` ⇒ null（这一处**还有第二个错**：`r.getData().toString()`，与 #61 修掉的 `WfAdapter` 那个"把整个 Map 的 toString 当 id"是同一笔） |
+| `OssAdapter.generateDownloadUrl` | `Result.class` | catch ⇒ `log.warn` ⇒ null（这一处**还有第二个错**：`r.getData().toString()`，与 #61 修掉的 `CamudaAdapter` 那个"把整个 Map 的 toString 当 id"是同一笔） |
 
-修法照 `WfAdapter` 本轮那一版抄：`JsonUtil.parseObject` + 逐格读，**并把"缺哪一格"写进失败原因**。
+修法照 `CamudaAdapter` 本轮那一版抄：`JsonUtil.parseObject` + 逐格读，**并把"缺哪一格"写进失败原因**。
 
 ⚠ 关键教训（这条要比修本身留得久）：这几处的 `catch → log.warn → return null`
 把"我压根没解析成功"伪装成了"远端说没有值"。修完之后**静默 null 变成了静默 null 的另一半**，
@@ -57,7 +57,7 @@ grep -rn "JsonUtil.fromJson" z-lc/z-lc-core/src/main/java/com/zifang/z/lc/core/a
 | `ScriptAdapter` | **0** | 脚本 eval 口，同上（`ScriptLifecycleService` 走的是 z-script 的 `DynamicApiExecutor`，**不是**这个 adapter） |
 | `MetaAdapter` | 2 处真实消费 | `DictResolveProcessor`、`HealthController` |
 | `CtcAdapter` | 作为共享 HTTP 工具被大量引用 | 但 `checkAuth` 本身 **0 调用者**（见 §4） |
-| `WfAdapter` | 1 处 | 就是 #61 本轮接上的 `WorkflowTriggerDispatcher` |
+| `CamudaAdapter` | 1 处 | 就是 #61 本轮接上的 `WorkflowTriggerDispatcher` |
 
 ⇒ **要你拍的**：字段级加密、附件存储、脚本这三个能力，是"留着当扩展点"（那 §2 里它们的必抛写法就
 不是紧急缺陷，但仍要修，因为界面一旦放出对应配置就会撞上），还是"这一版不宣称支持"（那界面/文档要同步删）。

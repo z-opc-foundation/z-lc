@@ -247,7 +247,7 @@ CREATE TABLE IF NOT EXISTS z_lc_data_change (
 );
 
 -- 流程绑定的发起结局账 (缺陷 #61). 一条记录写成功后每次「去发起流程」都在这里留一行:
--- STARTED 带 z-wf 的实例 id, FAILED 带为什么 (引擎不可达/拒绝/超时/并发额度用尽)。
+-- STARTED 带 z-camuda 的实例 id, FAILED 带为什么 (引擎不可达/拒绝/超时/并发额度用尽)。
 -- 没有这张表的话, "绑定已保存" 与 "单真的提了" 之间没有任何可回读的证据。
 CREATE TABLE IF NOT EXISTS z_lc_workflow_fire (
   `id`                     BIGINT      NOT NULL AUTO_INCREMENT,

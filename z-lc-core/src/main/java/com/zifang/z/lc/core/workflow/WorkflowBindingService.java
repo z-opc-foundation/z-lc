@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * 流程绑定服务 (F035 T4)
- * 管理低代码实体与 z-wf 流程的绑定关系
+ * 管理低代码实体与 z-camuda 流程的绑定关系
  * <p>
  * 缺陷 #61 之后这里的口径：绑定不再是"存起来的一张纸"。写入口先过
  * {@link WorkflowTriggers#validateForWrite} 那一份词表（兑现不了的形态直接 400，不生出永远不发

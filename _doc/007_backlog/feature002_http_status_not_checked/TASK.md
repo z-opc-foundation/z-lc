@@ -1,7 +1,7 @@
 # feature002 · 缺陷 #62：`isSuccess()` 不看状态码，404/500 在 10 处被读成"远端受理了"
 
 登记时间：2026-09-26 23:1x。性质：**已定方向、只欠工程量**（不需要拍板，但要一批配 10 支带猎物的测试）。
-本轮已经在 `WfAdapter` 这一条链上修好并钉住，**其余 10 处原样保留**。
+本轮已经在 `CamudaAdapter` 这一条链上修好并钉住，**其余 10 处原样保留**。
 
 ## 1. 库侧事实（不是我推的，是库自己写明的）
 
@@ -17,7 +17,7 @@ sed -n '43,50p' z-util/z-util-http/src/main/java/com/zifang/util/http/client/Htt
 | 后果 | 怎么量出来的 |
 |---|---|
 | `CtcAdapter.ping()` 这类健康检查，对端回 404 也报 UP | `CtcAdapter.java` 的 `return res.isSuccess();` —— 与已闭的缺陷 #52（`/api/lc/health` 硬编码 UP）同一形状，只是这次是"问了但没看答" |
-| 打 404 的绑定链会被报成"应答里没有布尔型的 success 这一格" —— 把引擎撇干净、把原因指向对端 JSON | 本轮真实发生过：`WfAdapterTest.httpFailureCarriesStatusAndPath` 在只判 `isSuccess()` 的实现下，收到的失败消息是"…没有布尔型的 success…"，而不是"http=404"。**假原因比没原因更难查** |
+| 打 404 的绑定链会被报成"应答里没有布尔型的 success 这一格" —— 把引擎撇干净、把原因指向对端 JSON | 本轮真实发生过：`CamudaAdapterTest.httpFailureCarriesStatusAndPath` 在只判 `isSuccess()` 的实现下，收到的失败消息是"…没有布尔型的 success…"，而不是"http=404"。**假原因比没原因更难查** |
 
 ## 3. 还欠的 10 处（行号会漂，一律现取）
 
@@ -37,9 +37,9 @@ grep -n "res.isSuccess()" z-lc/z-lc-core/src/main/java/com/zifang/z/lc/core/adap
 - **反向**：桩回 500 **且 body 是一份看起来成功的信封** ⇒ 必须判失败/必须报 unreachable，
   且失败原因里要点名 http 状态。
   这一支是关键：只测 404 + 空 body 的话，把状态码闸摘掉也照样绿（因为 body 解析那一步会先红），
-  量不到这一支的牙齿。已在 `WfAdapterTest.non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope` 打过样。
+  量不到这一支的牙齿。已在 `CamudaAdapterTest.non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope` 打过样。
 
-⚠ 复用 `WfStubServer`（`z-lc-core/src/test/.../adapter/WfStubServer.java`），它支持 `.status(500).body(...)`；
+⚠ 复用 `CamudaStubServer`（`z-lc-core/src/test/.../adapter/CamudaStubServer.java`），它支持 `.status(500).body(...)`；
 不要引进 JDK8 那个 `com.sun.net.httpserver.HttpServer`（本仓有 `stop()` 卡 preClose0 挂死整个 fork 的先例）。
 
 ## 5. 顺带要一起看的（同一次改动会撞见）

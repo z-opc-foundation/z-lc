@@ -2673,11 +2673,11 @@ async function runOnce(runNum, appCode) {
       await shot(page, `r${runNum}-13-bulk-delete-FAIL`);
     }
 
-    /* ---- 11w. 流程绑定：界面上点出去的那一句，z-wf 那边真的收到了账（#61 浏览器层）---- */
+    /* ---- 11w. 流程绑定：界面上点出去的那一句，z-camuda 那边真的收到了账（#61 浏览器层）---- */
     // 上面每一节测的都是"页面说得出什么"。这一节测的是"点下去之后外面发生了什么"，所以它必须自己
-    // 起一个 z-wf 桩：没有桩，"发出去了"这句话在浏览器层就没有任何一层能兑现 —— 而那正是 #61 的形状
+    // 起一个 z-camuda 桩：没有桩，"发出去了"这句话在浏览器层就没有任何一层能兑现 —— 而那正是 #61 的形状
     // （绑定存进了库、界面一片祥和、运行期一个字都不做）。
-    // 桩只能听 8888：那是 `z-lc.adapter.wf.base-url` 的默认值，写死在部署件里（不是我这会儿挑的端口，
+    // 桩只能听 8888：那是 `z-lc.adapter.camuda.base-url` 的默认值，写死在部署件里（不是我这会儿挑的端口，
     // 见 #59 那一支教训）。端口被人占着 ⇒ 本节整体 SKIP，而不是让下面每一条各自红一次。
     // 分母由 e2e/mutate_workflow_browser_guard.py **从源码扫**出来，所以这里每一条都必须写成
     // `check('…')` / `wfCheck('…')`、名字在同一行、整节之内不重名，且名字里不许插本轮才有的值。
@@ -2722,25 +2722,25 @@ async function runOnce(runNum, appCode) {
           + JSON.stringify((wfProv.data && wfProv.data.items) || wfProv.message).slice(0, 220));
       }
 
-      // ---- z-wf 桩 ------------------------------------------------------------------------------
+      // ---- z-camuda 桩 ------------------------------------------------------------------------------
       // 每条应答都带 Connection: close 并掐掉 socket：Java 那侧的连接池若把长连接攥到"桩已换一次"
       // 之后，重启阳性对照就会撞上一个自己造出来的 stale socket，那种红指不回任何产品结论。
-      const wfStub = { requests: [], mode: 'ok' };
+      const camudaStub = { requests: [], mode: 'ok' };
       const wfListen = () => new Promise((resolve, reject) => {
         const srv = http.createServer((req, res) => {
           let raw = '';
           req.on('data', (c) => { raw += c; });
           req.on('end', () => {
-            const instance = `wf-ui-${wfStub.requests.length + 1}`;
-            wfStub.requests.push({ path: req.url, body: raw, instance });
-            const payload = wfStub.mode === 'reject'
+            const instance = `wf-ui-${camudaStub.requests.length + 1}`;
+            camudaStub.requests.push({ path: req.url, body: raw, instance });
+            const payload = camudaStub.mode === 'reject'
               ? JSON.stringify({ success: false, code: 500, message: '流程启动失败: business key 已存在' })
-              : wfStub.mode === 'http5xx'
+              : camudaStub.mode === 'http5xx'
                 ? JSON.stringify({ success: true, code: 200, message: null,
                   data: { processInstanceId: 'ghost-should-not-be-kept' } })
                 : JSON.stringify({ success: true, code: 200, message: null,
                   data: { processInstanceId: instance } });
-            res.writeHead(wfStub.mode === 'http5xx' ? 502 : 200, {
+            res.writeHead(camudaStub.mode === 'http5xx' ? 502 : 200, {
               'Content-Type': 'application/json',
               'Content-Length': Buffer.byteLength(payload),
               Connection: 'close',
@@ -2755,9 +2755,9 @@ async function runOnce(runNum, appCode) {
         // 而红下来长得像"流程绑定没接上"——那是量具的故障，不是产品的。
         srv.listen({ port: 8888, host: '::', ipv6Only: false }, () => resolve(srv));
       });
-      const wfCount = () => wfStub.requests.length;
+      const wfCount = () => camudaStub.requests.length;
       const wfLast = () => {
-        const one = wfStub.requests[wfStub.requests.length - 1];
+        const one = camudaStub.requests[camudaStub.requests.length - 1];
         if (!one) return { path: '', body: {}, instance: '' };
         try {
           return Object.assign({}, one, { body: JSON.parse(one.body || '{}') });
@@ -2768,7 +2768,7 @@ async function runOnce(runNum, appCode) {
       try {
         wfStubServer = await wfListen();
       } catch (e) {
-        throw new skipRemaining(`11w 的 z-wf 桩起不来（8888 被别的进程占着？）: ${e && e.message ? e.message : e}`);
+        throw new skipRemaining(`11w 的 z-camuda 桩起不来（8888 被别的进程占着？）: ${e && e.message ? e.message : e}`);
       }
 
       // ---- 本节自己的网络账 ---------------------------------------------------------------------
@@ -2983,7 +2983,7 @@ async function runOnce(runNum, appCode) {
         wfLive,
         `这一条发出去 ${wfFire1.sent} 句、累计 ${wfCount()} 句、记录号=${wfFire1.recordId}`
         + `${wfFire1.err ? ` 报错=${wfFire1.err}` : ''}`);
-      wfCheck('打的必须是 z-wf 真映射的那条路径（浏览器点出来的这一句和接口层量的是同一格）',
+      wfCheck('打的必须是 z-camuda 真映射的那条路径（浏览器点出来的这一句和接口层量的是同一格）',
         wfLast().path === '/api/approval-center/processes/start', wfLast().path);
       wfCheck('businessKey 能定位回界面上刚建的那一条（不是上一条、也不是别的实体）',
         wfLast().body.businessKey === `${wfApp}:case:${wfFire1.recordId}`,
@@ -3050,7 +3050,7 @@ async function runOnce(runNum, appCode) {
       wfCheck('「发起记录」抽屉里正好一行，且状态是 STARTED（绑定存在≠发出去了，这一格才是账）',
         wfDrawerRows1.length === 1 && wfDrawerRows1[0].includes('STARTED'),
         JSON.stringify(wfDrawerRows1).slice(0, 260));
-      wfCheck('那一行给出的流程实例号就是 z-wf 回的那一格（不是记录号、也不是空、也不是「—」）',
+      wfCheck('那一行给出的流程实例号就是 z-camuda 回的那一格（不是记录号、也不是空、也不是「—」）',
         wfDrawer1.includes(wfInstance1) && wfInstance1.indexOf('wf-ui-') === 0
         && wfDrawer1.includes('记录') && !wfDrawer1.includes(`${wfApp}:case`),
         `抽屉=${wfDrawer1.slice(0, 200)} 实例=${wfInstance1}`);
@@ -3122,22 +3122,22 @@ async function runOnce(runNum, appCode) {
       await wfCloseFires();
 
       // ================= (7b) 引擎答了、可这单没成：200+success=false 与 502 带一个号 ============
-      // 桩里那两个分支（`wfStub.mode`）早就写好了，可此前没有任何一处翻过旗 —— 于是上面那条
+      // 桩里那两个分支（`camudaStub.mode`）早就写好了，可此前没有任何一处翻过旗 —— 于是上面那条
       // "FAILED 那一格的实例号是空的"只在"桩不可达"这一种成因下测过，而那种成因结构上收不到
       // body，那一格不可能有号。真正的猎人是 502 带一个成功样的 body：引擎把号给出来了、
       // 但这单没成，账上不能留那个号（同契约层 http5xxWithASuccessfulLookingBodyIsNotAFire，
       // 那一层钉服务端写没写，这一层钉界面画没画）。
-      wfStub.mode = 'reject';
+      camudaStub.mode = 'reject';
       const wfFire4 = await wfWriteViaUi('引擎答 200 而 success=false');
       wfCheck('引擎答 200 而 success=false 时记录照写（这一单没发成不该把用户这次保存一起吞掉）',
         wfFire4.recordId !== null && wfFire4.sent === 1,
         `recordId=${wfFire4.recordId} sent=${wfFire4.sent}${wfFire4.err ? ` err=${wfFire4.err}` : ''}`);
-      wfStub.mode = 'http5xx';
+      camudaStub.mode = 'http5xx';
       const wfFire5 = await wfWriteViaUi('引擎答 502 而 body 里带一个流程实例号');
       wfCheck('引擎答 502 而 body 里带号时记录照写（发不成的单不是回滚上一次保存的理由）',
         wfFire5.recordId !== null && wfFire5.sent === 1,
         `recordId=${wfFire5.recordId} sent=${wfFire5.sent}${wfFire5.err ? ` err=${wfFire5.err}` : ''}`);
-      wfStub.mode = 'ok';
+      camudaStub.mode = 'ok';
       await page.goto(`${BASE}/admin/workflows?appCode=${wfApp}`,
         { waitUntil: 'networkidle', timeout: 20000 });
       await page.waitForTimeout(1200);
@@ -3147,7 +3147,7 @@ async function runOnce(runNum, appCode) {
       const wfRow5 = wfRowOf(wfCells5, wfFire5.recordId);
       wfCheck('引擎那句拒绝理由原样落在「为什么」那一格（200 而 success=false 是最像成功的一种失败，界面不许替它圆场）',
         wfRow4 !== null && wfRow4[1] === 'FAILED'
-        && /z-wf 拒绝发起/.test(wfRow4[3]) && wfRow4[3].includes('business key 已存在'),
+        && /z-camuda 拒绝发起/.test(wfRow4[3]) && wfRow4[3].includes('business key 已存在'),
         JSON.stringify(wfRow4).slice(0, 260));
       wfCheck('502 带一个成功样的 body：那一个号不许进账（实例那一格还是空的，而那一行还得自称 FAILED）',
         wfRow5 !== null && wfRow5[1] === 'FAILED' && wfRow5[2] === '—'

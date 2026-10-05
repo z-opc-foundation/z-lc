@@ -8,7 +8,7 @@ TASK §2.3 点名的六支都在这里。为什么必须有这一份（而不是
 "绿"本身不是证据，"我故意把它改坏，它红在哪一条"才是。
 
 量的是两层，每支注入两层都跑（另一层**预期 0 红**也是一条判定，不是没跑）：
-  core = WfAdapterTest + WorkflowTriggersTest + WorkflowBindingServiceTest + WorkflowTriggerDispatcherTest
+  core = CamudaAdapterTest + WorkflowTriggersTest + WorkflowBindingServiceTest + WorkflowTriggerDispatcherTest
   web  = WorkflowTriggerContractTest（真起上下文、真打 HTTP、真发一句到桩、真回读账）
 
 六支（M1..M6）与各自打掉的东西：
@@ -78,13 +78,13 @@ sys.path.insert(0, str(REPO / "z-lc-admin-ui" / "e2e"))
 import _mutlock  # noqa: E402
 
 # ---- 被测产品源码 ---------------------------------------------------------------------------
-ADAPTER = REPO / "z-lc-core/src/main/java/com/zifang/z/lc/core/adapter/WfAdapter.java"
+ADAPTER = REPO / "z-lc-core/src/main/java/com/zifang/z/lc/core/adapter/CamudaAdapter.java"
 TRIGGERS = REPO / "z-lc-core/src/main/java/com/zifang/z/lc/core/workflow/WorkflowTriggers.java"
 BINDING_SVC = REPO / "z-lc-core/src/main/java/com/zifang/z/lc/core/workflow/WorkflowBindingService.java"
 CRUD = REPO / "z-lc-web/src/main/java/com/zifang/z/lc/web/controller/RuntimeCrudController.java"
 
 # ---- 尺（测试文件只用来现搜断言文案与行号） --------------------------------------------------
-T_ADAPTER = REPO / "z-lc-core/src/test/java/com/zifang/z/lc/core/adapter/WfAdapterTest.java"
+T_ADAPTER = REPO / "z-lc-core/src/test/java/com/zifang/z/lc/core/adapter/CamudaAdapterTest.java"
 T_TRIGGERS = REPO / "z-lc-core/src/test/java/com/zifang/z/lc/core/workflow/WorkflowTriggersTest.java"
 T_BINDING = REPO / "z-lc-core/src/test/java/com/zifang/z/lc/core/workflow/WorkflowBindingServiceTest.java"
 T_DISPATCH = REPO / "z-lc-core/src/test/java/com/zifang/z/lc/core/workflow/WorkflowTriggerDispatcherTest.java"
@@ -99,7 +99,7 @@ LAYERS = {
     "core": {
         "module": "z-lc-core",
         "classes": {
-            "WfAdapterTest": T_ADAPTER,
+            "CamudaAdapterTest": T_ADAPTER,
             "WorkflowTriggersTest": T_TRIGGERS,
             "WorkflowBindingServiceTest": T_BINDING,
             "WorkflowTriggerDispatcherTest": T_DISPATCH,
@@ -244,15 +244,15 @@ RUNS = [
         "what": "把发起 URL 改回 #61 修复前那句 /approval-center/process/start",
         "edits": [(ADAPTER, A_M4, R_M4)],
         "core": [
-            claim("WfAdapterTest", "postsToThePathZwfActuallyMaps",
+            claim("CamudaAdapterTest", "postsToThePathZwfActuallyMaps",
                   '"http://127.0.0.1:1/api/approval-center/processes/start"'),
-            claim("WfAdapterTest", "httpFailureCarriesStatusAndPath", "要带上打的是哪条路径"),
+            claim("CamudaAdapterTest", "httpFailureCarriesStatusAndPath", "要带上打的是哪条路径"),
         ],
         "web": [
             claim("WorkflowTriggerContractTest", "bindingActuallyFiresAndTheLedgerReadsBackStarted",
-                  "打的必须是 z-wf 真映射的那条路径"),
+                  "打的必须是 z-camuda 真映射的那条路径"),
         ],
-        "why": "桩对路径无感 ⇒ 三条红的都是同一件事（打出去的路径是不是 z-wf 真映射的那一条），"
+        "why": "桩对路径无感 ⇒ 三条红的都是同一件事（打出去的路径是不是 z-camuda 真映射的那一条），"
                "第一红落在 startUrl() 的逐字比对上，它早于桩那一发。",
     },
     {
@@ -260,9 +260,9 @@ RUNS = [
         "what": "把状态码闸摘回 !res.isSuccess()",
         "edits": [(ADAPTER, A_M5, R_M5)],
         "core": [
-            claim("WfAdapterTest", "non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope",
+            claim("CamudaAdapterTest", "non2xxIsRefusedEvenWhenTheBodyLooksLikeASuccessEnvelope",
                   "500 就是没受理"),
-            claim("WfAdapterTest", "httpFailureCarriesStatusAndPath", "要带上打的是哪条路径"),
+            claim("CamudaAdapterTest", "httpFailureCarriesStatusAndPath", "要带上打的是哪条路径"),
         ],
         "web": [
             # 契约层原来**没有**"引擎回非 2xx"这一格形状 ⇒ 这一支 web 0 红（第一跑如实登记成"未覆盖"）。
@@ -282,14 +282,14 @@ RUNS = [
         "what": "实例 id 读回成整个 data 的 toString()",
         "edits": [(ADAPTER, A_M6, R_M6)],
         "core": [
-            claim("WfAdapterTest", "readsInstanceIdFromDataProcessInstanceId",
+            claim("CamudaAdapterTest", "readsInstanceIdFromDataProcessInstanceId",
                   'assertEquals("wf-42", start.getInstanceId())'),
-            claim("WfAdapterTest", "successWithoutInstanceIdIsNotSuccess",
+            claim("CamudaAdapterTest", "successWithoutInstanceIdIsNotSuccess",
                   "assertFalse(start.getFailure(), start.isStarted());", "successWithoutInstanceIdIsNotSuccess"),
         ],
         "web": [
             claim("WorkflowTriggerContractTest", "bindingActuallyFiresAndTheLedgerReadsBackStarted",
-                  "实例 id 必须是 z-wf data.processInstanceId 那一格"),
+                  "实例 id 必须是 z-camuda data.processInstanceId 那一格"),
         ],
         "why": "整份 data 的文本既「不等于 wf-42」又「永远非空」⇒ 连 data:{} 都会被当成一次成功发起，"
                "「没有实例 id 就不算成功」那半边一起漏；账上那一格则是用户在界面上读到的东西。",
