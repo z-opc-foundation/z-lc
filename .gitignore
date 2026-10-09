@@ -85,3 +85,7 @@ _doc/001_arch/ace-*
 
 /.cache/
 *.pyc
+
+# 前端 node_modules / dist
+_frontend/**/node_modules/
+_frontend/**/dist/
