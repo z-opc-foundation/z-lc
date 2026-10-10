@@ -10,7 +10,7 @@ export const menuItems = [
     { key: '/z-lc/status', label: '服务状态', icon: <MonitorOutlined /> },
 ]
 
-export const routeTable = [
+export const routes = [
     { path: '/z-lc/home', Component: HomePage },
     { path: '/z-lc/status', Component: StatusPage },
 ]
