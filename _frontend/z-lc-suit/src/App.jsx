@@ -1,5 +1,5 @@
 import {Card, Space, Typography} from 'antd'
-import {AppLayout} from '@yuku123/z-frontend-common'
+import {AppLayout} from '../../../../_shared/z-frontend-common-local/dist/z-frontend-common.es.js'
 import Status from './Status'
 
 const {Title, Paragraph} = Typography
@@ -12,7 +12,7 @@ export default function App() {
             ]}
             appTitle="z-lc 低代码平台"
             appShort="LC"
-        >
+         appIcon={{icon: <img src="/icon.png" alt="LC" style={{width: "100%", height: "100%", objectFit: "cover", borderRadius: 8}}/>, color: '#8b5cf6', label: 'LC'}}>
             <Space direction="vertical" size="large" style={{width: '100%'}}>
                 <Card>
                     <Title level={3} style={{margin: 0}}>z-lc 低代码平台</Title>
