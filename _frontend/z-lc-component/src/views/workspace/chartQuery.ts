@@ -6,7 +6,7 @@ import {
   type AggregateRequest,
   type AggregateRow,
 } from '@/lc/api/runtime';
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import {
   METRIC_LABELS,
   buildSeries,

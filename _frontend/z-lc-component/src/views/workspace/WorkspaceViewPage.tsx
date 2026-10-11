@@ -4,7 +4,7 @@ import { Alert, Button, Empty, Typography } from 'antd';
 import { PartitionOutlined } from '@ant-design/icons';
 import { VIEW_TYPES, type ViewType } from '@/lc/api/types';
 import { useWorkspace } from '@/lc/hooks/useWorkspace';
-import { resolveEntityFields } from '@yuku123/render/fields';
+import { resolveEntityFields } from '@yuku123/z-frontend-render/fields';
 import { ErrorBlock, LoadingBlock, StateBlock } from '@/lc/components/StateBlock';
 import { unreadReason } from '@/lc/api/meta';
 import { GridView } from './GridView';

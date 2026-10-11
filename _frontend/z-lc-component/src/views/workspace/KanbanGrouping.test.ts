@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createWorkspaceContext, resolveEntityFields } from '@yuku123/render/fields';
+import { createWorkspaceContext, resolveEntityFields } from '@yuku123/z-frontend-render/fields';
 import { groupableFields } from '@/lc/views/workspace/kanbanModel';
 import type { EntityDefDTO, FieldDefDTO } from '@/lc/api/types';
 

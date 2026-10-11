@@ -21,7 +21,7 @@ import type {
 } from '@/lc/api/types';
 import { createViewConfig, newViewConfigDraft } from '@/lc/api/viewConfig';
 import type { TimeGroup } from '@/lc/api/runtime';
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { StateBlock } from '@/lc/components/StateBlock';
 import type { FilterState } from '@/lc/views/grid/FilterBar';
 import { BarChart, LineChart, NumberCard, PieChart } from './Charts';

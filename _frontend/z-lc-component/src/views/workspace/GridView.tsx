@@ -28,9 +28,9 @@ import {
 import type { Conjunction, EntityDefDTO, LcRow, QueryCondition, ViewConfigDTO } from '@/lc/api/types';
 import { createViewConfig } from '@/lc/api/viewConfig';
 import { deleteBatch, listRecords, updateRecord } from '@/lc/api/runtime';
-import { readFieldValue } from '@yuku123/render/fields';
+import { readFieldValue } from '@yuku123/z-frontend-render/fields';
 import { aggregateRecords } from '@/lc/api/runtime';
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { FilterBar } from '@/lc/views/grid/FilterBar';
 import type { FilterState } from '@/lc/views/grid/FilterBar';
 import { ColumnManagerDrawer } from '@/lc/views/grid/ColumnManagerDrawer';

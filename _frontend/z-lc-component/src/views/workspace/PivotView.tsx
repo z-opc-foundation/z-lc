@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createViewConfig, newViewConfigDraft, parseViewConfig } from '@/lc/api/viewConfig';
 import { shapeRecords, type ShapeRequest } from '@/lc/api/runtime';
 import type { Conjunction, EntityDefDTO, QueryCondition, ViewConfigDTO } from '@/lc/api/types';
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { StateBlock } from '@/lc/components/StateBlock';
 import {
   DEFAULT_PIVOT_CONFIG,

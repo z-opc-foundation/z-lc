@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { Button, Select, Space, Tooltip, Typography } from 'antd';
 import { CloseOutlined, PlusOutlined, SwapOutlined } from '@ant-design/icons';
 import type { Conjunction, QueryCondition } from '@/lc/api/types';
-import { OPERATOR_LABELS } from '@yuku123/render/fields';
+import { OPERATOR_LABELS } from '@yuku123/z-frontend-render/fields';
 import { NULL_OPERATORS } from '@/lc/api/types';
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 
 const { Text } = Typography;
 

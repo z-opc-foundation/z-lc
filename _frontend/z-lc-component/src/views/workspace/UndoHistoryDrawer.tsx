@@ -6,7 +6,7 @@ import { changeHistory, parseImage, undoLast } from '@/lc/api/undo';
 import { getActor } from '@/lc/api/actor';
 import { ErrorBlock } from '@/lc/components/StateBlock';
 import type { ChangeEntry } from '@/lc/api/undo';
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { formatTime } from '@/lc/views/admin/_scope';
 
 const { Text } = Typography;

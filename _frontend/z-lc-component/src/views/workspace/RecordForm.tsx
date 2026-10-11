@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Space, Spin, Typography, message } from 'antd';
 import type { EntityDefDTO, LcRow } from '@/lc/api/types';
 import { createRecord, getRecord, updateRecord } from '@/lc/api/runtime';
-import { isBlank } from '@yuku123/render/fields';
-import type { ResolvedField } from '@yuku123/render/fields';
+import { isBlank } from '@yuku123/z-frontend-render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { StateBlock } from '@/lc/components/StateBlock';
 
 const { Text, Title } = Typography;

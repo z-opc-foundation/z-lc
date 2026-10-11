@@ -22,7 +22,7 @@ import {
   requestModelSuggestion,
 } from '@/lc/api/ai';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
-import { listFieldDefinitions } from '@yuku123/render/fields';
+import { listFieldDefinitions } from '@yuku123/z-frontend-render/fields';
 import { AdminScaffold } from './_shared';
 import { useAppSelection, useEntityOptions } from './_scope';
 

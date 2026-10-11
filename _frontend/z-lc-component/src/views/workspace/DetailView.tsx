@@ -3,8 +3,8 @@ import { Button, Descriptions, Tooltip, Typography, message } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import type { EntityDefDTO, LcRow } from '@/lc/api/types';
 import { getRecord } from '@/lc/api/runtime';
-import { readFieldValue } from '@yuku123/render/fields';
-import type { ResolvedField } from '@yuku123/render/fields';
+import { readFieldValue } from '@yuku123/z-frontend-render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { StateBlock } from '@/lc/components/StateBlock';
 
 const { Text } = Typography;

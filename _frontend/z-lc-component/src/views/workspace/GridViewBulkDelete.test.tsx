@@ -3,7 +3,7 @@ import { message } from 'antd';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GridView } from '@/lc/views/workspace/GridView';
-import { createWorkspaceContext, resolveEntityFields } from '@yuku123/render/fields';
+import { createWorkspaceContext, resolveEntityFields } from '@yuku123/z-frontend-render/fields';
 import type { EntityDefDTO, FieldDefDTO } from '@/lc/api/types';
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createWorkspaceContext, resolveEntityFields } from '@yuku123/render/fields';
+import { createWorkspaceContext, resolveEntityFields } from '@yuku123/z-frontend-render/fields';
 import { ColumnManagerDrawer } from '@/lc/views/grid/ColumnManagerDrawer';
 import { projectColumns, visibleColumns } from '@/lc/views/grid/gridModel';
 import type { ColumnMeta, EntityDefDTO, FieldDefDTO } from '@/lc/api/types';
