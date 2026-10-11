@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.apache.org/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>z-lc-report-common</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc :: report-common (领域模型 / JSON Schema 契约: ViewSchema/DatasetSchema/WidgetSpec)</name>
+    <description>schema 驱动通用渲染器的单一事实源: 数据源/数据集/视图/Book 契约定义</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+    </dependencies>
+</project>

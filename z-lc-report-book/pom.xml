@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.apache.org/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>z-lc-report-book</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc :: report-book (ReportBook 树状组织 / 整体发布快照)</name>
+    <description>
+        Book 内树状组织 (章节/页面, 类"应用"), 整体发布为不可变快照供他人只读查看。
+        M1 内存态; M2 落库 (MyBatis-Plus) + 分享 token / SSO。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-common</artifactId>
+        </dependency>
+    </dependencies>
+</project>

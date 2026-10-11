@@ -77,6 +77,11 @@
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-web</artifactId>
         </dependency>
+        <!-- z-lc-report-web (报表域 controller 全家: 2026-10-11 自 z-report 收编) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-web</artifactId>
+        </dependency>
         <!-- z-lc-design (含 PageTemplateController + LowCodeModelService 收集器) -->
         <dependency>
             <groupId>io.github.yuku123</groupId>

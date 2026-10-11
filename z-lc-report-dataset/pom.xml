@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.apache.org/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>z-lc-report-dataset</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc :: report-dataset (★核心: 内存 typed 列式引擎: 多键 join/groupby/表达式/过滤)</name>
+    <description>
+        类型化列式 Table 引擎 (STRING/INT/DOUBLE/BOOL/DATE + 空值语义),
+        API 形态对齐 pandas (join/groupby/filter/assign/sort);
+        表达式求值为 M1 内置最小实现, 预留 z-util-expr 切换缝;
+        转换 DAG 编排后续接 z-util-wf-kernel。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <!-- 2026-10-04: 坐标从 z-util-cache 改为 z-util-pattern-cache。
+                 z-util/pom.xml:141 写着「z-util-cache 已合并到 z-util-pattern 子模块下 (2026-10-02)」——
+                 老坐标连同 com.zifang.util.cache 包一起消失了(工作区里已无该包, 本地仓库也从没装过该坐标),
+                 于是本模块连依赖都解析不了:
+                     Cannot access central ... in offline mode and the artifact
+                       io.github.yuku123:z-util-cache:jar:1.0.14 has not been downloaded from it before.
+                 新坐标的包是 com.zifang.util.core.pattern.cache, 已同步改 CachingDatasetExecutor 的两行 import;
+                 API 逐个对过(name/maximumSize/expireAfterWrite/build + get(K, loader)), 完全对得上。
+
+                 ⚠ 版本只能写死: 地板(fleet 1.0.0/1.0.1/1.0.2 三版)都还托管着已死的 z-util-cache,
+                 谁都没有 z-util-pattern-cache 的条目 ⇒ 不写版本会直接报 "version is missing"。
+                 取 1.0.14 与本仓其它 z-util-* 一致(同一条 floor 下发)。地板那条死条目该由 z-boot 那边清,
+                 清掉之后这一格就可以改回"不写版本"。 -->
+            <artifactId>z-util-pattern-cache</artifactId>
+            <version>1.0.14</version>
+            <!-- z-util-core 经此传递引入 log4j-slf4j2-impl (SLF4J 2.x 桥),
+                 与 spring-boot-starter-log4j2 提供的 log4j-slf4j-impl:2.17.2 (SLF4J 1.x 桥)
+                 在 slf4j-api:1.7.36 共存时导致 StaticLoggerBinder 反射初始化失败。
+                 项目运行栈以 log4j2 (via z-boot-web-starter) 为准, 排除 SLF4J 2.x 桥即可 -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- 依赖方向: datasource → dataset (引擎类型 Table/FieldType); dataset 经 TableSourceResolver 倒置源解析 -->
+        <!-- TODO(M2): 接入 z-util-math 数值函数与 z-util-expr 表达式引擎
+             (待确认 Maven Central artifact 版本后打开, 接口已留切换缝) -->
+    </dependencies>
+</project>

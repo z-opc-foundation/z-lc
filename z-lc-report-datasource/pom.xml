@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.apache.org/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>z-lc-report-datasource</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc :: report-datasource (多数据源 SPI: 接入/注册/读取)</name>
+    <description>
+        数据源板块接入层: ReportDataSource SPI (MEMORY 已实现,
+        JDBC/CSV/HTTP 随 M1.5 接入, 底座 z-util-jdbc / z-util-parser / z-util-http)。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-dataset</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-parser-csv</artifactId>
+        </dependency>
+        <!-- JDBC 源: z-boot-datasource-starter 一站式引入 druid + mybatis-plus + mysql-connector-j
+             (替换此前直接引入 druid-spring-boot-starter + mysql-connector-j, 解 P-01 落库缺 MP 隐患)。
+             那三件的面值不在这里写: starter 这一格由仓根 DM 钉 z-boot 1.0.17, 它带的第三方由地板供。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-boot-datasource-starter</artifactId>
+        </dependency>
+        <!-- 数据源注册/方言/动态查询 (JdbcReportDataSource) + 内存 SQL 引擎 (InMemoryReportDataSource)。
+             版本由父链的 fleet 下发（z-util.version 键已删）；这条 exclusion 是**实现选择**不是版本，
+             原先挂在仓根 DM 的 z-util-jdbc 条目上，那条 DM 条目随键一起删了，于是搬到这里
+             （z-kb 同一写法）。排掉的是 z-util-core 传递的 SLF4J 2.x 桥，运行栈统一用
+             z-boot-web-starter 的 log4j2 + log4j-slf4j-impl（SLF4J 1.x 桥）。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-jdbc</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.logging.log4j</groupId>
+                    <artifactId>log4j-slf4j2-impl</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- TODO(M1.5+): z-util-parser (HTTP 源) -->
+        <!-- JDBC 源的可重复测试: H2 内存库, 不需要外部实例 -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

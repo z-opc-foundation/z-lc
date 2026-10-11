@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.apache.org/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>z-lc-report-ai</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc :: report-ai (LlmClient SPI + OpenAI 兼容实现, M3: NL2Report)</name>
+    <description>
+        决策②: 内聚自研轻量 LLM 调用 (OpenAI 兼容协议, 配置即可接 Qwen/GLM/DeepSeek);
+        所有 AI 能力只依赖 LlmClient 接口, llm-gateway 剥离后经 adapter 无感切换。
+    </description>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-dataset</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+    </dependencies>
+</project>

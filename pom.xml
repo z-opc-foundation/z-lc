@@ -90,6 +90,16 @@
         <module>z-lc-core</module>
         <module>z-lc-design</module>
         <module>z-lc-web</module>
+        <!-- z-lc-report-* 家族: 报表能力域（2026-10-11 CEO 拍板自 z-report 仓收编,
+             "压根不应该有 z-report 这个东西, 报表低代码领域一起吃下来"）。
+             starter/bootstrap 不迁 —— z-lc-admin 即宿主。 -->
+        <module>z-lc-report-common</module>
+        <module>z-lc-report-datasource</module>
+        <module>z-lc-report-dataset</module>
+        <module>z-lc-report-render</module>
+        <module>z-lc-report-book</module>
+        <module>z-lc-report-ai</module>
+        <module>z-lc-report-web</module>
         <!-- z-lc-admin: standalone 启动入口, 端到端验证用 (dev profile 走 H2, 零外部依赖).
              生产集成仍走 main-starter, 此处恢复 build 以便独立跑通全链路. -->
         <module>z-lc-admin</module>
@@ -151,6 +161,42 @@
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- z-lc-report-* 家族（2026-10-11 自 z-report 收编, 7 模块同 ${project.version}） -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-datasource</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-dataset</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-render</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-book</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-ai</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-report-web</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- z-lc-spring-boot-starter 已迁移至 z-boot/z-boot-integration-starters -->
