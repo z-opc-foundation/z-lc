@@ -2,9 +2,9 @@ package com.zifang.z.lc.common.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.zifang.util.json.JsonUtil;
 
 import java.util.*;
 
@@ -262,9 +262,11 @@ public final class ZLcGsonUtil {
      */
     public static boolean areJsonEqual(String jsonStr1, String jsonStr2) {
         try {
-            JsonNode json1 = OBJECT_MAPPER.readTree(jsonStr1);
-            JsonNode json2 = OBJECT_MAPPER.readTree(jsonStr2);
-            return json1.equals(json2);
+            // 摊平成 plain 结构再比: LinkedHashMap/ArrayList 的 equals 与 Jackson JsonNode
+            // 的语义一致 —— 对象键序无关、数值按类型比(1 与 1.0 不相等)。
+            Object json1 = JsonUtil.toPlainValue(JsonUtil.parse(jsonStr1));
+            Object json2 = JsonUtil.toPlainValue(JsonUtil.parse(jsonStr2));
+            return Objects.equals(json1, json2);
         } catch (Exception e) {
             return false;
         }

@@ -1,11 +1,10 @@
 package com.zifang.z.lc.core.pipeline.config;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonCursor;
+import com.zifang.util.json.JsonUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -76,8 +75,6 @@ public final class PipelineStages {
      * 有测试守着的保证 —— 第一个参数落地时要连这条检查一起补, 并按 #41 的六层各钉一层。
      */
     private static final Map<String, List<String>> CONFIG_KEYS_BY_TYPE = buildConfigKeysByType();
-
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     private PipelineStages() {
     }
@@ -236,9 +233,9 @@ public final class PipelineStages {
             throw new IllegalArgumentException("阶段链不能为空, 可配置的阶段类型: " + join(PROCESSOR_BY_TYPE.keySet()));
         }
 
-        JsonNode root;
+        JsonCursor root;
         try {
-            root = JSON.readTree(stagesJson);
+            root = JsonCursor.of(JsonUtil.parse(stagesJson));
         } catch (Exception ex) {
             throw new IllegalArgumentException("阶段链不是合法 JSON: " + shorten(ex.getMessage()));
         }
@@ -250,15 +247,14 @@ public final class PipelineStages {
         List<Stage> stages = new ArrayList<Stage>();
         List<String> unread = new ArrayList<String>();
         int index = 0;
-        for (Iterator<JsonNode> it = root.elements(); it.hasNext(); index++) {
-            JsonNode node = it.next();
-            if (node == null || !node.isObject()) {
+        for (JsonCursor node : root.elements()) {
+            if (!node.isObject()) {
                 throw new IllegalArgumentException("阶段链第 " + (index + 1) + " 项不是对象, "
                         + "每一项必须形如 {\"type\":\"TYPE_CONVERT\",\"order\":1}");
             }
 
-            JsonNode typeNode = node.get("type");
-            String type = typeNode == null || typeNode.isNull() ? null : typeNode.asText().trim();
+            JsonCursor typeNode = node.path("type");
+            String type = typeNode.isMissing() || typeNode.isNull() ? null : typeNode.asText().trim();
             if (type == null || type.isEmpty()) {
                 throw new IllegalArgumentException("阶段链第 " + (index + 1) + " 项没有 type, "
                         + "可配置的阶段类型: " + join(PROCESSOR_BY_TYPE.keySet()));
@@ -268,8 +264,8 @@ public final class PipelineStages {
                         + "当前支持的阶段类型: " + join(PROCESSOR_BY_TYPE.keySet()));
             }
 
-            JsonNode configNode = node.get("config");
-            if (configNode != null && !configNode.isNull()) {
+            JsonCursor configNode = node.path("config");
+            if (!configNode.isMissing() && !configNode.isNull()) {
                 if (!configNode.isObject()) {
                     // 形状都不对, 更不可能被读; 和"未知键"记在同一处, 免得拒了 A 却漏了 B
                     unread.add("阶段 [" + type + "] 的 config 不是对象 (实际: "
@@ -277,8 +273,8 @@ public final class PipelineStages {
                 } else if (configNode.size() > 0) {
                     List<String> accepted = CONFIG_KEYS_BY_TYPE.get(type);
                     List<String> unknown = new ArrayList<String>();
-                    for (Iterator<String> kit = configNode.fieldNames(); kit.hasNext(); ) {
-                        String key = kit.next();
+                    // JsonCursor.fieldNames() 返回 Set 而不是 Iterator, 按名回取
+                    for (String key : configNode.fieldNames()) {
                         if (accepted == null || !accepted.contains(key)) {
                             unknown.add(key);
                         }
@@ -291,15 +287,16 @@ public final class PipelineStages {
             }
 
             int order = index;
-            JsonNode orderNode = node.get("order");
-            if (orderNode != null && !orderNode.isNull()) {
-                if (!orderNode.isIntegralNumber()) {
+            JsonCursor orderNode = node.path("order");
+            if (!orderNode.isMissing() && !orderNode.isNull()) {
+                if (!isIntegralNumber(orderNode)) {
                     throw new IllegalArgumentException("阶段 [" + type + "] 的 order 必须是整数, 实际: "
                             + shorten(orderNode.asText()));
                 }
-                order = orderNode.intValue();
+                order = orderNode.asInt(index);
             }
             stages.add(new Stage(type, order, index));
+            index++;
         }
 
         Collections.sort(stages);
@@ -309,6 +306,20 @@ public final class PipelineStages {
             types.add(s.type);
         }
         return new Parsed(types, unread);
+    }
+
+    /**
+     * 是否为整型数值 —— 对齐 Jackson {@code JsonNode.isIntegralNumber()}.
+     *
+     * <p>JsonCursor 只区分标量/容器/数组, 数字的具体类型要从底层值上看:
+     * 解析器把整数产成 Integer/Long/BigInteger, 小数产成 Double/BigDecimal。
+     * 数字字符串(如 {@code "3"})在这条判定下算**不是**整型, 与 Jackson 一致。
+     */
+    private static boolean isIntegralNumber(JsonCursor node) {
+        Object v = node.value();
+        return v instanceof Integer || v instanceof Long
+                || v instanceof java.math.BigInteger
+                || v instanceof Short || v instanceof Byte;
     }
 
     /** 括号里那句"这一档到底读哪些参数", 由词表生成, 不手抄. */

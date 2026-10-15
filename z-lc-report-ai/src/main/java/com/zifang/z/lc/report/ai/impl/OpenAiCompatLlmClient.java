@@ -1,9 +1,7 @@
 package com.zifang.z.lc.report.ai.impl;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.zifang.util.json.JsonCursor;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.report.ai.LlmClient;
 import com.zifang.z.lc.report.ai.LlmConfig;
 import com.zifang.z.lc.report.ai.LlmMessage;
@@ -13,7 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * OpenAI 兼容协议实现 (自研轻量, 方案决策②)。
@@ -28,7 +29,6 @@ public class OpenAiCompatLlmClient implements LlmClient {
 
     private final LlmConfig config;
     private final RestTemplate http;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public OpenAiCompatLlmClient(LlmConfig config) {
         this.config = config;
@@ -43,32 +43,34 @@ public class OpenAiCompatLlmClient implements LlmClient {
         if (config.getApiKey() == null || config.getApiKey().isEmpty()) {
             throw new IllegalStateException("llm.api-key not configured");
         }
-        ObjectNode body = mapper.createObjectNode();
+        Map<String, Object> body = new LinkedHashMap<String, Object>();
         body.put("model", config.getModel());
         if (config.getTemperature() != null) {
             body.put("temperature", config.getTemperature());
         }
-        ArrayNode msgArr = body.putArray("messages");
+        List<Map<String, Object>> msgArr = new ArrayList<Map<String, Object>>();
         for (LlmMessage m : messages) {
-            ObjectNode node = msgArr.addObject();
+            Map<String, Object> node = new LinkedHashMap<String, Object>();
             node.put("role", m.getRole());
             node.put("content", m.getContent());
+            msgArr.add(node);
         }
+        body.put("messages", msgArr);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("Authorization", "Bearer " + config.getApiKey());
         String resp = http.postForObject(
                 config.getBaseUrl() + "/chat/completions",
-                new HttpEntity<>(body.toString(), headers),
+                new HttpEntity<>(JsonUtil.toJson(body), headers),
                 String.class);
         return extractContent(resp);
     }
 
     private String extractContent(String responseBody) {
         try {
-            JsonNode root = mapper.readTree(responseBody);
-            JsonNode content = root.path("choices").path(0).path("message").path("content");
-            if (content.isMissingNode()) {
+            JsonCursor root = JsonCursor.of(JsonUtil.parse(responseBody));
+            JsonCursor content = root.path("choices").at(0).path("message").path("content");
+            if (content.isMissing()) {
                 throw new IllegalStateException("unexpected llm response shape: " + responseBody);
             }
             return content.asText();

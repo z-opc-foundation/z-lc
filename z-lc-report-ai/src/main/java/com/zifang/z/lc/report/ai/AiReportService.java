@@ -1,7 +1,6 @@
 package com.zifang.z.lc.report.ai;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.report.common.schema.DatasetSchema;
 import com.zifang.z.lc.report.common.schema.FieldDef;
 import com.zifang.z.lc.report.common.schema.ViewSchema;
@@ -26,7 +25,6 @@ import java.util.Set;
 public class AiReportService {
 
     private final LlmClient llm;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public AiReportService(LlmClient llm) {
         this.llm = llm;
@@ -184,7 +182,8 @@ public class AiReportService {
 
     private <T> T readJson(String json, Class<T> type) {
         try {
-            return mapper.readValue(json, type);
+            // JsonUtil 抛的是非受检异常, 不需要 IOException 分支
+            return JsonUtil.fromJson(json, type);
         } catch (Exception e) {
             throw new IllegalArgumentException("AI output is not valid " + type.getSimpleName()
                     + " JSON: " + e.getMessage());
