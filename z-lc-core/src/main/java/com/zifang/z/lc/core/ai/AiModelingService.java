@@ -1,7 +1,6 @@
 package com.zifang.z.lc.core.ai;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zifang.util.core.json.JsonMapperFactory;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.llm.api.dto.UnifiedMessage;
 import com.zifang.z.llm.api.dto.UnifiedRequest;
 import com.zifang.z.llm.api.dto.UnifiedResponse;
@@ -114,10 +113,7 @@ public class AiModelingService {
                 content = content.trim();
 
                 try {
-                    @SuppressWarnings("unchecked")
-                    ObjectMapper mapper = JsonMapperFactory.getDefault();
-                    Map<String, Object> suggestion = mapper.readValue(content, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
-                    });
+                    Map<String, Object> suggestion = JsonUtil.parseToMap(content);
                     suggestion.put("appCode", appCode);
                     suggestion.put("llmAvailable", true);
                     if (!suggestion.containsKey("needsReview")) {

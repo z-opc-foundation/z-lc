@@ -124,6 +124,28 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- z-util 抬到 1.2.0（去 Jackson 那版）：EventReplayService / AiModelingService /
+                 SchemaAdminBizService 改用自研 JsonUtil / JsonCursor（com.zifang.util.json.*），
+                 JsonMapperFactory 已从 z-util 删除。继承来的 z-boot 车队 BOM 仍把 z-util 钉在
+                 1.0.22，那版里 JsonMapperFactory 还在、JsonCursor 也没有 ⇒ 不显式钉 1.2.0 编译不过。
+                 ⚠ dsl-kernel 必须同笔钉：parser-json 1.2.0 的 pom 依赖 dsl-kernel 1.2.0，
+                 而 DM 对**传递依赖**同样生效，只钉 parser-json 会被车队 BOM 压回旧版，
+                 造成运行期版本裂开。 -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-core</artifactId>
+                <version>1.2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-parser-json</artifactId>
+                <version>1.2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-util-dsl-kernel</artifactId>
+                <version>1.2.1</version>
+            </dependency>
             <!-- 自家 7 个 reactor 坐标钉 ${project.version}（z-boot README「消费模型」步骤 4 /
                  验收判据 2）。这条不是装饰：继承来的 DM 会改写**传递依赖**的版本，仓外只要有一格
                  存在，旧发布件的字节码就能当 sibling 编进本仓产物。现读 fleet 里 0 条 z-lc 格

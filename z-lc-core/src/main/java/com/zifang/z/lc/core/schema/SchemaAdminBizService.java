@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.schema;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zifang.util.core.json.JsonMapperFactory;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.util.core.meta.page.PageResult;
 import com.zifang.z.lc.common.dto.AppDTO;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
@@ -53,7 +52,6 @@ public class SchemaAdminBizService implements SchemaAdminService {
             new LinkedHashSet<>(Arrays.asList("id", "tenant_code", "deleted", "create_time", "update_time")));
 
     private final JdbcTemplate jdbcTemplate;
-    private final ObjectMapper jsonMapper = JsonMapperFactory.getDefault();
     /** 从元数据表问出来的 {字符集, 校对}；问不到就留 null，下次再问 (库可能还没建元数据表)。 */
     private volatile String[] metaCharsetCache;
     @Autowired
@@ -945,7 +943,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
             // 末次事件 id 作为 parent
             com.zifang.z.lc.common.dto.EventDTO last = eventService.getLastEvent(tenantCode, appCode);
             req.setParentEventId(last == null ? null : last.getEventId());
-            req.setEventData(jsonMapper.writeValueAsString(payload));
+            req.setEventData(JsonUtil.toJsonExcludingNulls(payload));
             eventService.append(appCode, req);
         } catch (Exception ex) {
             log.warn("Failed to emit {} event for entity={}: {}", eventType, entityCode, ex.getMessage());

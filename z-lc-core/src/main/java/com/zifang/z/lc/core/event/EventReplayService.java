@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.event;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.zifang.util.core.json.JsonMapperFactory;
+import com.zifang.util.json.JsonCursor;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.EventDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
@@ -12,7 +11,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -24,7 +22,12 @@ import java.util.Map;
 public class EventReplayService {
 
     private static final Logger log = LogManager.getLogger(EventReplayService.class);
-    private final ObjectMapper mapper = JsonMapperFactory.getDefault();
+
+    /** 字段缺失或为 JSON null 时返回 def（对齐 Jackson 的 {@code path(k).asText(def)}）。 */
+    private static String textOrDefault(JsonCursor n, String field, String def) {
+        JsonCursor c = n.path(field);
+        return (c.isMissing() || c.isNull()) ? def : c.asText();
+    }
     @Autowired
     private EventService eventService;
 
@@ -40,14 +43,14 @@ public class EventReplayService {
 
         for (EventDTO ev : events) {
             try {
-                JsonNode data = mapper.readTree(ev.getEventData());
-                String entityCode = data.path("entityCode").asText(ev.getEntityCode());
+                JsonCursor data = JsonCursor.of(JsonUtil.parse(ev.getEventData()));
+                String entityCode = textOrDefault(data, "entityCode", ev.getEntityCode());
 
                 String type = ev.getEventType() == null ? "" : ev.getEventType();
                 // 整实体的 DELETE（payload 里没有 fieldCode）在任何写入之前处理: 它要把这个实体从折叠里
                 // 整个摘掉，于是也就**不该**先 computeIfAbsent 立一个空桩 —— 否则"删除"反而把实体造了出来，
                 // 而运行时按码找得到它（实测：删掉的实体照样能 runtime/list 出旧记录）。
-                if ("DELETE".equals(type) && !data.hasNonNull("fieldCode")) {
+                if ("DELETE".equals(type) && textOrDefault(data, "fieldCode", null) == null) {
                     byEntity.remove(entityCode);
                     continue;
                 }
@@ -82,49 +85,47 @@ public class EventReplayService {
         return new ArrayList<>(byEntity.values());
     }
 
-    private void applyCreate(EntityDefDTO def, JsonNode data) {
+    private void applyCreate(EntityDefDTO def, JsonCursor data) {
         if (data.has("entityName")) {
-            def.setEntityName(data.get("entityName").asText());
+            def.setEntityName(data.path("entityName").asText());
         }
 
         if (data.has("tableName")) {
-            def.setTableName(data.get("tableName").asText());
+            def.setTableName(data.path("tableName").asText());
         }
 
         if (data.has("description")) {
-            def.setDescription(data.get("description").asText());
+            def.setDescription(data.path("description").asText());
         }
 
 
-        if (data.has("fields") && data.get("fields").isArray()) {
+        if (data.has("fields") && data.path("fields").isArray()) {
             List<FieldDefDTO> fields = new ArrayList<>();
-            Iterator<JsonNode> it = data.get("fields").elements();
-            while (it.hasNext()) {
-                fields.add(parseField(it.next()));
+            for (JsonCursor n : data.path("fields").elements()) {
+                fields.add(parseField(n));
             }
             def.setFields(fields);
         }
     }
 
-    private void applyUpdate(EntityDefDTO def, JsonNode data) {
+    private void applyUpdate(EntityDefDTO def, JsonCursor data) {
         if (data.has("entityName")) {
-            def.setEntityName(data.get("entityName").asText());
+            def.setEntityName(data.path("entityName").asText());
         }
 
         if (data.has("tableName")) {
-            def.setTableName(data.get("tableName").asText());
+            def.setTableName(data.path("tableName").asText());
         }
 
         if (data.has("description")) {
-            def.setDescription(data.get("description").asText());
+            def.setDescription(data.path("description").asText());
         }
 
 
-        if (data.has("fields") && data.get("fields").isArray()) {
+        if (data.has("fields") && data.path("fields").isArray()) {
             List<FieldDefDTO> existing = def.getFields() != null ? def.getFields() : new ArrayList<>();
-            Iterator<JsonNode> it = data.get("fields").elements();
-            while (it.hasNext()) {
-                FieldDefDTO upd = parseField(it.next());
+            for (JsonCursor n : data.path("fields").elements()) {
+                FieldDefDTO upd = parseField(n);
                 // 替换或新增 (按 fieldCode)
                 boolean replaced = false;
                 for (int i = 0; i < existing.size(); i++) {
@@ -144,37 +145,37 @@ public class EventReplayService {
         }
     }
 
-    private void applyDelete(EntityDefDTO def, JsonNode data) {
+    private void applyDelete(EntityDefDTO def, JsonCursor data) {
         if (data.has("fieldCode")) {
-            String delCode = data.get("fieldCode").asText();
+            String delCode = data.path("fieldCode").asText();
             if (def.getFields() != null) {
                 def.getFields().removeIf(f -> delCode.equals(f.getFieldCode()));
             }
         }
     }
 
-    private FieldDefDTO parseField(JsonNode n) {
+    private FieldDefDTO parseField(JsonCursor n) {
         FieldDefDTO f = new FieldDefDTO();
-        f.setFieldCode(n.path("fieldCode").asText(null));
-        f.setFieldName(n.path("fieldName").asText(null));
-        f.setFieldType(n.path("fieldType").asText("STRING"));
+        f.setFieldCode(textOrDefault(n, "fieldCode", null));
+        f.setFieldName(textOrDefault(n, "fieldName", null));
+        f.setFieldType(textOrDefault(n, "fieldType", "STRING"));
         f.setRequired(n.path("required").asBoolean(false));
-        f.setDefaultValue(n.path("defaultValue").asText(null));
-        f.setDictCode(n.path("dictCode").asText(null));
-        f.setRefEntity(n.path("refEntity").asText(null));
+        f.setDefaultValue(textOrDefault(n, "defaultValue", null));
+        f.setDictCode(textOrDefault(n, "dictCode", null));
+        f.setRefEntity(textOrDefault(n, "refEntity", null));
         if (n.has("fieldLength")) {
-            f.setFieldLength(n.get("fieldLength").asInt());
+            f.setFieldLength(n.path("fieldLength").asInt(0));
         }
 
         if (n.has("scale")) {
-            f.setScale(n.get("scale").asInt());
+            f.setScale(n.path("scale").asInt(0));
         }
 
         if (n.has("sortOrder")) {
-            f.setSortOrder(n.get("sortOrder").asInt());
+            f.setSortOrder(n.path("sortOrder").asInt(0));
         }
 
-        f.setDescription(n.path("description").asText(null));
+        f.setDescription(textOrDefault(n, "description", null));
         return f;
     }
 }
