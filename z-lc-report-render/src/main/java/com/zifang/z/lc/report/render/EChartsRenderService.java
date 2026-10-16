@@ -1,7 +1,5 @@
 package com.zifang.z.lc.report.render;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zifang.z.lc.report.common.schema.ChartType;
 import com.zifang.z.lc.report.common.schema.QueryResult;
 import com.zifang.z.lc.report.common.schema.WidgetSpec;
@@ -28,7 +26,6 @@ import java.util.Map;
 public class EChartsRenderService {
 
     private final Map<ChartType, ChartOptionBuilder> builders = new EnumMap<>(ChartType.class);
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public EChartsRenderService() {
         register(new LineOptionBuilder());
@@ -43,12 +40,12 @@ public class EChartsRenderService {
         builders.put(builder.type(), builder);
     }
 
-    public ObjectNode render(WidgetSpec widget, QueryResult data) {
+    public Map<String, Object> render(WidgetSpec widget, QueryResult data) {
         ChartOptionBuilder builder = builders.get(widget.getType());
         if (builder == null) {
             throw new IllegalArgumentException("no option builder for chart type: " + widget.getType());
         }
-        return builder.build(widget, toTable(data), mapper);
+        return builder.build(widget, toTable(data));
     }
 
     /** QueryResult → Table (列类型取自契约; 值缺失按 STRING 兜底) */

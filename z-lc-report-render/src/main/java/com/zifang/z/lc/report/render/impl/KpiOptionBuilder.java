@@ -1,11 +1,14 @@
 package com.zifang.z.lc.report.render.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zifang.z.lc.report.common.schema.ChartType;
 import com.zifang.z.lc.report.common.schema.WidgetSpec;
 import com.zifang.z.lc.report.dataset.engine.Table;
 import com.zifang.z.lc.report.render.api.ChartOptionBuilder;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 指标卡 (非原生 echarts, 渲染器约定结构):
@@ -19,16 +22,11 @@ public class KpiOptionBuilder implements ChartOptionBuilder {
     }
 
     @Override
-    public ObjectNode build(WidgetSpec widget, Table data, ObjectMapper mapper) {
+    public Map<String, Object> build(WidgetSpec widget, Table data) {
         AggTable at = AggTable.of(widget, data);
-        ObjectNode root = mapper.createObjectNode();
+        Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "kpi");
-        Object v = at.singleValue();
-        if (v == null) {
-            root.putNull("value");
-        } else {
-            root.set("value", mapper.valueToTree(v));
-        }
+        root.put("value", at.singleValue());
         root.put("label", widget.getTitle() == null ? at.measure() : widget.getTitle());
         return root;
     }

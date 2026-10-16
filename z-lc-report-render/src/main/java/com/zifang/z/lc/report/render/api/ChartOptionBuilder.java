@@ -1,10 +1,10 @@
 package com.zifang.z.lc.report.render.api;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zifang.z.lc.report.common.schema.ChartType;
 import com.zifang.z.lc.report.common.schema.WidgetSpec;
 import com.zifang.z.lc.report.dataset.engine.Table;
+
+import java.util.Map;
 
 /**
  * 图表 option 构建器 SPI: 一种 ChartType 一个实现。
@@ -19,5 +19,5 @@ public interface ChartOptionBuilder {
      * @param data   已过滤的明细数据 (聚合由实现内部完成)
      * @return echarts option (TABLE/KPI 为渲染器约定结构)
      */
-    ObjectNode build(WidgetSpec widget, Table data, ObjectMapper mapper);
+    Map<String, Object> build(WidgetSpec widget, Table data);
 }

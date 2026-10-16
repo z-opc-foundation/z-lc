@@ -1,7 +1,6 @@
 package com.zifang.z.lc.report.render;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonCursor;
 import com.zifang.z.lc.report.common.schema.ChartType;
 import com.zifang.z.lc.report.common.schema.FieldDef;
 import com.zifang.z.lc.report.common.schema.QueryResult;
@@ -19,7 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class EChartsRenderServiceTest {
 
     private final EChartsRenderService service = new EChartsRenderService();
-    private final ObjectMapper mapper = new ObjectMapper();
+
+    private JsonCursor render(WidgetSpec w, QueryResult d) {
+        return JsonCursor.of(service.render(w, d));
+    }
 
     private QueryResult data() {
         return QueryResult.of(
@@ -54,20 +56,20 @@ class EChartsRenderServiceTest {
 
     @Test
     void barAggregatesByDimension() {
-        JsonNode option = mapper.valueToTree(service.render(widget(ChartType.BAR, "city", "amount"), data()));
-        assertEquals("hangzhou", option.path("xAxis").get(0).asText());
-        assertEquals("shanghai", option.path("xAxis").get(1).asText());
-        assertEquals(150, option.path("series").get(0).path("data").get(0).asInt());
-        assertEquals(200, option.path("series").get(0).path("data").get(1).asInt());
-        assertEquals("bar", option.path("series").get(0).path("type").asText());
+        JsonCursor option = render(widget(ChartType.BAR, "city", "amount"), data());
+        assertEquals("hangzhou", option.path("xAxis").at(0).asText());
+        assertEquals("shanghai", option.path("xAxis").at(1).asText());
+        assertEquals(150, option.path("series").at(0).path("data").at(0).asInt(-1));
+        assertEquals(200, option.path("series").at(0).path("data").at(1).asInt(-1));
+        assertEquals("bar", option.path("series").at(0).path("type").asText());
     }
 
     @Test
     void pieEmitsNameValuePairs() {
-        JsonNode option = mapper.valueToTree(service.render(widget(ChartType.PIE, "city", "amount"), data()));
-        assertEquals("pie", option.path("series").get(0).path("type").asText());
-        assertEquals("hangzhou", option.path("series").get(0).path("data").get(0).path("name").asText());
-        assertEquals(150, option.path("series").get(0).path("data").get(0).path("value").asInt());
+        JsonCursor option = render(widget(ChartType.PIE, "city", "amount"), data());
+        assertEquals("pie", option.path("series").at(0).path("type").asText());
+        assertEquals("hangzhou", option.path("series").at(0).path("data").at(0).path("name").asText());
+        assertEquals(150, option.path("series").at(0).path("data").at(0).path("value").asInt(-1));
     }
 
     @Test
@@ -76,9 +78,9 @@ class EChartsRenderServiceTest {
         w.getEncode().setX(null);
         w.getEncode().setCategory(null);
         // 无维度 → 全表聚合 (KPI 指标卡语义): SUM(amount) = 100+200+50
-        JsonNode option = mapper.valueToTree(service.render(w, data()));
+        JsonCursor option = render(w, data());
         assertEquals("kpi", option.path("type").asText());
-        assertEquals(350, option.path("value").asInt());
+        assertEquals(350, option.path("value").asInt(-1));
         assertEquals("t", option.path("label").asText());
     }
 
@@ -94,12 +96,12 @@ class EChartsRenderServiceTest {
                                 "lines", map("op", "map", "of", "lines",
                                         "into", map("amount", "${amount}")))),
                 map("op", "keyBy", "key", "city")));
-        JsonNode option = mapper.valueToTree(service.render(w, data()));
+        JsonCursor option = render(w, data());
         assertEquals("raw", option.path("type").asText());
-        JsonNode hangzhou = option.path("value").path("hangzhou");
-        assertEquals(150, hangzhou.path("total").asInt());
+        JsonCursor hangzhou = option.path("value").path("hangzhou");
+        assertEquals(150, hangzhou.path("total").asInt(-1));
         assertEquals(2, hangzhou.path("lines").size());
-        assertEquals(100, hangzhou.path("lines").get(0).path("amount").asInt());
+        assertEquals(100, hangzhou.path("lines").at(0).path("amount").asInt(-1));
     }
 
     @Test

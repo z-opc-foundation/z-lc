@@ -1,12 +1,16 @@
 package com.zifang.z.lc.report.render.impl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zifang.util.expr.obj.ObjEngine;
 import com.zifang.z.lc.report.common.schema.ChartType;
 import com.zifang.z.lc.report.common.schema.WidgetSpec;
 import com.zifang.z.lc.report.dataset.engine.Table;
 import com.zifang.z.lc.report.render.api.ChartOptionBuilder;
+import com.zifang.util.json.JsonUtil;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 任意结构 (RAW): 数据集的二维明细交给对象整形语言, 产出什么形态就渲染什么形态。
@@ -23,14 +27,14 @@ public class RawOptionBuilder implements ChartOptionBuilder {
     }
 
     @Override
-    public ObjectNode build(WidgetSpec widget, Table data, ObjectMapper mapper) {
+    public Map<String, Object> build(WidgetSpec widget, Table data) {
         if (widget.getShape() == null) {
             throw new IllegalArgumentException("RAW widget requires shape (对象整形程序): " + widget.getId());
         }
         Object doc = new ObjEngine().shape(widget.getShape(), data.toRows());
-        ObjectNode root = mapper.createObjectNode();
+        Map<String, Object> root = new LinkedHashMap<>();
         root.put("type", "raw");
-        root.set("value", mapper.valueToTree(doc));
+        root.put("value", JsonUtil.toPlainValue(doc));
         return root;
     }
 }

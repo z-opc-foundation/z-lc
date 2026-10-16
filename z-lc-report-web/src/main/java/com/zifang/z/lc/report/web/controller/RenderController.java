@@ -1,7 +1,5 @@
 package com.zifang.z.lc.report.web.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.zifang.z.lc.report.common.schema.QueryResult;
 import com.zifang.z.lc.report.common.schema.ViewSchema;
 import com.zifang.z.lc.report.common.schema.WidgetSpec;
@@ -39,9 +37,9 @@ public class RenderController {
 
     /** 单图表渲染: 数据按 widget.datasetId 现取 */
     @PostMapping("/widget")
-    public JsonNode renderWidget(@RequestBody WidgetSpec widget) {
+    public Map<String, Object> renderWidget(@RequestBody WidgetSpec widget) {
         QueryResult data = executor.execute(store.requireDataset(widget.getDatasetId()));
-        ObjectNode option = renderService.render(widget, data);
+        Map<String, Object> option = renderService.render(widget, data);
         return wrap(widget, option);
     }
 
@@ -49,7 +47,7 @@ public class RenderController {
     @GetMapping("/view/{viewId}")
     public Map<String, Object> renderView(@PathVariable("viewId") String viewId) {
         ViewSchema view = store.requireView(viewId);
-        Map<String, JsonNode> options = new LinkedHashMap<>();
+        Map<String, Object> options = new LinkedHashMap<>();
         if (view.getWidgets() != null) {
             for (WidgetSpec w : view.getWidgets()) {
                 QueryResult data = executor.execute(store.requireDataset(w.getDatasetId()));
@@ -66,7 +64,7 @@ public class RenderController {
     }
 
     /** option 包一层元信息 (图表类型/标题), 便于前端分发到对应渲染分支 */
-    private ObjectNode wrap(WidgetSpec w, ObjectNode option) {
+    private Map<String, Object> wrap(WidgetSpec w, Map<String, Object> option) {
         option.put("_widgetType", w.getType() == null ? "TABLE" : w.getType().name());
         option.put("_title", w.getTitle());
         return option;
