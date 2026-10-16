@@ -1,7 +1,5 @@
 package com.zifang.z.lc.common.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -29,7 +27,6 @@ import java.util.Map;
  */
 public final class ZLcStarRocksStreamLoad {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter LABEL_FMT = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
 
     private ZLcStarRocksStreamLoad() {

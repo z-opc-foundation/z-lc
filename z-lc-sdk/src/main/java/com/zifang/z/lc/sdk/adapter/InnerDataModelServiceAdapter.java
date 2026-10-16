@@ -1,8 +1,7 @@
 package com.zifang.z.lc.sdk.adapter;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zifang.util.core.meta.page.PageResult;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.common.dto.RuntimeQueryDTO;
 import com.zifang.z.lc.common.dto.query.ModelDataPageableQueryDTO;
 import com.zifang.z.lc.common.dto.query.ModelDataQueryBean;
@@ -25,13 +24,13 @@ import java.util.Map;
  *
  * <p>关键转换：
  * <ul>
- *   <li>入参 {@code Map<String, Object>} → 反射转换为 POJO {@code T}（用 Jackson ObjectMapper），
+ *   <li>入参 {@code Map<String, Object>} → 反射转换为 POJO {@code T}（用 JsonUtil），
  *       再调 {@code AbstractDataModelService} 对应方法</li>
  *   <li>出参 POJO {@code T} → 转换为 {@code Map<String, Object>}</li>
  * </ul>
  *
- * <p>JSON 转换：本类自带 {@link ObjectMapper}（不依赖 z-lc-design Json 工具），
- * 配置 {@code FAIL_ON_UNKNOWN_PROPERTIES=false}，避免 DB 多余字段导致反序列化失败.
+ * <p>JSON 转换：本类用 z-util {@link JsonUtil}（不依赖 z-lc-design Json 工具），
+ * 其反序列化本就忽略未知字段，避免 DB 多余字段导致反序列化失败.
  *
  * <p>典型用法：
  * <pre>{@code
@@ -46,15 +45,6 @@ import java.util.Map;
  * @author zifang
  */
 public class InnerDataModelServiceAdapter implements ServiceAdapter {
-
-    /**
-     * JSON 转换用 — 配置与 z-lc-design Json 工具保持一致.
-     */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
-    static {
-        MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    }
 
     /**
      * 业务 POJO Service 实现 — 通过 setter 注入.
@@ -164,7 +154,7 @@ public class InnerDataModelServiceAdapter implements ServiceAdapter {
     // —— 私有转换助手 ——
 
     /**
-     * Map → POJO（用反射拿到泛型 T 的 Class，再 Jackson 反序列化）.
+     * Map → POJO（用反射拿到泛型 T 的 Class，再 JsonUtil 反序列化）.
      */
     private Object toPojo(Map<String, Object> data) {
         if (data == null) {
@@ -174,11 +164,11 @@ public class InnerDataModelServiceAdapter implements ServiceAdapter {
         if (genericType == null) {
             return data;
         }
-        return MAPPER.convertValue(data, genericType);
+        return JsonUtil.fromMap(data, genericType);
     }
 
     /**
-     * POJO → Map（Jackson ObjectMapper 转换）.
+     * POJO → Map（经 JSON 字符串中转转换）.
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> toMap(Object pojo) {
@@ -188,7 +178,9 @@ public class InnerDataModelServiceAdapter implements ServiceAdapter {
         if (pojo instanceof Map) {
             return (Map<String, Object>) pojo;
         }
-        return MAPPER.convertValue(pojo, Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> plain = (Map<String, Object>) JsonUtil.fromJson(JsonUtil.toJson(pojo), Map.class);
+        return plain;
     }
 
     /**

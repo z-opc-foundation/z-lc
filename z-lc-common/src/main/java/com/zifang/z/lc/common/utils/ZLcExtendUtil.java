@@ -1,6 +1,6 @@
 package com.zifang.z.lc.common.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonUtil;
 
 /**
  * 扩展字段解析工具 — 蒸馏自 ace-platform-core
@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * <p>用于低代码平台的扩展字段 (extend JSON) 解析:
  * 当 extend 为空/null 时自动创建默认实例, 非空时反序列化为指定类型.
  *
- * <p>蒸馏时移除了 ace 对 fastjson 的依赖, 改为 Jackson 实现.
+ * <p>蒸馏时移除了 ace 对 fastjson 的依赖, 改为 z-util JsonUtil 实现.
  *
  * <p>典型场景：
  * <ul>
@@ -25,8 +25,6 @@ public final class ZLcExtendUtil {
     private ZLcExtendUtil() {
     }
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     /**
      * 自动填充扩展字段 — JSON 字符串版本.
      *
@@ -40,7 +38,7 @@ public final class ZLcExtendUtil {
             return createDefault(clazz);
         }
         try {
-            return MAPPER.readValue(extend, clazz);
+            return JsonUtil.fromJson(extend, clazz);
         } catch (Exception e) {
             throw new RuntimeException("扩展字段解析失败: " + e.getMessage(), e);
         }

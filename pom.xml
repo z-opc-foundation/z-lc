@@ -134,17 +134,17 @@
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-util-core</artifactId>
-                <version>1.2.2</version>
+                <version>1.2.4</version>
             </dependency>
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-util-parser-json</artifactId>
-                <version>1.2.2</version>
+                <version>1.2.4</version>
             </dependency>
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-util-dsl-kernel</artifactId>
-                <version>1.2.2</version>
+                <version>1.2.4</version>
             </dependency>
             <!-- 自家 7 个 reactor 坐标钉 ${project.version}（z-boot README「消费模型」步骤 4 /
                  验收判据 2）。这条不是装饰：继承来的 DM 会改写**传递依赖**的版本，仓外只要有一格

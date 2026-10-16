@@ -1,6 +1,6 @@
 package com.zifang.z.lc.common.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +9,7 @@ import java.util.List;
  * 深拷贝工具 — 蒸馏自 ace-platform-core
  * {@code DeepCopyUtil} ({@code com.c2f.ace.core.utils}).
  *
- * <p>基于 Jackson 序列化/反序列化实现深拷贝, 移除了 ace 对 fastjson 的依赖.
+ * <p>基于 JSON 序列化/反序列化实现深拷贝, 移除了 ace 对 fastjson 的依赖.
  * 适用于不可变对象拷贝、SPI 数据隔离等场景.
  *
  * <p>典型场景：
@@ -26,8 +26,6 @@ public final class ZLcDeepCopyUtil {
     private ZLcDeepCopyUtil() {
     }
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     /**
      * 深拷贝单个对象.
      *
@@ -39,7 +37,7 @@ public final class ZLcDeepCopyUtil {
      */
     public static <SOURCE, T> T jsonCopy(SOURCE source, Class<T> targetClass) {
         try {
-            return MAPPER.readValue(MAPPER.writeValueAsString(source), targetClass);
+            return JsonUtil.fromJson(JsonUtil.toJson(source), targetClass);
         } catch (Exception e) {
             throw new RuntimeException("深拷贝失败: " + e.getMessage(), e);
         }

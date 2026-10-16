@@ -78,5 +78,12 @@
         <!-- 本模块测试源码是 JUnit 4（org.junit.Test）。此前编译能过，是因为旧
              com.zifang:z-util-core:1.0.2-SNAPSHOT 的 pom 把 junit 漏成了 compile 作用域；
              1.0.13 换回 io.github.yuku123 坐标后必须自己显式声明（版本由 spring-boot-dependencies 管）。 -->
-    </dependencies>
+    
+        <!-- 去 Jackson：JsonUtil 所在的 z-util-parser-json，版本由根 pom 的 dependencyManagement
+             三件（z-util-core / -parser-json / -dsl-kernel）同版本下发。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-util-parser-json</artifactId>
+        </dependency>
+</dependencies>
 </project>

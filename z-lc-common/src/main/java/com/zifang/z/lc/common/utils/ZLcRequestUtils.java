@@ -1,6 +1,6 @@
 package com.zifang.z.lc.common.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.zifang.util.json.JsonUtil;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -14,7 +14,7 @@ import java.util.*;
  * <p>提供请求参数签名和 JSON 生成能力. 适用于低代码平台与外部系统对接时的
  * HMAC-SHA256 签名验证场景.
  *
- * <p>蒸馏时移除了 ace 对 Gson 的依赖, 改为 Jackson ObjectMapper.
+ * <p>蒸馏时移除了 ace 对 Gson 的依赖, 改为 JDK + z-util JsonUtil 实现.
  *
  * <p>典型场景：
  * <ul>
@@ -30,7 +30,6 @@ public final class ZLcRequestUtils {
     private ZLcRequestUtils() {
     }
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String AND = "&";
     private static final String EQUAL = "=";
 
@@ -47,7 +46,7 @@ public final class ZLcRequestUtils {
         String signature = getHMAC(data.getBytes(StandardCharsets.UTF_8),
                 key.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
         request.put("signature", signature);
-        return MAPPER.writeValueAsString(request);
+        return JsonUtil.toJson(request);
     }
 
     /**
