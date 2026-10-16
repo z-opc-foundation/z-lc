@@ -1,6 +1,5 @@
 package com.zifang.z.lc.design;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -9,7 +8,6 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -20,15 +18,12 @@ import static org.junit.Assert.fail;
 public class JsonTest {
 
     @Test
-    public void objectMapperShouldBeInitialized() {
-        assertNotNull(Json.objectMapper);
-    }
-
-    @Test
-    public void objectMapperShouldNotFailOnUnknownProperties() {
-        assertTrue("FAIL_ON_UNKNOWN_PROPERTIES should be disabled",
-                !Json.objectMapper.getDeserializationConfig()
-                        .isEnabled(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES));
+    public void shouldIgnoreUnknownProperties() {
+        // 对应旧 ObjectMapper 上的 FAIL_ON_UNKNOWN_PROPERTIES=false
+        Map<String, Object> map = new HashMap<>();
+        map.put("name", "Carol");
+        map.put("unknown_field", "ignored");
+        assertEquals("Carol", Json.mto(map, TestPojo.class).getName());
     }
 
     @Test
@@ -49,15 +44,6 @@ public class JsonTest {
         assertNotNull(obj);
         assertEquals("Bob", obj.getName());
         assertEquals(25, obj.getAge());
-    }
-
-    @Test
-    public void mtoShouldHandleUnknownFields() {
-        Map<String, Object> map = new HashMap<>();
-        map.put("name", "Carol");
-        map.put("unknown_field", "ignored");
-        TestPojo obj = Json.mto(map, TestPojo.class);
-        assertEquals("Carol", obj.getName());
     }
 
     @Test
