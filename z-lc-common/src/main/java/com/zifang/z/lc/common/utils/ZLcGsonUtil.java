@@ -1,9 +1,5 @@
 package com.zifang.z.lc.common.utils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.zifang.util.json.JsonUtil;
 
 import java.util.*;
@@ -12,9 +8,9 @@ import java.util.*;
  * JSON 序列化/反序列化工具 — 蒸馏自 ace-platform-core
  * {@code GsonUtil} ({@code com.c2f.ace.core.utils}).
  *
- * <p>虽然 ace 原类名为 GsonUtil, 实际内部已全部使用 Jackson ObjectMapper.
+ * <p>虽然 ace 原类名为 GsonUtil, 实际内部已全部使用自研 JsonUtil.
  * 蒸馏时移除了 ace 对 hutool StrUtil / LoggerUtil / Spring StringUtils 的依赖,
- * 改为纯 JDK + Jackson 实现.
+ * 改为纯 JDK + z-util JsonUtil 实现.
  *
  * <p>典型场景：
  * <ul>
@@ -31,14 +27,6 @@ public final class ZLcGsonUtil {
     private ZLcGsonUtil() {
     }
 
-    private static final ObjectMapper OBJECT_MAPPER;
-
-    static {
-        OBJECT_MAPPER = new ObjectMapper();
-        OBJECT_MAPPER.registerModule(new JavaTimeModule());
-        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    }
-
     // ==================== 序列化 ====================
 
     /**
@@ -48,11 +36,7 @@ public final class ZLcGsonUtil {
         if (object == null) {
             return "{}";
         }
-        try {
-            return OBJECT_MAPPER.writeValueAsString(object);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
+        return JsonUtil.toJson(object);
     }
 
     /**
@@ -68,11 +52,7 @@ public final class ZLcGsonUtil {
      * JSON 字符串 → 对象.
      */
     public static <T> T fromJson(String str, Class<T> clazz) {
-        try {
-            return OBJECT_MAPPER.readValue(str, clazz);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
+        return JsonUtil.fromJson(str, clazz);
     }
 
     /**
@@ -111,8 +91,8 @@ public final class ZLcGsonUtil {
             }
         }
         try {
-            return OBJECT_MAPPER.readValue(jsonStr, classOfT);
-        } catch (JsonProcessingException e) {
+            return JsonUtil.fromJson(jsonStr, classOfT);
+        } catch (RuntimeException e) {
             return null;
         }
     }
@@ -128,7 +108,7 @@ public final class ZLcGsonUtil {
      * Map → 对象.
      */
     public static <T> T mapToObject(Map<String, Object> map, Class<T> clazz) {
-        return OBJECT_MAPPER.convertValue(map, clazz);
+        return JsonUtil.fromJson(JsonUtil.toJson(map), clazz);
     }
 
     // ==================== Map 转换 ====================
@@ -137,7 +117,7 @@ public final class ZLcGsonUtil {
      * 对象 → Map.
      */
     public static Map<String, Object> toMap(Object o) {
-        return OBJECT_MAPPER.convertValue(o, Map.class);
+        return toMap(JsonUtil.toJson(o));
     }
 
     /**
@@ -148,11 +128,17 @@ public final class ZLcGsonUtil {
         if (isBlank(json)) {
             return null;
         }
-        try {
-            return OBJECT_MAPPER.readValue(json, Map.class);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
+        return toPlainMap(JsonUtil.parse(json));
+    }
+
+    /**
+     * parse 出来的**嵌套**值仍是 z-util 自己的 JsonObject/JsonArray，那不是
+     * java.util.Map / java.util.List —— 下游一串 instanceof Map 会静默全判不中。
+     * toPlainValue 才是把整棵树摊成 LinkedHashMap/ArrayList 的那一步。
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> toPlainMap(Object parsed) {
+        return parsed == null ? null : (Map<String, Object>) JsonUtil.toPlainValue(parsed);
     }
 
     /**
@@ -221,9 +207,9 @@ public final class ZLcGsonUtil {
      */
     public static <T> boolean isJson(String str, Class<T> clazz) {
         try {
-            OBJECT_MAPPER.readValue(str, clazz);
+            JsonUtil.fromJson(str, clazz);
             return true;
-        } catch (JsonProcessingException e) {
+        } catch (RuntimeException e) {
             return false;
         }
     }
