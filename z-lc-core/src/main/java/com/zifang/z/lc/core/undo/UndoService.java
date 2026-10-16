@@ -1,13 +1,13 @@
 package com.zifang.z.lc.core.undo;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
 import com.zifang.z.lc.common.dto.RuntimeCrudDTO;
 import com.zifang.z.lc.core.executor.RuntimeCrudExecutor;
 import com.zifang.z.lc.core.undo.entity.DataChangeEntity;
 import com.zifang.z.lc.mapper.undo.DataChangeMapper;
+import com.zifang.util.json.JsonUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,9 +43,6 @@ public class UndoService {
     @Autowired
     private RuntimeCrudExecutor crudExecutor;
 
-    @Autowired
-    private ObjectMapper objectMapper;
-
     /**
      * 记一条变更日志. 记录失败绝不能把主写路径带崩, 所以这里吞掉异常只告警.
      */
@@ -77,7 +74,7 @@ public class UndoService {
         if (row == null || row.isEmpty()) {
             return null;
         }
-        return objectMapper.writeValueAsString(persistable(entity, row));
+        return JsonUtil.toJson(persistable(entity, row));
     }
 
     /**
@@ -353,12 +350,19 @@ public class UndoService {
     }
 
     @SuppressWarnings("unchecked")
+    private static Map<String, Object> toPlainMap(Object parsed) {
+        return parsed == null ? null : (Map<String, Object>) JsonUtil.toPlainValue(parsed);
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> read(String json) {
         if (json == null || json.isEmpty()) {
             return new LinkedHashMap<String, Object>();
         }
         try {
-            Map<String, Object> map = objectMapper.readValue(json, Map.class);
+            // toPlainValue: parse 出来的嵌套值是 z-util 的 JsonObject/JsonArray,
+            // 不是 java.util.Map, 直接当变更镜像回读会拿到一堆认不出的类型
+            Map<String, Object> map = toPlainMap(JsonUtil.parse(json));
             return map == null ? new LinkedHashMap<String, Object>() : map;
         } catch (Exception ex) {
             log.warn("failed to parse change image: {}", ex.getMessage());

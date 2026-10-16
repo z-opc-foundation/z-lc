@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.materialize.service;
 
+import com.zifang.util.json.JsonUtil;
 import com.zifang.util.core.lang.RandomUtil;
 import com.zifang.z.lc.core.event.entity.EventEntity;
 import com.zifang.z.lc.core.materialize.entity.MaterializationEntity;
@@ -45,7 +46,7 @@ public class MaterializationEventService {
         data.put("materialization_path", m.getMaterializationPath());
         data.put("file_count", fileCount);
         data.put("trigger_source", m.getTriggerSource());
-        e.setEventData(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(data).toString());
+        e.setEventData(JsonUtil.toJson(data));
 
         e.setApplySeq(System.currentTimeMillis());
         e.setApplyTime(new Date());

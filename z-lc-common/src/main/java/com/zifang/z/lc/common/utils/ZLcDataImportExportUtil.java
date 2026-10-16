@@ -27,10 +27,6 @@ public final class ZLcDataImportExportUtil {
     private ZLcDataImportExportUtil() {
     }
 
-    /** Jackson ObjectMapper (复用实例). */
-    public static final com.fasterxml.jackson.databind.ObjectMapper OBJECT_MAPPER =
-            new com.fasterxml.jackson.databind.ObjectMapper();
-
     /** 支持的日期格式 (按优先级排列). */
     private static final String[] DATE_PATTERNS = {
             "yyyy-MM-dd HH:mm:ss.SSS",

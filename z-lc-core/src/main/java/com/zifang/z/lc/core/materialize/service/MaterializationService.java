@@ -1,5 +1,6 @@
 package com.zifang.z.lc.core.materialize.service;
 
+import com.zifang.util.json.JsonUtil;
 import com.zifang.util.core.time.DateUtil;
 import com.zifang.z.lc.core.executor.entity.EntityEntity;
 import com.zifang.z.lc.core.executor.entity.FieldEntity;
@@ -84,7 +85,7 @@ public class MaterializationService {
         entity.setAppCode(req.getAppCode());
         entity.setMaterializationPath(req.getMaterializationPath());
         entity.setEntityCodes(req.getEntityCodes() == null ? null
-                : new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(req.getEntityCodes()).toString());
+                : JsonUtil.toJson(req.getEntityCodes()));
         entity.setExportVersion(exportVersion);
         entity.setStatus(MaterializationEntity.STATUS_PENDING);
         entity.setFileCount(0);
@@ -255,9 +256,15 @@ public class MaterializationService {
         }
 
         try {
-            return new com.fasterxml.jackson.databind.ObjectMapper()
-                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {
-                    });
+            Object plain = JsonUtil.toPlainValue(JsonUtil.parse(json));
+            if (!(plain instanceof List)) {
+                return null;
+            }
+            List<String> codes = new ArrayList<>();
+            for (Object o : (List<?>) plain) {
+                codes.add(o == null ? null : String.valueOf(o));
+            }
+            return codes;
         } catch (Exception e) {
             log.warn("Failed to parse entity_codes: {}", e.getMessage());
             return null;
