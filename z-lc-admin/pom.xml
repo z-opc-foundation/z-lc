@@ -96,7 +96,8 @@
              core，qualifier 指的是 zAgentLlmGatewayLlmGatewayService，同样没有 bean 供它）。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
-            <artifactId>z-llm-core</artifactId>
+            <artifactId>z-llm-gateway-core</artifactId>
+            <version>${z-llm.version}</version>
         </dependency>
         <dependency>
             <groupId>io.github.yuku123</groupId>

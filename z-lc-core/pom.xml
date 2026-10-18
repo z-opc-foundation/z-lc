@@ -177,7 +177,8 @@
              已一并改到 z-llm 的 ChatGatewayService.chat(UnifiedRequest) 形状。 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
-            <artifactId>z-llm-core</artifactId>
+            <artifactId>z-llm-gateway-core</artifactId>
+            <version>${z-llm.version}</version>
             <optional>true</optional>
         </dependency>
 

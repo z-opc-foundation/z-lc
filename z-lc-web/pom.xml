@@ -130,7 +130,8 @@
         -->
         <dependency>
             <groupId>io.github.yuku123</groupId>
-            <artifactId>z-llm-core</artifactId>
+            <artifactId>z-llm-gateway-core</artifactId>
+            <version>${z-llm.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
