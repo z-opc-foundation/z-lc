@@ -7,19 +7,24 @@
  *
  * 已纳入 component：ui store（zustand density）—— 本 manifest 的 App 路由即消费它。
  */
-import HomePage from './store/index'  // 占位：仅触发 ./store 的 default 不存在，App 端实际不渲染
-import { useUiStore } from './store'
+import {useUiStore} from './store'
 
-/** 占位首页：仅暴露 ui store 状态指示，方便主壳探活 */
-function LcHome() {
+/**
+ * 探活首页：真的把 density 渲染出来。
+ *
+ * 原实现 `return {density, type: 'div'} as unknown as React.ReactElement`
+ * 是把一个普通对象强转成 ReactElement —— 编译能过（断言绕过了检查），一旦主壳真去
+ * 挂这条路由就会在渲染期炸掉，而错误信息指向 React 内部、跟真正的病灶隔了三层。
+ */
+export function LcHome() {
   const density = useUiStore(s => s.density)
-  return { density, type: 'div' } as unknown as React.ReactElement
+  return <div data-testid="z-lc-home" data-density={density}>z-lc · {density}</div>
 }
 
 export const appMeta = { title: 'z-lc 控制台', short: 'z-lc' }
 
 export const routes = [
-  { path: '/z-lc/home', title: '首页', order: 1, Component: LcHome as unknown as React.ComponentType },
+  { path: '/z-lc/home', title: '首页', order: 1, Component: LcHome },
 ]
 
-export { default as HomePage } from './store/index'  // 兼容旧 suit import
+export {LcHome as HomePage}  // 兼容旧 suit import
