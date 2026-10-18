@@ -3,7 +3,7 @@ package com.zifang.z.lc.sdk.define;
 /**
  * 模型数据保存模式常量.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModelDataSaveMode}（{@code com.c2f.ace.engine.define}）。
+ * <p>蒸馏自 ace-platform-engine {@code ModelDataSaveMode}。
  *
  * <p>三种保存模式在底层均映射为一次 INSERT（数据主键由存储层生成），
  * 区别仅在于上层业务处理：

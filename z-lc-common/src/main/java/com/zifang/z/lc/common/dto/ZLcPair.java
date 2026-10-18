@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 二元素元组 — 蒸馏自 ace-platform-core
- * {@code Pair} ({@code com.c2f.ace.core.common.tuples}).
+ * {@code Pair} .
  *
  * <p>轻量级不可变值容器, 替代 {@code Map.Entry} 或专用 VO 传递两个关联值.
  * 常用于 SPI 返回值 (key-value 对)、批量查询结果等场景.

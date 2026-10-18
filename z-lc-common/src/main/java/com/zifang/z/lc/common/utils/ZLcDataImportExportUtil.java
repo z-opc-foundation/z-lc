@@ -8,7 +8,7 @@ import java.util.*;
 
 /**
  * 数据导入导出工具 — 蒸馏自 ace-platform-core
- * {@code DataImporAndExportUtil} ({@code com.c2f.ace.core.utils.excel}).
+ * {@code DataImporAndExportUtil} .
  *
  * <p>提供 Excel 数据格式化、表头构建等通用能力.
  * 蒸馏时移除了 ace 对 hutool DateUtil / EasyExcel ListUtils / BusinessException 的依赖,

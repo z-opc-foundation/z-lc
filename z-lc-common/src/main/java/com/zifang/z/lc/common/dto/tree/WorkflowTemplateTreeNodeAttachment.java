@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 流程模板树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code WorkflowTemplateTreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code WorkflowTemplateTreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：「流程设计器」树节点的附加信息 — workflowName / workflowDesc /
  * workflowDefinitionKey（Flowable BPMN 模型 key）.

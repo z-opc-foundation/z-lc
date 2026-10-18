@@ -10,8 +10,7 @@ import java.util.Map;
 /**
  * 通用 CRUD 服务适配器（Map 版本）.
  *
- * <p>蒸馏自 ace-platform-engine {@code ServiceAdapter}
- * （{@code com.c2f.ace.engine.adapter}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ServiceAdapter}，字段语义完全对齐.
  *
  * <p>与 {@link com.zifang.z.lc.sdk.define.DataModelService} 的区别：
  * <ul>

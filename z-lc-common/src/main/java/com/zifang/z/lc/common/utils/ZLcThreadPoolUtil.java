@@ -4,7 +4,7 @@ import java.util.concurrent.*;
 
 /**
  * 线程池工具 — 蒸馏自 ace-platform-core
- * {@code ThreadPoolUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ThreadPoolUtil} .
  *
  * <p>提供预定义的通用线程池, 适用于低代码平台的异步任务处理:
  * 流程事件分发、MQ 消息发送、Excel 导入导出等场景.

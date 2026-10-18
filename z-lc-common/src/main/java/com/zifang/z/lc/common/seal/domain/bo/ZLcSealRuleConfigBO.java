@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.seal.domain.bo;
 
 /**
  * CA 印章规则配置 BO — 蒸馏自 ace-platform-core
- * {@code SealRuleConfigBO} ({@code com.c2f.ace.core.seal.domain.bo}).
+ * {@code SealRuleConfigBO} .
  *
  * <p>兼容骑缝章与单页普通章参数 — 通过 {@link #sealType} (ACROSS/OFFICIAL)
  * 区分. 具体字段含义:

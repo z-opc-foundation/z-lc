@@ -4,7 +4,7 @@ import com.zifang.util.json.JsonUtil;
 
 /**
  * 扩展字段解析工具 — 蒸馏自 ace-platform-core
- * {@code ExtendUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ExtendUtil} .
  *
  * <p>用于低代码平台的扩展字段 (extend JSON) 解析:
  * 当 extend 为空/null 时自动创建默认实例, 非空时反序列化为指定类型.

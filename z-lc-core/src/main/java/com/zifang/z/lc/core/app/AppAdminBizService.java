@@ -32,7 +32,7 @@ public class AppAdminBizService implements AppAdminService {
     private static final Logger log = LogManager.getLogger(AppAdminBizService.class);
 
     @Resource
-    private LcAppEntityMapper appMapper;
+    private LcAppEntityMapper lcAppEntityMapper;
 
     @Resource
     private EntityMapper entityMapper;
@@ -54,7 +54,7 @@ public class AppAdminBizService implements AppAdminService {
         }
         // 唯一性校验。uk_app_tenant_code 不含 deleted 列 —— 软删掉的 app 依旧占着这个 code，
         // 所以这里不能加 .eq("deleted", 0)：加了会放过去，insert 撞索引变成 500 且把索引名/列名透给前端。
-        List<AppEntity> hits = appMapper.selectList(
+        List<AppEntity> hits = lcAppEntityMapper.selectList(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", req.getTenantCode())
                         .eq("app_code", req.getAppCode()));
@@ -75,7 +75,7 @@ public class AppAdminBizService implements AppAdminService {
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
-        appMapper.insert(entity);
+        lcAppEntityMapper.insert(entity);
 
         // 追加 APP_CREATE 事件
         emitAppEvent(req.getTenantCode(), req.getAppCode(), "APP_CREATE", req.getAppCode());
@@ -90,7 +90,7 @@ public class AppAdminBizService implements AppAdminService {
         if (req.getId() == null) {
             throw new IllegalArgumentException("id is required");
         }
-        AppEntity entity = appMapper.selectById(req.getId());
+        AppEntity entity = lcAppEntityMapper.selectById(req.getId());
         if (entity == null || entity.getDeleted() == 1) {
             throw new IllegalArgumentException("App not found: " + req.getId());
         }
@@ -104,7 +104,7 @@ public class AppAdminBizService implements AppAdminService {
             entity.setIcon(req.getIcon());
         }
         entity.setUpdateTime(new Date());
-        appMapper.updateById(entity);
+        lcAppEntityMapper.updateById(entity);
 
         // 追加 APP_UPDATE 事件
         emitAppEvent(entity.getTenantCode(), entity.getAppCode(), "APP_UPDATE", entity.getAppCode());
@@ -116,13 +116,13 @@ public class AppAdminBizService implements AppAdminService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int deleteApp(Long id) {
-        AppEntity entity = appMapper.selectById(id);
+        AppEntity entity = lcAppEntityMapper.selectById(id);
         if (entity == null) {
             return 0;
         }
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
-        int n = appMapper.updateById(entity);
+        int n = lcAppEntityMapper.updateById(entity);
 
         // 追加 APP_DELETE 事件
         emitAppEvent(entity.getTenantCode(), entity.getAppCode(), "APP_DELETE", entity.getAppCode());
@@ -148,21 +148,21 @@ public class AppAdminBizService implements AppAdminService {
                 .eq("deleted", 0)
                 .eq(tenantCode != null, "tenant_code", tenantCode);
 
-        Long total = appMapper.selectCount(qw);
+        Long total = lcAppEntityMapper.selectCount(qw);
         if (total == null || total == 0) {
             return new PageResult<>(Collections.emptyList(), 0L, page, size);
         }
 
         qw.orderByDesc("id");
         qw.last("LIMIT " + ((page - 1) * size) + "," + size);
-        List<AppEntity> list = appMapper.selectList(qw);
+        List<AppEntity> list = lcAppEntityMapper.selectList(qw);
         List<AppDTO> dtos = list.stream().map(this::toAppDTO).collect(Collectors.toList());
         return new PageResult<>(dtos, total, page, size);
     }
 
     @Override
     public AppDTO getAppByCode(String tenantCode, String appCode) {
-        AppEntity entity = appMapper.selectOne(
+        AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", tenantCode)
                         .eq("app_code", appCode)
@@ -173,7 +173,7 @@ public class AppAdminBizService implements AppAdminService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AppDTO publishApp(String tenantCode, String appCode) {
-        AppEntity entity = appMapper.selectOne(
+        AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", tenantCode)
                         .eq("app_code", appCode)
@@ -186,7 +186,7 @@ public class AppAdminBizService implements AppAdminService {
         }
         entity.setStatus("PUBLISHED");
         entity.setUpdateTime(new Date());
-        appMapper.updateById(entity);
+        lcAppEntityMapper.updateById(entity);
 
         // 追加 APP_PUBLISH 事件
         emitAppEvent(tenantCode, appCode, "APP_PUBLISH", appCode);
@@ -198,7 +198,7 @@ public class AppAdminBizService implements AppAdminService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AppDTO archiveApp(String tenantCode, String appCode) {
-        AppEntity entity = appMapper.selectOne(
+        AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", tenantCode)
                         .eq("app_code", appCode)
@@ -211,7 +211,7 @@ public class AppAdminBizService implements AppAdminService {
         }
         entity.setStatus("ARCHIVED");
         entity.setUpdateTime(new Date());
-        appMapper.updateById(entity);
+        lcAppEntityMapper.updateById(entity);
 
         // 追加 APP_ARCHIVE 事件
         emitAppEvent(tenantCode, appCode, "APP_ARCHIVE", appCode);

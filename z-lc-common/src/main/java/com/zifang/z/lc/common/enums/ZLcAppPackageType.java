@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 应用包类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.AppPackageType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.AppPackageType} ，
  * 字段语义完全对齐.
  *
  * <p>用于应用包导入/导出操作的方向标识.

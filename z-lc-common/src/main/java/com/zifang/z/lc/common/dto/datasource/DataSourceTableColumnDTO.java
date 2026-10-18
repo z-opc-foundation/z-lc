@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 数据源表列元数据 DTO.
  *
- * <p>蒸馏自 ace-platform-core {@code DataSourceTableColumnDTO}
- * （{@code com.c2f.ace.core.service.app.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-core {@code DataSourceTableColumnDTO}，字段语义完全对齐.
  *
  * <p>用途：「数据库管理 → 模型」链路中，扫描 {@code INFORMATION_SCHEMA.COLUMNS}
  * 后产出的列元数据；后续转换为 z-lc 的 {@code FieldDefDTO}.

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 字段关系类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.FieldRelateType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.FieldRelateType} ，
  * 字段语义完全对齐.
  *
  * <p>用于标注模型字段间的关系：

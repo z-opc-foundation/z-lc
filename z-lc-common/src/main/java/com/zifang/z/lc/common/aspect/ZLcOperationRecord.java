@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 
 /**
  * 系统操作日志记录注解 — 蒸馏自 ace-platform-core
- * {@code OperationRecord} ({@code com.c2f.ace.core.common.aspect}).
+ * {@code OperationRecord} .
  *
  * <p>标记在 Controller/Service 方法或参数上, 由
  * {@code ZLcOperationRecordAspect} 切面拦截, 在方法正常返回和异常抛出时

@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * RPC 签名服务适配器 — 服务端 Provider — 蒸馏自 ace-platform-engine
- * {@code RpcAssignServiceAdapterProvider} （{@code com.c2f.ace.engine.adapter}）.
+ * {@code RpcAssignServiceAdapterProvider} .
  *
  * <p>本类是 AssignServiceAdapter 的「服务端实现」 — 调用方 RPC 调用时实际进入这里，
  * 然后委派给本地 {@link AbstractAssignService} 子类.

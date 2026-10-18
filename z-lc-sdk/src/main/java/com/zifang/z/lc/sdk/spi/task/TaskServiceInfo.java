@@ -6,8 +6,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 任务服务 SPI 元信息 — 蒸馏自 ace-platform-engine {@code TaskServiceInfo}
- * （{@code com.c2f.ace.engine.define}），字段语义完全对齐.
+ * 任务服务 SPI 元信息 — 蒸馏自 ace-platform-engine {@code TaskServiceInfo}，字段语义完全对齐.
  *
  * <p>业务方在 {@link AbstractTaskService} 子类上标记本注解 —
  * z-lc 引擎扫描时通过 {@code identityCode} 建立索引，通过 {@code expression} 做

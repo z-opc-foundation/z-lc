@@ -8,7 +8,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 重试注解 — 蒸馏自 ace-platform-core {@code Retry} ({@code com.c2f.ace.core.common.aspect}).
+ * 重试注解 — 蒸馏自 ace-platform-core {@code Retry} .
  *
  * <p>标记在需要"失败自动重试"的方法上, 由 {@code ZLcRetryAspect} 切面拦截,
  * 在方法抛出异常时按 {@link #retryAttempts()} 次数重试,

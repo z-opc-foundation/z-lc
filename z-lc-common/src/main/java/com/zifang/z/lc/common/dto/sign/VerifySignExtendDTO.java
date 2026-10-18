@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.dto.sign;
 import java.io.Serializable;
 
 /**
- * 验签 DTO — 蒸馏自 ace-platform-engine {@code VerifySignExtendDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 验签 DTO — 蒸馏自 ace-platform-engine {@code VerifySignExtendDTO}，字段语义完全对齐.
  *
  * <p>用途：CA 签名验证 — 用 {@code signResult} 配合 {@code signCert} 做证书链验证.
  *

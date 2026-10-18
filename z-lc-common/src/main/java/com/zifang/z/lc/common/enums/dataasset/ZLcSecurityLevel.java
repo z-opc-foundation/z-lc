@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 数据资产安全等级枚举 — 蒸馏自 ace-platform-core
- * {@code SecurityLevelEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code SecurityLevelEnum} .
  *
  * <p>用于低代码平台"数据资产"安全等级 (L1~L5, 公开范围由大到小):
  *

@@ -1,8 +1,7 @@
 package com.zifang.z.lc.sdk.context;
 
 /**
- * BDP 调用上下文 ThreadLocal — 蒸馏自 ace-platform-engine {@code BdpInvokerContext}
- * （{@code com.c2f.ace.engine.filter}），行为完全对齐.
+ * BDP 调用上下文 ThreadLocal — 蒸馏自 ace-platform-engine {@code BdpInvokerContext}，行为完全对齐.
  *
  * <p>只保存请求级 UUID — BDP（业务数据平台）链路标识，用于跨服务调用追踪.
  *

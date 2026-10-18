@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 标签发布结果枚举 — 蒸馏自 ace-platform-core
- * {@code LabelReleaseResultEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code LabelReleaseResultEnum} .
  *
  * <p>用于低代码平台"数据资产 / 标签"模块中发布任务的结果:
  *

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 逻辑文件夹类型 — 蒸馏自 ace-platform-core
- * {@code Enums.LogicFolderType} ({@code com.c2f.ace.core.common}).
+ * {@code Enums.LogicFolderType} .
  *
  * <p>用于低代码平台中区分逻辑目录的种类：
  *

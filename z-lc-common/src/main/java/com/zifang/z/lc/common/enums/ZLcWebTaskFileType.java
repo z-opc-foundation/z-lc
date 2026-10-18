@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Web 任务文件类型枚举 — 蒸馏自 ace-platform-core
- * {@code WebTaskFileType} ({@code com.c2f.ace.core.enums}).
+ * {@code WebTaskFileType} .
  *
  * <p>用于低代码平台"Web 任务"上传/下载时的文件类型:
  *

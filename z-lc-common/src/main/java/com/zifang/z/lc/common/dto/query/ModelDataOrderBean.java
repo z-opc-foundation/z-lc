@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 模型数据排序 bean — 多字段排序.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModelDataOrderBean}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ModelDataOrderBean}，字段语义完全对齐.
  *
  * <p>典型用法（前端「自定义排序」UI）：
  * <pre>{@code

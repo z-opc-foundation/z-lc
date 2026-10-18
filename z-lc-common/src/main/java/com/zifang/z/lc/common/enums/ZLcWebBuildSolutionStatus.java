@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Web 构建方案状态枚举 — 蒸馏自 ace-platform-core
- * {@code WebBuildSolutionStatusEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code WebBuildSolutionStatusEnum} .
  *
  * <p>用于标识低代码平台"Web 应用构建方案"的执行进度状态:
  *

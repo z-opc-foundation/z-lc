@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.domain;
 
 /**
- * 应用 DO — 蒸馏自 ace-platform-core {@code AppDO}
- * （{@code com.c2f.ace.core.domain.entity}），去除 lombok + MyBatis Plus + BaseDO 依赖.
+ * 应用 DO — 蒸馏自 ace-platform-core {@code AppDO}，去除 lombok + MyBatis Plus + BaseDO 依赖.
  *
  * <p>对应 {@code app} 表 — 顶级隔离单元，每个 app 拥有独立的模型 / 页面 / 流程 / 服务 / 字典.
  *

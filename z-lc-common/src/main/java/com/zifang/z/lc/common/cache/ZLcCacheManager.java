@@ -4,7 +4,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 缓存管理器 — 蒸馏自 ace-platform-core
- * {@code CacheManager} ({@code com.c2f.ace.core.middleware.cache}).
+ * {@code CacheManager} .
  *
  * <p>按 Class 注册 {@link ZLcCache} 实例, 业务方通过 {@link #fetchCache(Class)}
  * 拿到对应类型的缓存容器. 使用 {@link ConcurrentHashMap} 保证多线程安全.

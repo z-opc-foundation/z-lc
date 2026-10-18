@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 外部模型字段类型枚举 — 蒸馏自 ace-platform-core
- * {@code ExternalFieldType} ({@code com.c2f.ace.core.model}).
+ * {@code ExternalFieldType} .
  *
  * <p>定义低代码平台外部模型的字段类型, 包含类型编码、名称和数据库字段长度映射.
  * 蒸馏时移除了 ace 对 Lombok / AceStatusCode / BusinessException 的依赖,

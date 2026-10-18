@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.validation;
 
 /**
  * 创建操作校验分组 — 蒸馏自 ace-platform-core
- * {@code Create} ({@code com.c2f.ace.core.common.valid}).
+ * {@code Create} .
  *
  * <p>用于 JSR-303 / javax.validation 分组校验:
  * 创建接口使用 {@code @Validated(ZLcCreateGroup.class)} 时,

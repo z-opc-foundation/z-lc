@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 应用版本提交类型 — 蒸馏自 ace-platform-core
- * {@code Enums.AppVersionCommitType} ({@code com.c2f.ace.core.common}).
+ * {@code Enums.AppVersionCommitType} .
  *
  * <p>用于标识低代码平台中"应用版本"在 git 仓库或包管理系统中的变更类型.
  *

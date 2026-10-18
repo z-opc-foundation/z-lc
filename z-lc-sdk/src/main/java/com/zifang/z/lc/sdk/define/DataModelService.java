@@ -10,7 +10,7 @@ import java.util.Map;
 /**
  * 低代码模型通用 CRUD 契约接口.
  *
- * <p>蒸馏自 ace-platform-engine {@code DataModelService}（{@code com.c2f.ace.engine.define}），
+ * <p>蒸馏自 ace-platform-engine {@code DataModelService}，
  * 但把 ace 的 {@code ModelDataQueryDTO / ModelDataPageableQueryDTO} 适配为 z-lc 已有的
  * {@link RuntimeQueryDTO} / {@link RuntimeCrudDTO} / {@link PageResult} —
  * 保留「同一接口不同实现」的抽象能力，但对接 z-lc 现有的 {@code RuntimeCrudExecutor} 链路.

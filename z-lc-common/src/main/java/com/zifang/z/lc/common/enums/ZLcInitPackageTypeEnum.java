@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * 初始化包类型枚举 — 蒸馏自 ace-platform-core
- * {@code InitPackageTypeEnum} ({@code com.c2f.ace.core.common}}.
+ * {@code InitPackageTypeEnum} .
  *
  * <p>用于低代码平台「初始化包」导出/导入 — 标识被打包对象的类型及在初始化包中的
  * 索引位置，便于导入端按顺序还原业务对象（模型/字典/服务/流程/页面/系统配置等）。

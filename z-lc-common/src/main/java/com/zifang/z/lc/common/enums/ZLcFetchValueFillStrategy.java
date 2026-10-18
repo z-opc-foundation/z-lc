@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 字段取值填充策略枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.FetchValueFillStrategy} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.FetchValueFillStrategy} ，
  * 字段语义完全对齐.
  *
  * <p>用于模型字段的「值从哪里来」策略选择：

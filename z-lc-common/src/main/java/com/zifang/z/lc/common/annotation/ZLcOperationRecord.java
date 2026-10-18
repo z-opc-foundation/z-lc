@@ -4,7 +4,7 @@ import java.lang.annotation.*;
 
 /**
  * 操作记录注解 — 蒸馏自 ace-platform-core
- * {@code OperationRecord} ({@code com.c2f.ace.core.common.aspect}).
+ * {@code OperationRecord} .
  *
  * <p>标注在方法或参数上, 配合 AOP 切面自动记录用户操作日志.
  * 对齐 ace 平台的审计追溯能力, 支持低代码平台的数据变更追踪.

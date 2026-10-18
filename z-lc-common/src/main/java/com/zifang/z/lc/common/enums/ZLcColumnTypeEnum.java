@@ -11,7 +11,7 @@ import java.util.Set;
 
 /**
  * 数据库列类型枚举 — 蒸馏自 ace-platform-core
- * {@code ColumnTypeEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code ColumnTypeEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台扫描数据源时识别表字段类型 — 与 {@code DataSourceTableColumnDTO}
  * 对应. 共 25 种标准 SQL 列类型.

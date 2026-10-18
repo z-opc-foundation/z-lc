@@ -24,7 +24,7 @@ import java.util.Map;
 
 /**
  * z-lc 模型服务 Collector — 蒸馏自 ace-platform-engine
- * {@code ModelServiceCollector} （{@code com.c2f.ace.engine}}，
+ * {@code ModelServiceCollector} ，
  * 行为完全对齐.
  *
  * <p>启动时扫描 Spring 容器中所有 {@link AbstractDataModelService} Bean，

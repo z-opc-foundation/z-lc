@@ -4,7 +4,7 @@ import java.util.Map;
 
 /**
  * 表单实例运行时信息载体 — 蒸馏自 ace-platform-core
- * {@code FormInstanceRuntimeInfo} ({@code com.c2f.ace.core.bpmn.callable.dto}).
+ * {@code FormInstanceRuntimeInfo} .
  *
  * <p>用于低代码平台"流程引擎"对外传递 — 把表单数据 + 流程数据 + 操作上下文打包
  * 成一个统一对象, 便于 MQ/WebSocket 一次性推送完整状态.

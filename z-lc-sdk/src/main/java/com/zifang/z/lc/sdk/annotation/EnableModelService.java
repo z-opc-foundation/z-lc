@@ -9,7 +9,7 @@ import java.lang.annotation.Target;
 
 /**
  * 启用 z-lc 模型服务的标记注解 — 蒸馏自 ace-platform-engine
- * {@code EnableModelService} （{@code com.c2f.ace.engine.define}}，
+ * {@code EnableModelService} ，
  * 行为完全对齐.
  *
  * <p>加在 Spring 配置类（如 {@code @Configuration}）上时，z-lc 引擎会扫描该类所在包

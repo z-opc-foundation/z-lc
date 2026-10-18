@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 服务项调整 DTO — 把多个服务从一个位置调整到另一个位置.
  *
- * <p>蒸馏自 ace-platform-core {@code AdapterServiceItemDTO}
- * （{@code com.c2f.ace.core.service.app.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-core {@code AdapterServiceItemDTO}，字段语义完全对齐.
  *
  * <p>用途：「服务集成」中拖拽移动功能 — 一次请求把多个服务从原分组移动到目标分组.
  *

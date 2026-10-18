@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.seal.domain.bo;
 
 /**
  * 签章操作结果 BO — 蒸馏自 ace-platform-core
- * {@code SealSignResultBO} ({@code com.c2f.ace.core.seal.domain.bo}).
+ * {@code SealSignResultBO} .
  *
  * <p>用于低代码平台"电子签章"模块 — 签章接口返回值.
  *

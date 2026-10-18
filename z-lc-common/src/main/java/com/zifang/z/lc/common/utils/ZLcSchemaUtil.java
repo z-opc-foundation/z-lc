@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.utils;
 
 /**
  * 数据库 Schema 工具 — 蒸馏自 ace-platform-core
- * {@code SchemaUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code SchemaUtil} .
  *
  * <p>提供低代码平台数据库 Schema 相关的常量和辅助方法.
  * 蒸馏时移除了 ace 对 hutool / fastjson 的依赖, 仅保留核心常量和轻量方法.

@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.domain;
 
 /**
- * 数据模型 DO — 蒸馏自 ace-platform-core {@code DataModelDO}
- * （{@code com.c2f.ace.core.domain.entity}），去除 lombok + MyBatis Plus + BaseDO 依赖.
+ * 数据模型 DO — 蒸馏自 ace-platform-core {@code DataModelDO}，去除 lombok + MyBatis Plus + BaseDO 依赖.
  *
  * <p>对应 {@code data_model} 表的内存表示 — 持久化对象包含父类 8 个通用字段 +
  * 模型特有的 6 个字段（appCode / modelName / modelCode / modelDesc / physicalFlag / treeNodeCode）.

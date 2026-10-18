@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Git 文件构建类型 — 蒸馏自 ace-platform-core
- * {@code Enums.GitComponentType} ({@code com.c2f.ace.core.common}).
+ * {@code Enums.GitComponentType} .
  *
  * <p>用于低代码平台"git 仓库拉取 / 构建"过程中区分仓库内对象的类型：
  *

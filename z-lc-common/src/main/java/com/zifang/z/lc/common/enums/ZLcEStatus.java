@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 状态枚举 — 蒸馏自 ace-platform-core
- * {@code EStatus} ({@code com.c2f.ace.core.utils}).
+ * {@code EStatus} .
  *
  * <p>通用布尔状态枚举, 用于低代码平台的标志位字段 (如是否启用、是否完成等).
  * 蒸馏时移除了 ace 对 StatusCode 接口的依赖, 改为纯枚举实现.

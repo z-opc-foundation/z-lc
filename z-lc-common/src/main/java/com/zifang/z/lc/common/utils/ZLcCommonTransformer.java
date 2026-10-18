@@ -8,7 +8,7 @@ import java.util.function.Function;
 
 /**
  * 通用数据转换工具 — 蒸馏自 ace-platform-core
- * {@code CommonTransformer} ({@code com.c2f.ace.core.utils}).
+ * {@code CommonTransformer} .
  *
  * <p>提供列表转换、分页转换等数据映射能力.
  * 蒸馏时移除了 ace 对 MyBatis Plus / BeanConvertUtil 的依赖,

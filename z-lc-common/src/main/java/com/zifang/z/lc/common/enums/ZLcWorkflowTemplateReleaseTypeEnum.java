@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 工作流模板发布类型枚举 — 蒸馏自 ace-platform-core
- * {@code WorkflowTemplateReleaseType} ({@code com.c2f.ace.core.common}}.
+ * {@code WorkflowTemplateReleaseType} .
  *
  * <p>用于低代码平台「工作流模板」发布管理：
  * <ul>

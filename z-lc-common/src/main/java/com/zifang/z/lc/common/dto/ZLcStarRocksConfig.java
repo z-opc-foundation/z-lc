@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * StarRocks 连接配置 — 蒸馏自 ace-platform-core
- * {@code StarRocksConfig} ({@code com.c2f.ace.core.utils}).
+ * {@code StarRocksConfig} .
  *
  * <p>封装 StarRocks 数据库的连接参数: 主机、端口、用户名、密码、数据库、表名.
  * 蒸馏时移除了 ace 对 Lombok @Data 的依赖, 改为手写 getter/setter.

@@ -55,7 +55,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
     /** 从元数据表问出来的 {字符集, 校对}；问不到就留 null，下次再问 (库可能还没建元数据表)。 */
     private volatile String[] metaCharsetCache;
     @Autowired
-    private LcAppEntityMapper appMapper;
+    private LcAppEntityMapper lcAppEntityMapper;
     @Autowired
     private EntityMapper entityMapper;
     @Autowired
@@ -80,7 +80,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
         }
         // 唯一性校验。uk_app_tenant_code 不含 deleted 列 —— 软删掉的 app 依旧占着这个 code，
         // 所以这里不能加 .eq("deleted", 0)：加了会放过去，insert 撞索引变成 500 且把索引名/列名透给前端。
-        List<AppEntity> hits = appMapper.selectList(
+        List<AppEntity> hits = lcAppEntityMapper.selectList(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", req.getTenantCode())
                         .eq("app_code", req.getAppCode()));
@@ -97,7 +97,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
         entity.setDeleted(0);
         entity.setCreateTime(new Date());
         entity.setUpdateTime(new Date());
-        appMapper.insert(entity);
+        lcAppEntityMapper.insert(entity);
 
         log.info("App created: tenant={} code={}", req.getTenantCode(), req.getAppCode());
         return toAppDTO(entity);
@@ -120,27 +120,27 @@ public class SchemaAdminBizService implements SchemaAdminService {
                 .eq("deleted", 0)
                 .eq(tenantCode != null, "tenant_code", tenantCode);
 
-        Long total = appMapper.selectCount(qw);
+        Long total = lcAppEntityMapper.selectCount(qw);
         if (total == null || total == 0) {
             return new PageResult<>(Collections.emptyList(), 0L, page, size);
         }
 
         qw.orderByDesc("id");
         qw.last("LIMIT " + ((page - 1) * size) + "," + size);
-        List<AppEntity> list = appMapper.selectList(qw);
+        List<AppEntity> list = lcAppEntityMapper.selectList(qw);
         List<AppDTO> dtos = list.stream().map(this::toAppDTO).collect(Collectors.toList());
         return new PageResult<>(dtos, total, page, size);
     }
 
     @Override
     public AppDTO getApp(Long id) {
-        AppEntity entity = appMapper.selectById(id);
+        AppEntity entity = lcAppEntityMapper.selectById(id);
         return entity == null || entity.getDeleted() == 1 ? null : toAppDTO(entity);
     }
 
     @Override
     public AppDTO getAppByCode(String tenantCode, String appCode) {
-        AppEntity entity = appMapper.selectOne(
+        AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", tenantCode)
                         .eq("app_code", appCode)
@@ -151,7 +151,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int updateApp(Long id, AppDTO req) {
-        AppEntity entity = appMapper.selectById(id);
+        AppEntity entity = lcAppEntityMapper.selectById(id);
         if (entity == null || entity.getDeleted() == 1) {
             throw new IllegalArgumentException("App not found: " + id);
         }
@@ -169,20 +169,20 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
         entity.setCurrentVersion(entity.getCurrentVersion() + 1);
         entity.setUpdateTime(new Date());
-        return appMapper.updateById(entity);
+        return lcAppEntityMapper.updateById(entity);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int deleteApp(Long id) {
-        AppEntity entity = appMapper.selectById(id);
+        AppEntity entity = lcAppEntityMapper.selectById(id);
         if (entity == null) {
             return 0;
         }
 
         entity.setDeleted(1);
         entity.setUpdateTime(new Date());
-        return appMapper.updateById(entity);
+        return lcAppEntityMapper.updateById(entity);
     }
 
     // ===== Entity CRUD =====
@@ -198,7 +198,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
             req.setTableName("lc_" + appCode + "_" + req.getEntityCode());
         }
         // 校验 appCode 存在
-        AppEntity app = appMapper.selectOne(
+        AppEntity app = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
                         .eq("tenant_code", tenantCode)
                         .eq("app_code", appCode)

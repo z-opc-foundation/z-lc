@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 应用构件类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.AppComponentType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.AppComponentType} ，
  * 字段语义完全对齐.
  *
  * <p>低代码平台应用的「构件」分类 — 一个应用包含若干构件，对应不同的业务能力.

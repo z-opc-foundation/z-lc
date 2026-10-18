@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 备份发布状态枚举 — 蒸馏自 ace-platform-core
- * {@code BackupReleaseEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code BackupReleaseEnum} .
  *
  * <p>用于标识低代码平台"版本快照"的发布状态:
  *

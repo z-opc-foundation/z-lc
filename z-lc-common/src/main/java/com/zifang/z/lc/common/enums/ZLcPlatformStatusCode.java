@@ -4,7 +4,7 @@ import com.zifang.util.core.meta.StatusCode;
 
 /**
  * z-lc 平台状态码 — 蒸馏自 ace-platform-core
- * {@code AceStatusCode} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code AceStatusCode} ，字段语义完全对齐.
  *
  * <p>实现 {@link StatusCode} 接口，可被 {@code BusinessException(StatusCode, message)} 直接使用.
  *

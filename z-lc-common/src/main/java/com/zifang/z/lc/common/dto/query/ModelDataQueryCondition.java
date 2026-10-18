@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 复杂查询条件（递归树结构）.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModelDataQueryCondition}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ModelDataQueryCondition}，字段语义完全对齐.
  *
  * <p>相比 {@link RuntimeQueryDTO} 的扁平结构（key=value），
  * 本 DTO 支持嵌套条件（AND / OR 树形组合），用于：

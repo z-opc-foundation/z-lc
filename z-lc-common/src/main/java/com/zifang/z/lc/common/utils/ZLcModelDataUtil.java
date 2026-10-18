@@ -4,7 +4,7 @@ import java.util.Map;
 
 /**
  * 模型数据工具 — 蒸馏自 ace-platform-core
- * {@code ModelDataUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ModelDataUtil} .
  *
  * <p>提供低代码平台模型数据的常用操作: 主键提取、字段类型转换等.
  *

@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * 单元素元组 — 蒸馏自 ace-platform-core
- * {@code Unit} ({@code com.c2f.ace.core.common.tuples}).
+ * {@code Unit} .
  *
  * <p>蒸馏时移除了 ace 对 Lombok @Data / @NoArgsConstructor 的依赖,
  * 改为手写 getter/setter/toString.

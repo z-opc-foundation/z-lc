@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.utils;
 
 /**
  * 数据导入导出处理接口 — 蒸馏自 ace-platform-core
- * {@code IDataImportOrExportProcess} ({@code com.c2f.ace.core.middleware.task}).
+ * {@code IDataImportOrExportProcess} .
  *
  * <p>定义数据导入导出任务的生命周期方法: 获取待处理任务、执行任务、异常中断等.
  * 配合 {@link ZLcDataImportExportExecutor} 使用.

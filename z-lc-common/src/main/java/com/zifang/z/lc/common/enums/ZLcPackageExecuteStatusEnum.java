@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 应用包执行状态枚举 — 蒸馏自 ace-platform-core
- * {@code PackageExecuteStatusEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code PackageExecuteStatusEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台「应用包导入/导出」操作的执行状态展示.
  *

@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * 平台级权限定义清单 — 蒸馏自 ace-platform-core
- * {@code AcePermissionDefinitions} ({@code com.c2f.ace.core.common.permission}).
+ * {@code AcePermissionDefinitions} .
  *
  * <p>集中定义 z-lc 平台级 / 应用级权限编码 (BUTTON / API / MENU 类型), 业务方可:
  * <ul>

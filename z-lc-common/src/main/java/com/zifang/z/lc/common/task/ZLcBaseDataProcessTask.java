@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.task;
 
 /**
  * 基础数据处理任务 DTO — 蒸馏自 ace-platform-core
- * {@code BaseDataProcessTask} ({@code com.c2f.ace.core.middleware.task}).
+ * {@code BaseDataProcessTask} .
  *
  * <p>用于低代码平台"数据导入/导出"模块 — 任务的最小公共父类.
  * 业务方具体的导入/导出任务应继承本类.

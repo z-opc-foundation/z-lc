@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 数据源保存 / 校验 DTO.
  *
- * <p>蒸馏自 ace-platform-core {@code DatasourceSaveDTO}
- * （{@code com.c2f.ace.core.service.app.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-core {@code DatasourceSaveDTO}，字段语义完全对齐.
  *
  * <p>用途：「数据库管理」模块的入参 — 用户新建 / 测试连接 / 刷新元数据时使用.
  *

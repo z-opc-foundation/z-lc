@@ -3,8 +3,7 @@ package com.zifang.z.lc.sdk.reflect;
 import java.util.Map;
 
 /**
- * QL 表达式求值工具 — 蒸馏自 ace-platform-engine {@code QlExpressionUtil}
- * （{@code com.c2f.ace.engine}），但避免 alibaba QL / spring-expression 依赖，
+ * QL 表达式求值工具 — 蒸馏自 ace-platform-engine {@code QlExpressionUtil}，但避免 alibaba QL / spring-expression 依赖，
  * 实现一个极简子集，仅支持业务路由最常用的操作符.
  *
  * <p>设计哲学：

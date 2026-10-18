@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 通用布尔枚举 — 蒸馏自 ace-platform-core
- * {@code BooleanEnum} ({@code com.c2f.ace.core.model}).
+ * {@code BooleanEnum} .
  *
  * <p>提供 Integer 类型的 YES/NO 布尔枚举, 用于模型字段的启用/禁用等场景.
  * 蒸馏时移除了 ace 对 Lombok @Getter/@AllArgsConstructor 的依赖,

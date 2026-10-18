@@ -9,7 +9,7 @@ import java.util.Objects;
 
 /**
  * SQL 工具 — 蒸馏自 ace-platform-core
- * {@code SqlUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code SqlUtil} .
  *
  * <p>提供低代码平台常用的 SQL 辅助方法:
  * INSERT 语句生成、驼峰 ↔ 下划线转换等.

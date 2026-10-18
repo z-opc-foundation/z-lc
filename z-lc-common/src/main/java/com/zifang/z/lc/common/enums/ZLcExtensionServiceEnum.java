@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 扩展服务枚举 — 蒸馏自 ace-platform-core
- * {@code ExtensionServiceEnum} ({@code com.c2f.ace.core.common}).
+ * {@code ExtensionServiceEnum} .
  *
  * <p>定义低代码平台各业务环节的扩展点标识和描述.
  *

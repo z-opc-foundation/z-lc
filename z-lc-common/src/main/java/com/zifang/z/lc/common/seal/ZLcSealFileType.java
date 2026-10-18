@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.seal;
 
 /**
  * 签章入参文件类型枚举 — 蒸馏自 ace-platform-core
- * {@code SealFileType} ({@code com.c2f.ace.core.seal.support}).
+ * {@code SealFileType} .
  *
  * <p>用于低代码平台"电子签章"模块标识入参文件的类型.
  * SDK 不自动识别, 由 URL 后缀或文件头判断.

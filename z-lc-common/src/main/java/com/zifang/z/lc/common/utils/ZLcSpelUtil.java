@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * SpEL 表达式工具 — 蒸馏自 ace-platform-core
- * {@code SpelUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code SpelUtil} .
  *
  * <p>提供 Spring Expression Language (SpEL) 表达式的便捷解析和计算.
  * 适用于低代码平台的流程条件判断、表单字段联动规则、数据校验规则等场景.

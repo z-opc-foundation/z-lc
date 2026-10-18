@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 客户端类型枚举 — 蒸馏自 ace-platform-core
- * {@code ClientTypeEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code ClientTypeEnum} .
  *
  * <p>用于低代码平台访问来源识别 / 多端适配:
  *

@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 三元素元组 — 蒸馏自 ace-platform-core
- * {@code Triplet} ({@code com.c2f.ace.core.common.tuples}).
+ * {@code Triplet} .
  *
  * <p>轻量级不可变值容器, 适用于需要传递三个关联值的场景
  * (如: 模型编码 + 字段名 + 字段类型).

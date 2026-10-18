@@ -5,7 +5,7 @@ import com.zifang.z.lc.sdk.spi.task.AbstractTaskService;
 
 /**
  * RPC 任务服务适配器 — 服务端 Provider — 蒸馏自 ace-platform-engine
- * {@code RpcTaskServiceAdapterProvider} （{@code com.c2f.ace.engine.adapter}），
+ * {@code RpcTaskServiceAdapterProvider} ，
  * 行为完全对齐.
  *
  * <p>本类是 TaskServiceAdapter 的「服务端实现」 — 调用方 RPC 调用时实际进入这里，

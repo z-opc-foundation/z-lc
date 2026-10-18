@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * CA 签章配置 DO — 蒸馏自 ace-platform-core
- * {@code SealConfigDO} ({@code com.c2f.ace.core.seal.domain.entity}).
+ * {@code SealConfigDO} .
  *
  * <p>用于低代码平台"电子签章"模块 — 签章配置持久化对象 (ca_seal_config 表).
  *

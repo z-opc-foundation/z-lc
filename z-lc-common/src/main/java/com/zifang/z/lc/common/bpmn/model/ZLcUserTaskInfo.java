@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * 用户任务节点 DTO — 蒸馏自 ace-platform-core
- * {@code UserTaskInfo} ({@code com.c2f.ace.core.bpmn.model}).
+ * {@code UserTaskInfo} .
  *
  * <p>用于低代码平台"流程引擎"建模 — 描述 BPMN 中一个 UserTask 节点的基本属性.
  * 业务方可通过此 DTO 把建模结果存入数据库或跨节点传递.

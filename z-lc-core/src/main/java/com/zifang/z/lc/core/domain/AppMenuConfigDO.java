@@ -2,7 +2,7 @@ package com.zifang.z.lc.core.domain;
 
 /**
  * 应用菜单配置 DO — 蒸馏自 ace-platform-core
- * {@code AppMenuConfigDO} （{@code com.c2f.ace.core.domain.entity}}，
+ * {@code AppMenuConfigDO} ，
  * 字段语义完全对齐.
  *
  * <p>对应 {@code app_menu_config} 表 — 应用下页面级菜单的权限/层级配置,

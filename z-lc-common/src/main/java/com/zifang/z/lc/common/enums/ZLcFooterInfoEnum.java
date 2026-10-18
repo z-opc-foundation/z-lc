@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 页脚信息枚举 — 蒸馏自 ace-platform-core
- * {@code FooterInfoEnum} ({@code com.c2f.ace.core.common}).
+ * {@code FooterInfoEnum} .
  *
  * <p>定义打印/导出页脚信息类型: 组织名称、账套名称、登录用户.
  *

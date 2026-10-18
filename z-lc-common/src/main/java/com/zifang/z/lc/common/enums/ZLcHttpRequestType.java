@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * HTTP 请求类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.HttpRequestType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.HttpRequestType} ，
  * 字段语义完全对齐.
  *
  * <p>用于标注页面/表单触发的 HTTP 请求方法类型 —

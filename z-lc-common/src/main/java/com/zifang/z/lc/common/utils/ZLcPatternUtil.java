@@ -4,7 +4,7 @@ import java.util.regex.Pattern;
 
 /**
  * 正则匹配工具 — 蒸馏自 ace-platform-core
- * {@code PatternUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code PatternUtil} .
  *
  * <p>提供低代码平台常用的字符串格式校验:
  * 纯数字判断、模型字段名格式校验等.

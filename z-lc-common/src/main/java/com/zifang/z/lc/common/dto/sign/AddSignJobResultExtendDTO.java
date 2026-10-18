@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.dto.sign;
 import java.io.Serializable;
 
 /**
- * 添加签名任务结果 DTO — 蒸馏自 ace-platform-engine {@code AddSignJobResultExtendDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 添加签名任务结果 DTO — 蒸馏自 ace-platform-engine {@code AddSignJobResultExtendDTO}，字段语义完全对齐.
  *
  * <p>用途：CA 服务发起签名任务后返回的「扫码参数」或「小程序链接参数」.
  *

@@ -4,7 +4,7 @@ import java.net.InetAddress;
 
 /**
  * 编号生成器 — 蒸馏自 ace-platform-core
- * {@code OrderNoGenerateUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code OrderNoGenerateUtil} .
  *
  * <p>基于雪花算法 (Snowflake) 生成唯一编号, 支持 Base62 编码后拼接前缀.
  * 适用于流程工单号、审批单号、数据记录编号等场景.

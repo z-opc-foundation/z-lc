@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 数据资产安全分类枚举 — 蒸馏自 ace-platform-core
- * {@code SecurityCategoryEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code SecurityCategoryEnum} .
  *
  * <p>用于低代码平台"数据资产"安全分级分类 (C1~C6):
  *

@@ -7,8 +7,8 @@ import java.util.Map;
 /**
  * z-lc 统一 JSON 序列化/反序列化工具.
  *
- * <p>蒸馏自 ace-platform-engine-lc/Json.java（com.c2f.ace.engine.lc.Json），
- * 包路径由 {@code com.c2f.ace.engine.lc} 适配为 {@code com.zifang.z.lc.design}。
+ * <p>蒸馏自 ace-platform-engine-lc/Json.java，
+ * 包路径由 适配为 {@code com.zifang.z.lc.design}。
  * 底层换成 z-util 的 {@link JsonUtil}，不再自持 {@code ObjectMapper}：
  * <ul>
  *   <li>忽略多余字段（兼容 DB 返回带额外列）</li>

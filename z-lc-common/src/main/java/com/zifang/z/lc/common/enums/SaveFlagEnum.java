@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.enums;
 /**
  * 保存结果标记枚举.
  *
- * <p>蒸馏自 ace-platform-engine {@code SaveFlagEnum}
- * （{@code com.c2f.ace.engine.common}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code SaveFlagEnum}，字段语义完全对齐.
  *
  * <p>用途：表单保存 / 提交接口返回时携带标记 — 客户端可按 code 做后续路由：
  * <ul>

@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * 流程数据 DTO — 蒸馏自 ace-platform-core
- * {@code WorkflowData} ({@code com.c2f.ace.core.bpmn.callable.dto}).
+ * {@code WorkflowData} .
  *
  * <p>用于低代码平台"流程引擎"对外传递 — 流程实例 + 当前任务的统一载体.
  * 通常作为 MQ 消息 / WebSocket 推送的载荷部分.

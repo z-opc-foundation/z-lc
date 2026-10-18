@@ -5,7 +5,7 @@ import java.io.Serializable;
 
 /**
  * 主键基类 — 蒸馏自 ace-platform-core
- * {@code PrimaryKeyEntity} ({@code com.c2f.ace.core.common}).
+ * {@code PrimaryKeyEntity} .
  *
  * <p>提供带主键 id 的基础实体, 所有需要主键的业务实体可继承此类.
  * 蒸馏时移除了 ace 对 Lombok @Data / Swagger @ApiModelProperty 的依赖,

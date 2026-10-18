@@ -17,8 +17,7 @@ import java.util.Map;
 /**
  * 低代码模型服务抽象基类 — 业务方继承本类并指定泛型，z-lc 引擎即可在运行时接管该 POJO 的 CRUD.
  *
- * <p>蒸馏自 ace-platform-engine {@code AbstractDataModelService}
- * （{@code com.c2f.ace.engine.define}），对齐 z-lc 的 RuntimeCrudExecutor 链路：
+ * <p>蒸馏自 ace-platform-engine {@code AbstractDataModelService}，对齐 z-lc 的 RuntimeCrudExecutor 链路：
  * <ul>
  *   <li>通过本地 {@code RuntimeCrudExecutor}（而非远端 Dubbo RPC）调引擎</li>
  *   <li>不依赖任何私库 starter（走 z-opc 自己的依赖图）</li>

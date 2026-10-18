@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 标签授权对象类型枚举 — 蒸馏自 ace-platform-core
- * {@code LabelAuthObjectTypeEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code LabelAuthObjectTypeEnum} .
  *
  * <p>用于低代码平台"数据资产 / 标签"模块中标识授权对象种类:
  *

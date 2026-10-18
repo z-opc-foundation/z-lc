@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 模型权限枚举 — 蒸馏自 ace-platform-core
- * {@code ModelAuthEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code ModelAuthEnum} .
  *
  * <p>用于低代码平台"数据资产"模块中标识模型权限岗位:
  *

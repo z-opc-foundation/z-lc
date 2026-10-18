@@ -4,7 +4,7 @@ import com.zifang.z.lc.sdk.abstracts.AbstractDataModelService;
 
 /**
  * RPC 模型服务适配器 — 服务端 Provider — 蒸馏自 ace-platform-engine
- * {@code RpcDataModelServiceAdapterProvider} （{@code com.c2f.ace.engine.adapter}），
+ * {@code RpcDataModelServiceAdapterProvider} ，
  * 行为完全对齐.
  *
  * <p>本类是 {@link ServiceAdapter} 的「服务端代理」 — 把本地

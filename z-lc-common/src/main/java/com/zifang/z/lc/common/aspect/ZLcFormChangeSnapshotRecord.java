@@ -7,7 +7,7 @@ import java.lang.annotation.Target;
 
 /**
  * 表单变更快照记录字段 — 蒸馏自 ace-platform-core
- * {@code FormChangeSnapshotRecord} ({@code com.c2f.ace.core.common.aspect}).
+ * {@code FormChangeSnapshotRecord} .
  *
  * <p>标记在表单"新增/修改/删除"方法上, 由
  * {@code ZLcFormChangeSnapshotRecordAspect} 切面拦截,

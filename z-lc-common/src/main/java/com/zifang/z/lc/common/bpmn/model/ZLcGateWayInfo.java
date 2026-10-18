@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * BPMN 网关节点 DTO — 蒸馏自 ace-platform-core
- * {@code GateWayInfo} ({@code com.c2f.ace.core.bpmn.model}).
+ * {@code GateWayInfo} .
  *
  * <p>用于低代码平台"流程引擎"建模 — 描述 BPMN 中一个 Gateway 网关节点
  * (排他网关 / 并行网关 / 包容网关 / 事件网关 等).

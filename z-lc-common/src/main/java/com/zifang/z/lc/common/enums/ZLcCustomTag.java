@@ -1,7 +1,7 @@
 package com.zifang.z.lc.common.enums;
 
 /**
- * 自定义标签枚举 — 蒸馏自 ace-platform-core {@code CustomTag} ({@code com.c2f.ace.core.common}}.
+ * 自定义标签枚举 — 蒸馏自 ace-platform-core {@code CustomTag} .
  *
  * <p>用于标识低代码平台中"可由业务方自定义扩展"的核心模块，便于在管理后台 / 菜单 / 权限中
  * 按标签聚合显示.

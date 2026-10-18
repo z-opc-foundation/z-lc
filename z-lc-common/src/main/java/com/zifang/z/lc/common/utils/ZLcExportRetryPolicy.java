@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.utils;
 
 /**
  * 导出分页重试与逐步回升策略 — 蒸馏自 ace-platform-core
- * {@code ExportRetryPolicy} ({@code com.c2f.ace.core.utils.excel}).
+ * {@code ExportRetryPolicy} .
  *
  * <p>纯逻辑工具类, 不依赖任何外部框架, 便于单测.
  * 定义数据导出时的分页大小调整、重试次数、挂起判断等策略常量与方法.

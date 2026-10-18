@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 备份游标枚举 — 蒸馏自 ace-platform-core
- * {@code BackupCursorEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code BackupCursorEnum} .
  *
  * <p>用于标识低代码平台"版本快照 / 历史回溯"场景下某条记录是否为当前激活版本:
  *

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.permission;
 
 /**
  * 权限定义常量 — 蒸馏自 ace-platform-core
- * {@code PermissionDefinitions} ({@code com.c2f.ace.core.common.permission}).
+ * {@code PermissionDefinitions} .
  *
  * <p>用于集中声明 z-lc 平台级权限编码常量:
  * <ul>

@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * 物理列 ↔ 数据模型字段类型 ↔ Java 属性类型映射枚举 — 蒸馏自 ace-platform-core
- * {@code PhysicalColTransferDataModelEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code PhysicalColTransferDataModelEnum} ，字段语义完全对齐.
  *
  * <p>三段映射关系，用于数据源扫描 → DataModel 字段生成 → Java POJO 生成的链路:
  * <ul>

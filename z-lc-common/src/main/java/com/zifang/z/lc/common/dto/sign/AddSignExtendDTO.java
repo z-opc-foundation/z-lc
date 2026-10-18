@@ -4,8 +4,7 @@ import java.io.Serializable;
 import java.util.Map;
 
 /**
- * 添加签名 DTO — 蒸馏自 ace-platform-engine {@code AddSignExtendDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 添加签名 DTO — 蒸馏自 ace-platform-engine {@code AddSignExtendDTO}，字段语义完全对齐.
  *
  * <p>用途：业务方发起签名任务的入参 — 携带流程实例 id、任务 id、签名数据、
  * 员工 id、客户端类型、业务主键等.

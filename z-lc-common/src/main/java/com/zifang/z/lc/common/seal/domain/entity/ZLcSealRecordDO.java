@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 
 /**
  * CA 签章记录 DO — 蒸馏自 ace-platform-core
- * {@code SealRecordDO} ({@code com.c2f.ace.core.seal.domain.entity}).
+ * {@code SealRecordDO} .
  *
  * <p>用于低代码平台"电子签章"模块 — 签章记录持久化对象 (ca_seal_record 表).
  *

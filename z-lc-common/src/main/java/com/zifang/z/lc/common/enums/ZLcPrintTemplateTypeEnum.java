@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 打印模板类型枚举 — 蒸馏自 ace-platform-core
- * {@code PrintTemplateTypeEnum} ({@code com.c2f.ace.core.common}).
+ * {@code PrintTemplateTypeEnum} .
  *
  * <p>定义打印模板类型: 表单、表格.
  *

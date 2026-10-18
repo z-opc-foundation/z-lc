@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 应用默认菜单树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code AppDefaultMenuTreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code AppDefaultMenuTreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：「应用初始化菜单」树节点 — 应用首次部署时自动生成的菜单结构.
  *

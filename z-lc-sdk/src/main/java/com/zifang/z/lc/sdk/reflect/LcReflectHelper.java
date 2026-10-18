@@ -8,8 +8,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 
 /**
- * 反射工具 — 蒸馏自 ace-platform-engine {@code Helper}
- * （{@code com.c2f.ace.engine}），但移除 {@code sun.reflect.*} 私有 API 依赖，
+ * 反射工具 — 蒸馏自 ace-platform-engine {@code Helper}，但移除 {@code sun.reflect.*} 私有 API 依赖，
  * 改用标准 JDK {@link ParameterizedType}（避免 Java 9+ module 系统报错）.
  *
  * <p>核心能力：

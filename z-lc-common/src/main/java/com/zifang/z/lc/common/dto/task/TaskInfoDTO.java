@@ -4,8 +4,7 @@ import java.io.Serializable;
 import java.util.List;
 
 /**
- * 任务信息 DTO — 蒸馏自 ace-platform-engine {@code TaskInfoDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 任务信息 DTO — 蒸馏自 ace-platform-engine {@code TaskInfoDTO}，字段语义完全对齐.
  *
  * <p>用途：描述流程 / 表单任务的关键属性 — 任务 id、接收人列表、流程定义 key、
  * 当前任务名称、流程实例 id、上一步操作类型. {@link MessageDTO} 嵌套引用.

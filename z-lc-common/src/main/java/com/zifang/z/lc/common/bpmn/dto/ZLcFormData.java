@@ -4,7 +4,7 @@ import java.util.Map;
 
 /**
  * 表单数据 DTO — 蒸馏自 ace-platform-core
- * {@code FormData} ({@code com.c2f.ace.core.bpmn.callable.dto}).
+ * {@code FormData} .
  *
  * <p>用于低代码平台"流程引擎"对外传递 — 表单运行时数据载体.
  * 通常作为 MQ 消息 / WebSocket 推送的载荷部分.

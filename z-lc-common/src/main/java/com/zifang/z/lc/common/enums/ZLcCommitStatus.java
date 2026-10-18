@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 提交状态枚举 — 蒸馏自 ace-platform-core
- * {@code CommitStatusEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code CommitStatusEnum} .
  *
  * <p>用于低代码平台"业务对象 / 版本"的提交状态:
  *

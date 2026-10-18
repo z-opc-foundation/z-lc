@@ -4,7 +4,7 @@ import com.zifang.z.lc.sdk.spi.sign.AbstractAssignService;
 
 /**
  * RPC 签名服务适配器抽象基类 — 蒸馏自 ace-platform-engine
- * {@code AbstractRpcAssignServiceAdapter} （{@code com.c2f.ace.engine.adapter}），
+ * {@code AbstractRpcAssignServiceAdapter} ，
  * 行为完全对齐.
  *
  * <p>包含：

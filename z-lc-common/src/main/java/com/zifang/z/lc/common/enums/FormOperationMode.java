@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.enums;
 /**
  * 表单操作模式枚举.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModeEnum}
- * （{@code com.c2f.ace.engine.common}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ModeEnum}，字段语义完全对齐.
  *
  * <p>与 {@link com.zifang.z.lc.sdk.define.ModelDataSaveMode} 的区别：
  * <ul>

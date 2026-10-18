@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * BPMN 连线 DTO — 蒸馏自 ace-platform-core
- * {@code SequenceFlowInfo} ({@code com.c2f.ace.core.bpmn.model}).
+ * {@code SequenceFlowInfo} .
  *
  * <p>用于低代码平台"流程引擎"建模 — 描述 BPMN 中一个 SequenceFlow 连线的基本属性.
  *

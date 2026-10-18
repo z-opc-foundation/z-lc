@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * StarRocks Stream Load 工具 — 蒸馏自 ace-platform-core
- * {@code StarRocksStreamLoad} ({@code com.c2f.ace.core.utils}).
+ * {@code StarRocksStreamLoad} .
  *
  * <p>通过 HTTP PUT 将 JSON 数据流式加载到 StarRocks 数据库.
  * 蒸馏时移除了 ace 对 hutool DateUtil / Apache HttpClient / Nacos Base64 的依赖,

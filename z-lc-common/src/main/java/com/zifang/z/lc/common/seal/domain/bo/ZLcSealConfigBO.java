@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 当前机构 CA 签章配置 BO — 蒸馏自 ace-platform-core
- * {@code SealConfigBO} ({@code com.c2f.ace.core.seal.domain.bo}).
+ * {@code SealConfigBO} .
  *
  * <p>用于低代码平台"电子签章"模块 — 按机构维度存储 CA 签章服务地址、
  * 授权用户列表、骑缝章规则配置、普通章规则配置.

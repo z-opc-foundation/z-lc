@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 
 /**
  * 签章记录业务对象 BO — 蒸馏自 ace-platform-core
- * {@code SealRecordBO} ({@code com.c2f.ace.core.seal.domain.bo}).
+ * {@code SealRecordBO} .
  *
  * <p>用于低代码平台"电子签章"模块中签章记录的运行时传输.
  * 比 {@code SealRecordDO} 字段略简 (业务字段, 不含审计字段).

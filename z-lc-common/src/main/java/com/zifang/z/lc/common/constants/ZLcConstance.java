@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * z-lc 核心常量 — 蒸馏自 ace-platform-core
- * {@code Constance} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code Constance} ，字段语义完全对齐.
  *
  * <p>本类集中定义 z-lc 引擎用到的产品标识、缓存前缀、流程事件名、字典 code 等核心常量，
  * 避免散落在各处的字符串字面量难以维护.

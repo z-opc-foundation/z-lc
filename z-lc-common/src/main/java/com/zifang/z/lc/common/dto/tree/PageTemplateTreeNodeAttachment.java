@@ -7,8 +7,7 @@ import java.util.List;
 /**
  * 页面模板树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code PageTemplateTreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code PageTemplateTreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：「页面设计器」树节点的附加信息 — pageType / pageCode / pageName /
  * 关联流程模板 key / 自定义标签 / icon / 创建时间.

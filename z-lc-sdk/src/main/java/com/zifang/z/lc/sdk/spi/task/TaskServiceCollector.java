@@ -10,8 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 任务服务收集器 — 蒸馏自 ace-platform-engine {@code TaskServiceCollector}
- * （{@code com.c2f.ace.engine}），行为对齐.
+ * 任务服务收集器 — 蒸馏自 ace-platform-engine {@code TaskServiceCollector}，行为对齐.
  *
  * <p>启动时扫描所有 {@link AbstractTaskService} 子类，按 {@link TaskServiceInfo#identityCode()}
  * 索引到 Map. 业务方可通过 {@link #findByIdentityCode} 取具体服务.

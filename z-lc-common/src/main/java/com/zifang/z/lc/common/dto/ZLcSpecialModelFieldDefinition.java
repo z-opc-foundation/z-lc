@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 特殊模型字段定义 — 蒸馏自 ace-platform-core
- * {@code Enums.SpecialModelFieldDefinition} ({@code com.c2f.ace.core.common}).
+ * {@code Enums.SpecialModelFieldDefinition} .
  *
  * <p>用于低代码平台"模型"管理 — 标识系统级特殊字段 (id / create_time / update_time /
  * create_by / update_by / is_deleted / tenant_id / app_code)，业务方不可修改其字段名 /

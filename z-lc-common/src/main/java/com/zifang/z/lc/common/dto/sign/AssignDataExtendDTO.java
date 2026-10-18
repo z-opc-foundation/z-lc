@@ -4,8 +4,7 @@ import java.io.Serializable;
 import java.util.Map;
 
 /**
- * 签名数据查询 DTO — 蒸馏自 ace-platform-engine {@code AssignDataExtendDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 签名数据查询 DTO — 蒸馏自 ace-platform-engine {@code AssignDataExtendDTO}，字段语义完全对齐.
  *
  * <p>用途：CA 服务查询「待签名数据」时携带的入参 — 流程实例 id + 任务 id + 表单数据.
  *

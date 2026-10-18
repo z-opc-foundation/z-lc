@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * 数据导入扩展参数 — 蒸馏自 ace-platform-core
- * {@code ImportExtend} ({@code com.c2f.ace.core.middleware.task}).
+ * {@code ImportExtend} .
  *
  * <p>封装数据导入任务的扩展参数: Token、数据周期 ID、成功/失败行数等.
  * 蒸馏时移除了 ace 对 Lombok @Data / Swagger @ApiModelProperty 的依赖,

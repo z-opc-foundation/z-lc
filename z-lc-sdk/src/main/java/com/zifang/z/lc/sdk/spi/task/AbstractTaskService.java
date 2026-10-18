@@ -5,8 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /**
- * 任务服务 SPI 抽象基类 — 蒸馏自 ace-platform-engine {@code AbstractTaskService}
- * （{@code com.c2f.ace.engine.define}），行为完全对齐.
+ * 任务服务 SPI 抽象基类 — 蒸馏自 ace-platform-engine {@code AbstractTaskService}，行为完全对齐.
  *
  * <p>业务方继承本类并标 {@link TaskServiceInfo} 注解 — 默认实现仅打日志，
  * 业务方按需覆盖 3 个 send*Msg 方法.

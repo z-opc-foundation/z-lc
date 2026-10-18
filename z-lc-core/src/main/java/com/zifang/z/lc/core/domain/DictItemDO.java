@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.domain;
 
 /**
- * 字典 DO — 蒸馏自 ace-platform-core {@code DictItemDO}
- * （{@code com.c2f.ace.core.domain.entity}），去除 lombok + MyBatis Plus + BaseDO 依赖.
+ * 字典 DO — 蒸馏自 ace-platform-core {@code DictItemDO}，去除 lombok + MyBatis Plus + BaseDO 依赖.
  *
  * <p>对应 {@code dict_item} 表 — 字典定义主表.
  *

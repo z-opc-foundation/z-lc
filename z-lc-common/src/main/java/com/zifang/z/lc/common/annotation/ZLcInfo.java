@@ -4,7 +4,7 @@ import java.lang.annotation.*;
 
 /**
  * 组件信息标注注解 — 蒸馏自 ace-platform-core
- * {@code Info} ({@code com.c2f.ace.core.common}).
+ * {@code Info} .
  *
  * <p>标注在类上, 声明组件的名称与描述.
  * 典型用于扩展服务、适配器等可插拔组件的元数据声明.

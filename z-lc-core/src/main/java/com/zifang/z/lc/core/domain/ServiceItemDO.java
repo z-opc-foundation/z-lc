@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.domain;
 
 /**
- * 服务项 DO — 蒸馏自 ace-platform-core {@code ServiceItemDO}
- * （{@code com.c2f.ace.core.domain.entity}），去除 lombok + MyBatis Plus + BaseDO 依赖.
+ * 服务项 DO — 蒸馏自 ace-platform-core {@code ServiceItemDO}，去除 lombok + MyBatis Plus + BaseDO 依赖.
  *
  * <p>对应 {@code service_item} 表 — 服务集成（HTTP / 开放平台）的持久化对象.
  *

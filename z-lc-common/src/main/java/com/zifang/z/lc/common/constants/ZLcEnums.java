@@ -4,7 +4,7 @@ import java.util.*;
 
 /**
  * 低代码平台常量枚举集 — 蒸馏自 ace-platform-core
- * {@code Enums} ({@code com.c2f.ace.core.common}).
+ * {@code Enums} .
  *
  * <p>包含低代码平台各子模块的常量定义:
  * 模型类型、字段类型、应用类型、构件类型、页面类型、取值策略等.

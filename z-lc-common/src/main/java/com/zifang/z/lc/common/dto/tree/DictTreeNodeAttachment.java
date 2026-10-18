@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 字典树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code DictTreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code DictTreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：「字典管理」树节点的附加信息 — dictCode / dictName / dictDesc /
  * treeNodeId / extend.

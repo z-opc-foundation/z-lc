@@ -2,7 +2,7 @@ package com.zifang.z.lc.core.domain;
 
 /**
  * 物料 DO — 蒸馏自 ace-platform-core
- * {@code MaterialDO} （{@code com.c2f.ace.core.domain.entity}}，
+ * {@code MaterialDO} ，
  * 字段语义完全对齐.
  *
  * <p>对应 {@code material} 表 — 文件/附件元数据存储（OSS 引用），

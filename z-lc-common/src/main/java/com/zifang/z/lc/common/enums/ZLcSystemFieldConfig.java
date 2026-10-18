@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 系统字段配置枚举 — 蒸馏自 ace-platform-core
- * {@code SystemFieldConfigEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code SystemFieldConfigEnum} .
  *
  * <p>用于低代码平台"模型管理" — 标识系统级特殊字段 (id / gmt_create / gmt_modify /
  * create_by / modify_by / org_id / is_deleted / model_code / app_code / period_id)

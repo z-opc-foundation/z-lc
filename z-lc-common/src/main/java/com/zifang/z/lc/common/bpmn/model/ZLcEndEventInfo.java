@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * BPMN 结束事件 DTO — 蒸馏自 ace-platform-core
- * {@code EndEventInfo} ({@code com.c2f.ace.core.bpmn.model}).
+ * {@code EndEventInfo} .
  *
  * <p>用于低代码平台"流程引擎"建模 — 描述 BPMN 中一个 EndEvent 结束事件节点.
  *

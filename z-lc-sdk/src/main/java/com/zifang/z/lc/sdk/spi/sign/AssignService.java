@@ -10,8 +10,7 @@ import com.zifang.z.lc.common.dto.sign.VerifySignExtendDTO;
 import java.util.Map;
 
 /**
- * 签名任务服务 SPI — 蒸馏自 ace-platform-engine {@code AssignService}
- * （{@code com.c2f.ace.engine.define}），字段语义完全对齐.
+ * 签名任务服务 SPI — 蒸馏自 ace-platform-engine {@code AssignService}，字段语义完全对齐.
  *
  * <p>用于 CA 电子签名任务的「发起 / 查询 / 验签 / 获取待签名数据」 —
  * 业务方继承 {@link AbstractAssignService} 实现本接口，内部委托 z-meta

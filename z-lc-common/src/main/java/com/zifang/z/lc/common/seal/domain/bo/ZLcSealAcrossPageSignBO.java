@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.seal.domain.bo;
 
 /**
  * 骑缝签章入参 BO — 蒸馏自 ace-platform-core
- * {@code SealAcrossPageSignBO} ({@code com.c2f.ace.core.seal.domain.bo}).
+ * {@code SealAcrossPageSignBO} .
  *
  * <p>用于低代码平台"电子签章"模块 — 跨页 (骑缝章) 签章接口入参.
  *

@@ -4,7 +4,7 @@ import java.lang.annotation.*;
 
 /**
  * 自动重试注解 — 蒸馏自 ace-platform-core
- * {@code Retry} ({@code com.c2f.ace.core.common.aspect}).
+ * {@code Retry} .
  *
  * <p>标注在方法上, 配合 AOP 切面实现方法失败自动重试.
  * 适用于 RPC 调用、MQ 发送、外部 HTTP 请求等不稳定操作.

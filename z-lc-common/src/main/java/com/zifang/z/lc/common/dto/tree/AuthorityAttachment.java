@@ -7,8 +7,7 @@ import java.io.Serializable;
 /**
  * 权限树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code AuthorityAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code AuthorityAttachment}，字段语义完全对齐.
  *
  * <p>用途：「权限管理」树节点 — 承载菜单 / 按钮 / 数据权限三类节点的属性.
  *

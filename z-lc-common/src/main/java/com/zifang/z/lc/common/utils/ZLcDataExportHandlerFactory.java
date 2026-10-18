@@ -4,7 +4,7 @@ import com.zifang.z.lc.common.enums.ZLcDataFileTypeEnum;
 
 /**
  * 数据导出处理器工厂 — 蒸馏自 ace-platform-core
- * {@code DataExportHandlerFactory} ({@code com.c2f.ace.core.utils.excel}).
+ * {@code DataExportHandlerFactory} .
  *
  * <p>根据文件类型创建对应的 {@link ZLcIDataExportHandler} 实现.
  * 具体的 Handler 类 (如 ExcelExportHandler) 由业务层实现并注册.

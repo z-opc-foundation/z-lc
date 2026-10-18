@@ -4,7 +4,7 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * 数据导入导出任务执行器 — 蒸馏自 ace-platform-core
- * {@code DataImportOrExportExecutor} ({@code com.c2f.ace.core.utils.excel}).
+ * {@code DataImportOrExportExecutor} .
  *
  * <p>负责从逻辑队列中取出待处理任务并异步执行.
  * 使用数据库模拟队列机制, 保证串行执行: 同一时刻只有一个任务在运行.

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 标签发布状态枚举 — 蒸馏自 ace-platform-core
- * {@code LabelReleaseStateEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code LabelReleaseStateEnum} .
  *
  * <p>用于低代码平台"数据资产 / 标签"模块中发布任务的状态:
  * 与 {@link ZLcLabelReleaseResult} 字段值一致, 但语义不同 —

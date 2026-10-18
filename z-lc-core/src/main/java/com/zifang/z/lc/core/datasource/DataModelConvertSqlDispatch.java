@@ -11,8 +11,7 @@ import java.util.Map;
 /**
  * 数据源 SQL 转换策略调度器.
  *
- * <p>蒸馏自 ace-platform-core {@code DataModelConvertSqlDispatch}
- * （{@code com.c2f.ace.core.service.data.source}），但采用 Spring 容器扫描注入 —
+ * <p>蒸馏自 ace-platform-core {@code DataModelConvertSqlDispatch}，但采用 Spring 容器扫描注入 —
  * 业务方新增方言只需：1) 实现 {@link DataModelConvertSqlStrategy} + 标 {@code @Component}；
  * 2) 在策略实现类上标 {@code @ZLcDialect("xxx")} 注解，调度器自动注册.
  *

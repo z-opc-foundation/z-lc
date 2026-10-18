@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 数据导入模式枚举 — 蒸馏自 ace-platform-core
- * {@code DataImportModeEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code DataImportModeEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台「数据导入」操作时选择导入策略：
  * <ul>

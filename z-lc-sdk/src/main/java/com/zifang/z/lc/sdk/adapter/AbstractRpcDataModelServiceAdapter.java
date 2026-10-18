@@ -10,7 +10,7 @@ import java.util.Map;
 
 /**
  * RPC 模型服务适配器抽象基类 — 蒸馏自 ace-platform-engine
- * {@code AbstractRpcDataModelServiceAdapter} （{@code com.c2f.ace.engine.adapter}），
+ * {@code AbstractRpcDataModelServiceAdapter} ，
  * 行为完全对齐.
  *
  * <p>包含：

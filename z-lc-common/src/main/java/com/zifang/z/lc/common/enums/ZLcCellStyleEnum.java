@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 单元格对齐方式枚举 — 蒸馏自 ace-platform-core
- * {@code CellStyleEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code CellStyleEnum} ，字段语义完全对齐.
  *
  * <p>用于导出 Excel 模板 / 报表时标注单元格水平对齐方式 —
  * 对应 Apache POI 的 {@code HorizontalAlignment}.

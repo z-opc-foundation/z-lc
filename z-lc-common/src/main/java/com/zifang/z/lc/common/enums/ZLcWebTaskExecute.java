@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Web 任务执行模式枚举 — 蒸馏自 ace-platform-core
- * {@code WebTaskExecuteEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code WebTaskExecuteEnum} .
  *
  * <p>用于低代码平台"Web 任务"执行时选择执行模式:
  *

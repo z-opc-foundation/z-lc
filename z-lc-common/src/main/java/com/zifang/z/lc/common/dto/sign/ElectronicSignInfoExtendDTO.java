@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.dto.sign;
 import java.io.Serializable;
 
 /**
- * 电子签名信息 DTO — 蒸馏自 ace-platform-engine {@code ElectronicSignInfoExtendDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 电子签名信息 DTO — 蒸馏自 ace-platform-engine {@code ElectronicSignInfoExtendDTO}，字段语义完全对齐.
  *
  * <p>用途：CA 电子签名服务返回的签名结果 — 签名数据 id、时间戳、签名结果、
  * 证书、印章图片、印章密码等. jobStatus 字段描述签名任务状态：

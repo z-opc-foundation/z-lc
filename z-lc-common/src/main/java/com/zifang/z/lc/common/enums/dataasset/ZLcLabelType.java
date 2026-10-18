@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 标签类型枚举 — 蒸馏自 ace-platform-core
- * {@code LabelTypeEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code LabelTypeEnum} .
  *
  * <p>用于低代码平台"数据资产 / 标签"模块中区分标签来源:
  *

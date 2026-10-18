@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * Excel 下拉选择解析配置 — 蒸馏自 ace-platform-core
- * {@code ExcelSelectedResolve} ({@code com.c2f.ace.core.utils.excel}).
+ * {@code ExcelSelectedResolve} .
  *
  * <p>定义 Excel 下拉框的数据源、起始行、结束行等配置.
  * 蒸馏时移除了 ace 对 Lombok @Data / @Slf4j 的依赖, 改为手写 getter/setter.

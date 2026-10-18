@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
 /**
  * 低代码模型服务的元信息.
  *
- * <p>蒸馏自 ace-platform-engine {@code DataModelServiceInfo}（{@code com.c2f.ace.engine.define}）。
+ * <p>蒸馏自 ace-platform-engine {@code DataModelServiceInfo}。
  *
  * <p>业务方在 {@code AbstractDataModelService} 子类上标记本注解，
  * z-lc 引擎扫描时读取 QL 表达式，决定该服务适配哪些 (appCode, modelCode) 请求 —

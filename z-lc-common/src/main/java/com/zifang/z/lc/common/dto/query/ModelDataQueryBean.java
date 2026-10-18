@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 模型数据查询 bean — 单字段条件.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModelDataQueryBean}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ModelDataQueryBean}，字段语义完全对齐.
  *
  * <p>相比 {@link ModelDataQueryCondition.FieldCondition} 的递归树结构，
  * 本 bean 是更简单的「单字段 + 单规则 + 单值」表示 — 用于 {@link ModelDataQueryDTO}

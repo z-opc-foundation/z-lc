@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.dto.task;
 import java.io.Serializable;
 
 /**
- * 消息 DTO — 蒸馏自 ace-platform-engine {@code MessageDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 消息 DTO — 蒸馏自 ace-platform-engine {@code MessageDTO}，字段语义完全对齐.
  *
  * <p>用途：任务消息通知 / 流程触发时携带的上下文 — taskInfo + actionType +
  * appCode + modelCode + pageCode + pkId + businessKey + initiator.

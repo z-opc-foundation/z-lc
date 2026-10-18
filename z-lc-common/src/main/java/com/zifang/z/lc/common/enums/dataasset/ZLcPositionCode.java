@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 岗位编码枚举 — 蒸馏自 ace-platform-core
- * {@code PositionCodeEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code PositionCodeEnum} .
  *
  * <p>用于低代码平台"数据资产 / 标签"模块中标识各种岗位编码:
  *

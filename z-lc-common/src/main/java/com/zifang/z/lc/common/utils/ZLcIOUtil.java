@@ -9,7 +9,7 @@ import java.util.Objects;
 
 /**
  * IO 工具 — 蒸馏自 ace-platform-core
- * {@code IOUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code IOUtil} .
  *
  * <p>提供文件读写、资源加载、目录删除等常用 IO 操作.
  * 蒸馏时移除了 ace 对 hutool / commons-compress 的依赖, 改为纯 JDK 实现.

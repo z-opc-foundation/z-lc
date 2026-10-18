@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 标签状态枚举 — 蒸馏自 ace-platform-core
- * {@code LabelStatusEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code LabelStatusEnum} .
  *
  * <p>用于低代码平台"数据资产 / 标签"模块中标签的启用状态:
  *

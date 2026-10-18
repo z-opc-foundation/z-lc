@@ -4,8 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 引擎调用上下文 ThreadLocal — 蒸馏自 ace-platform-engine {@code EngineInvokerContext}
- * （{@code com.c2f.ace.engine.filter}），去除 fastjson + dubbo + slf4j 依赖，
+ * 引擎调用上下文 ThreadLocal — 蒸馏自 ace-platform-engine {@code EngineInvokerContext}，去除 fastjson + dubbo + slf4j 依赖，
  * 改为 z-lc 轻量 ThreadLocal 实现.
  *
  * <p>设计哲学：

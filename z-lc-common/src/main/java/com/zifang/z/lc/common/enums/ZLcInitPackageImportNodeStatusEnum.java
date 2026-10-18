@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 初始化包导入节点处理状态枚举 — 蒸馏自 ace-platform-core
- * {@code InitPackageImportNodeStatusEnum} ({@code com.c2f.ace.core.common}}.
+ * {@code InitPackageImportNodeStatusEnum} .
  *
  * <p>用于低代码平台「初始化包导入」单节点异步处理状态：
  * <ul>

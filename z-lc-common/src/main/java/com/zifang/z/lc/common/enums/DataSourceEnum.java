@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.enums;
 /**
  * 数据源方言枚举.
  *
- * <p>蒸馏自 ace-platform-core {@code DataSourceEnum}
- * （{@code com.c2f.ace.core.enums}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-core {@code DataSourceEnum}，字段语义完全对齐.
  *
  * <p>用于 {@code DataModelConvertSqlDispatch} 路由：根据数据源 type 字段
  * 决定调用哪个方言的策略实现.

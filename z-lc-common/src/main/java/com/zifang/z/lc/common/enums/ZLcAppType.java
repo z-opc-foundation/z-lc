@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 应用类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.AppType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.AppType} ，
  * 字段语义完全对齐.
  *
  * <p>用于区分低代码平台应用与外部系统的来源：

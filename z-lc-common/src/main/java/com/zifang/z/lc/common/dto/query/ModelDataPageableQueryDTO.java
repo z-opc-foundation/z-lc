@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 模型数据分页查询 DTO.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModelDataPageableQueryDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ModelDataPageableQueryDTO}，字段语义完全对齐.
  *
  * <p>相比 {@link ModelDataQueryDTO} 增加了：
  * <ul>

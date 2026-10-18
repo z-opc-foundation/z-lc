@@ -6,7 +6,7 @@ import java.util.*;
 
 /**
  * JSON 序列化/反序列化工具 — 蒸馏自 ace-platform-core
- * {@code GsonUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code GsonUtil} .
  *
  * <p>虽然 ace 原类名为 GsonUtil, 实际内部已全部使用自研 JsonUtil.
  * 蒸馏时移除了 ace 对 hutool StrUtil / LoggerUtil / Spring StringUtils 的依赖,

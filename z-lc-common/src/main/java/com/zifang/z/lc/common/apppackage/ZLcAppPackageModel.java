@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.apppackage;
 
 /**
  * 应用包模型 DTO — 蒸馏自 ace-platform-core
- * {@code AppPackageModel} ({@code com.c2f.ace.core.extenssion.model.define}).
+ * {@code AppPackageModel} .
  *
  * <p>用于低代码平台"应用包"管理 — 描述一个可独立打包/导出的应用单元.
  * 业务方对应用包做"导入/导出/版本管理"操作时以此 DTO 作为基础载体.

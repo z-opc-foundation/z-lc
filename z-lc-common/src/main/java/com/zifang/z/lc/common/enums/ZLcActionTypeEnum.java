@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 数据操作类型枚举 — 蒸馏自 ace-platform-core
- * {@code ActionTypeEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code ActionTypeEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台标注模型数据的变更类型 — 审计 / 数据变更记录 / 同步下游等场景.
  *

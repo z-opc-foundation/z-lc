@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 首页导出类型枚举 — 蒸馏自 ace-platform-core
- * {@code HomeExportTypeEnum} ({@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code HomeExportTypeEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台「首页」数据导出操作时区分导出对象：
  * <ul>

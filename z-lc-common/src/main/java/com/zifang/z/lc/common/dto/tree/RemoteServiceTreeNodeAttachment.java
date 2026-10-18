@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 远程服务树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code RemoteServiceTreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code RemoteServiceTreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：「外部服务集成」树节点 — 把第三方 HTTP/OpenPlatform 接口包装成模型可调用服务.
  *

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.dto;
 
 /**
  * 空值哨兵对象 — 蒸馏自 ace-platform-core
- * {@code NullNode} ({@code com.c2f.ace.core.utils}).
+ * {@code NullNode} .
  *
  * <p>用于 Spring SpEL (Expression Language) 上下文中, 区分"键不存在"和"键存在但值为null".
  * 当 MapAccessor 读取 Map 中不存在的 key 时, 返回 {@link ZLcNullNode} 而非 null,

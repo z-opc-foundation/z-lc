@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 链接类型枚举 — 蒸馏自 ace-platform-core
- * {@code LinkTypeEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code LinkTypeEnum} .
  *
  * <p>用于低代码平台"二维码 / 链接"分享场景:
  *

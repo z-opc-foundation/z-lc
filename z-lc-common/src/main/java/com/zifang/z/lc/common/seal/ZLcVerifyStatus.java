@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.seal;
 
 /**
  * 验章状态枚举 — 蒸馏自 ace-platform-core
- * {@code SealRecordEnums.VerifyStatus} ({@code com.c2f.ace.core.seal.support}).
+ * {@code SealRecordEnums.VerifyStatus} .
  *
  * <p>用于低代码平台"电子签章验章"模块标识验章状态:
  *

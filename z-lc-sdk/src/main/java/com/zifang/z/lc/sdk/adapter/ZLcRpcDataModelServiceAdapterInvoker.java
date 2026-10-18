@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * RPC 模型服务适配器 — 客户端 Invoker 抽象 — 蒸馏自 ace-platform-engine
- * {@code RpcDataModelServiceAdapterInvoker} （{@code com.c2f.ace.engine.adapter}），
+ * {@code RpcDataModelServiceAdapterInvoker} ，
  * 行为完全对齐.
  *
  * <p>本类是 {@link ServiceAdapter} 的「客户端代理」 — 本地业务代码调用 CRUD 方法时，

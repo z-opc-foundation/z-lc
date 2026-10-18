@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.task;
 
 /**
  * 数据导出扩展字段 DTO — 蒸馏自 ace-platform-core
- * {@code ExportExtend} ({@code com.c2f.ace.core.middleware.task}).
+ * {@code ExportExtend} .
  *
  * <p>用于低代码平台"数据导出"任务 — 导出过程中的运行时扩展字段:
  *

@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 模型字段类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.ModelFieldType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.ModelFieldType} ，
  * 字段语义完全对齐.
  *
  * <p>用于标注模型字段的数据类型 — 与 DataFieldDO.fieldType 对应.

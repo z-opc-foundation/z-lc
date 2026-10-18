@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 数据资产生效方式枚举 — 蒸馏自 ace-platform-core
- * {@code EffectTypeStatusEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code EffectTypeStatusEnum} .
  *
  * <p>用于标识低代码平台"数据资产"安全策略的生效方式:
  *

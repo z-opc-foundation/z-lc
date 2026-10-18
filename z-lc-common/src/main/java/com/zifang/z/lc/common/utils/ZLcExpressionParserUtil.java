@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 
 /**
  * 表达式解析工具 — 蒸馏自 ace-platform-core
- * {@code ExpressionParserUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ExpressionParserUtil} .
  *
  * <p>提供 BPMN 条件表达式的提取和计算能力.
  * 蒸馏时移除了 ace 对 MVEL 的依赖, 改为 Spring SpEL 实现.

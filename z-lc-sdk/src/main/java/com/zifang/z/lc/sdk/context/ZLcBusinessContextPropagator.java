@@ -4,10 +4,10 @@ import java.util.Map;
 
 /**
  * 业务上下文推送到下游的策略 SPI — 蒸馏自 ace-platform-engine
- * {@code BusinessContextAspect} （{@code com.c2f.ace.engine.common.aspect}}，
+ * {@code BusinessContextAspect} ，
  * 行为完全对齐.
  *
- * <p>ace 原实现是 {@code @Aspect} 拦截所有 {@code com.c2f..*.save(...)} 调用，
+ * <p>ace 原实现是 {@code @Aspect} 拦截所有 {@code (...)} 调用，
  * 在调用后把 {@link ZLcEngineInvokerContext#getBusinessContext()} 写入 RPC attachment.
  *
  * <p>z-lc 蒸馏为通用接口，业务方按使用的 RPC 框架（z-rpc / Dubbo / gRPC / HTTP）实现：

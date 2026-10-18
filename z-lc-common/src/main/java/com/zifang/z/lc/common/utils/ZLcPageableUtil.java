@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * 内存分页与分页参数校正工具 — 蒸馏自 ace-platform-core
- * {@code PageableUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code PageableUtil} .
  *
  * <p>提供内存列表的分页切片能力, 以及分页请求参数的默认值修正.
  * 蒸馏时移除了 ace 对 PageRequest (ace-boot meta) 的依赖,

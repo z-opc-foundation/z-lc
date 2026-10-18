@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 树节点附件 — 携带节点的业务属性.
  *
- * <p>蒸馏自 ace-platform-client {@code TreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code TreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：模型树节点的附件信息（appCode + modelCode + pageType + pageCode + 流程模板 key + tag）—
  * 前端「模型管理」树点击节点时根据这些字段跳转到对应的设计器 / 运行时页面.

@@ -3,8 +3,7 @@ package com.zifang.z.lc.sdk.spi.task.adapter;
 import com.zifang.z.lc.common.dto.task.MessageDTO;
 
 /**
- * 任务服务 RPC 适配器接口 — 蒸馏自 ace-platform-engine {@code TaskServiceAdapter}
- * （{@code com.c2f.ace.engine.adapter}），字段语义完全对齐.
+ * 任务服务 RPC 适配器接口 — 蒸馏自 ace-platform-engine {@code TaskServiceAdapter}，字段语义完全对齐.
  *
  * <p>本接口是 {@link com.zifang.z.lc.sdk.spi.task.TaskService} 的 RPC 风格对应物 —
  * 用于「业务方实现 TaskService SPI → 引擎暴露 RPC 接口给跨进程调用方」场景.

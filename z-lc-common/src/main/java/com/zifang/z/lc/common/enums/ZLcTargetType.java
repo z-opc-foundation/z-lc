@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 命名转换目标类型枚举 — 蒸馏自 ace-platform-core
- * {@code TargetTypeEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code TargetTypeEnum} .
  *
  * <p>用于低代码平台"模型生成代码"时的命名风格选择:
  *

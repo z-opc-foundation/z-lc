@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 流程任务成员类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.IdentityLinkType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.IdentityLinkType} ，
  * 字段语义完全对齐.
  *
  * <p>对应 Camunda/Flowable 的 IdentityLink 类型常量，用于：

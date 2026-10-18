@@ -4,7 +4,7 @@ import com.zifang.z.lc.common.exception.ZLcPermissionLimitException;
 
 /**
  * 错误校验工具 — 蒸馏自 ace-platform-core
- * {@code ErrorUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ErrorUtil} .
  *
  * <p>提供便捷的业务校验方法: 当条件为 true 时抛出异常.
  * 蒸馏时移除了 ace 对 BusinessException / AceStatusCode 的依赖,

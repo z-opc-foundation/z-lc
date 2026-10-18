@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Web 任务类型枚举 — 蒸馏自 ace-platform-core
- * {@code WebTaskTypeEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code WebTaskTypeEnum} .
  *
  * <p>用于标识低代码平台"Web 任务"的种类:
  *

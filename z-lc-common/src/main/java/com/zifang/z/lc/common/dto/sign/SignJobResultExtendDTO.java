@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.dto.sign;
 import java.io.Serializable;
 
 /**
- * 签名任务结果 DTO — 蒸馏自 ace-platform-engine {@code SignJobResultExtendDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * 签名任务结果 DTO — 蒸馏自 ace-platform-engine {@code SignJobResultExtendDTO}，字段语义完全对齐.
  *
  * <p>用途：{@code AssignService.addSignJob} 的返回类型 — 区分自动签名 vs 人工签名：
  * <ul>

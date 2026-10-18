@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Web 构建记录类型枚举 — 蒸馏自 ace-platform-core
- * {@code WebBuildRecordTypeEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code WebBuildRecordTypeEnum} .
  *
  * <p>用于标识低代码平台"Web 应用构建"记录的类型:
  *

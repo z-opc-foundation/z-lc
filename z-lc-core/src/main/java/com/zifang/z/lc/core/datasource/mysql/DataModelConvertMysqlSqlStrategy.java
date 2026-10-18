@@ -23,8 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * MySQL 方言策略实现.
  *
- * <p>蒸馏自 ace-platform-core {@code DataModelConvertMysqlSqlStrategy}
- * （{@code com.c2f.ace.core.service.data.source.mysql}），精简到 z-lc 必需的功能：
+ * <p>蒸馏自 ace-platform-core {@code DataModelConvertMysqlSqlStrategy}，精简到 z-lc 必需的功能：
  * <ul>
  *   <li>{@link #tryConnect} — 测试连接</li>
  *   <li>{@link #fetchDataSource} — 取/建连接池（带缓存）</li>

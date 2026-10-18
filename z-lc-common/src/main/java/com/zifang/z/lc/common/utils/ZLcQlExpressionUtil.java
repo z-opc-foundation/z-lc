@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * 表达式计算工具 — 蒸馏自 ace-platform-core
- * {@code QlExpressionUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code QlExpressionUtil} .
  *
  * <p>执行基于表达式的规则计算.
  * 蒸馏时移除了 ace 对 QLExpress / Lombok @Slf4j / commons-lang3 的依赖,

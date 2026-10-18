@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 流程实例状态枚举 — 蒸馏自 ace-platform-core
- * {@code ProcessInstanceStatusEnum} ({@code com.c2f.ace.core.common}).
+ * {@code ProcessInstanceStatusEnum} .
  *
  * <p>定义流程实例的运行状态: 已结束、运行中、暂停、未知.
  *

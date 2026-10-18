@@ -5,8 +5,7 @@ import com.zifang.util.core.meta.StatusCode;
 /**
  * z-lc 引擎状态码.
  *
- * <p>蒸馏自 ace-platform-engine {@code AceEngineStatusCode}
- * （{@code com.c2f.ace.engine}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code AceEngineStatusCode}，字段语义完全对齐.
  *
  * <p>用于 {@code z-lc-core} 各 Service / Controller 抛出业务异常时携带状态码 —
  * 客户端可按 code 做国际化文案提示 / 错误分流.

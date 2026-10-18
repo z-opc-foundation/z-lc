@@ -3,8 +3,7 @@ package com.zifang.z.lc.sdk.spi.task;
 import com.zifang.z.lc.common.dto.task.MessageDTO;
 
 /**
- * 任务消息发送服务 SPI — 蒸馏自 ace-platform-engine {@code TaskService}
- * （{@code com.c2f.ace.engine.define}），字段语义完全对齐.
+ * 任务消息发送服务 SPI — 蒸馏自 ace-platform-engine {@code TaskService}，字段语义完全对齐.
  *
  * <p>用于「待办 / 已办 / 撤销」三类任务消息的发送.
  * 业务方继承 {@link AbstractTaskService} 实现本接口 — 内部委托 z-task 模块

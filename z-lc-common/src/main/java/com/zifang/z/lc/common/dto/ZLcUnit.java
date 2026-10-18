@@ -5,7 +5,7 @@ import java.util.Objects;
 
 /**
  * 单元素元组 — 蒸馏自 ace-platform-core
- * {@code Unit} ({@code com.c2f.ace.core.common.tuples}).
+ * {@code Unit} .
  *
  * <p>轻量级不可变值容器, 无需定义专用 POJO 即可传递单个关联值.
  * 继承 {@link Serializable} 以支持跨进程序列化 (RPC / MQ).

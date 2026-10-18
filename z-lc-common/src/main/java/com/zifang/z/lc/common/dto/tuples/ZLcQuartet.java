@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * 四元素元组 — 蒸馏自 ace-platform-core
- * {@code Quartet} ({@code com.c2f.ace.core.common.tuples}).
+ * {@code Quartet} .
  *
  * <p>蒸馏时移除了 ace 对 Lombok @Data 的依赖, 改为手写 getter/setter.
  *

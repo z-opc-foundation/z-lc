@@ -4,7 +4,7 @@ import java.time.LocalDateTime;
 
 /**
  * 工作流数据模型 DTO — 蒸馏自 ace-platform-core
- * {@code WorkFlowDataModel} ({@code com.c2f.ace.core.extenssion.model.define}).
+ * {@code WorkFlowDataModel} .
  *
  * <p>用于低代码平台"流程引擎"对外消息 (MQ / WebSocket / 待办中心 等) 的统一载体.
  * 描述一个工作流实例 / 当前任务的关键信息, 用于跨系统传递.

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 数据资产授权时长枚举 — 蒸馏自 ace-platform-core
- * {@code AuthTimeEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code AuthTimeEnum} .
  *
  * <p>用于低代码平台"数据资产"模块中字段授权的有效时长:
  *

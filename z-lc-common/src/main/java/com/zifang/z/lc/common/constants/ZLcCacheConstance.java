@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.constants;
 
 /**
  * 缓存常量 — 蒸馏自 ace-platform-core
- * {@code CacheConstance} ({@code com.c2f.ace.core.common}).
+ * {@code CacheConstance} .
  *
  * <p>定义缓存键前缀等通用缓存常量.
  *

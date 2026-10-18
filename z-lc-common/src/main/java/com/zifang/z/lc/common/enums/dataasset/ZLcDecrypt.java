@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 数据资产是否启用解密枚举 — 蒸馏自 ace-platform-core
- * {@code DecryptEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code DecryptEnum} .
  *
  * <p>用于标识低代码平台"数据资产"中字段是否启用解密处理:
  *

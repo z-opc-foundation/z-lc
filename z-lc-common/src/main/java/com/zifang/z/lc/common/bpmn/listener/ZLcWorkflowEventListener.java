@@ -5,7 +5,7 @@ import java.util.Map;
 /**
  * 流程事件监听器接口 — 蒸馏自 ace-platform-core
  * {@code DataModelSyncMqConsumer / FormChangeSnapshotMqConsumer / OperationRecordMqConsumer}
- * ({@code com.c2f.ace.core.middleware.mq}).
+ * .
  *
  * <p>ace 平台通过 MQ 消费者监听流程事件 (启动/完成/任务创建/任务完成等).
  * z-lc 将此抽象为统一的事件监听器接口, 业务方实现此接口即可在流程生命周期

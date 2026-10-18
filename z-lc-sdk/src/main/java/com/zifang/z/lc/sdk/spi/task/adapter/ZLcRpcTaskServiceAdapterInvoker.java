@@ -5,7 +5,7 @@ import com.zifang.z.lc.sdk.spi.task.TaskServiceInfo;
 
 /**
  * RPC 任务服务适配器 — 客户端 Invoker 抽象 — 蒸馏自 ace-platform-engine
- * {@code RpcTaskServiceAdapterInvoker} （{@code com.c2f.ace.engine.adapter}）.
+ * {@code RpcTaskServiceAdapterInvoker} .
  *
  * <p>本类是 TaskServiceAdapter 的「客户端代理」 — 本地业务代码调用 send*Msg 方法时，
  * 实际进入这里，由子类（具体 RPC 协议）执行跨进程调用.

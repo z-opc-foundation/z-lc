@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 模型类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.ModelTypeFlag} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.ModelTypeFlag} ，
  * 字段语义完全对齐.
  *
  * <p>用于区分低代码平台中模型的存储形态：

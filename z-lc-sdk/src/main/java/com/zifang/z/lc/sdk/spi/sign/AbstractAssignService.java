@@ -13,8 +13,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 签名任务服务 SPI 抽象基类 — 蒸馏自 ace-platform-engine {@code AbstractAssignService}
- * （{@code com.c2f.ace.engine.define}），行为完全对齐.
+ * 签名任务服务 SPI 抽象基类 — 蒸馏自 ace-platform-engine {@code AbstractAssignService}，行为完全对齐.
  *
  * <p>业务方继承本类并标 {@link AssignServiceInfo} 注解 — 默认实现仅打日志 + 返回 null/空 map，
  * 业务方按需覆盖 4 个签名方法.

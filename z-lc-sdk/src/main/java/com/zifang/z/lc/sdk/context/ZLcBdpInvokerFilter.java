@@ -2,7 +2,7 @@ package com.zifang.z.lc.sdk.context;
 
 /**
  * 引擎调用过滤器 SPI — 蒸馏自 ace-platform-engine {@code BdpInvokerFilter}
- * （{@code com.c2f.ace.engine.filter}）.
+ * .
  *
  * <p>在跨进程 RPC 调用前后双向拦截 ThreadLocal 上下文（UUID / appCode / modelCode / pageCode /
  * saveFlag / currentTaskDefKey / isMobile / tags / businessContext）— 让服务端能读到

@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * SpEL Map 属性访问器扩展 — 蒸馏自 ace-platform-core
- * {@code ExtensionMapAccessor} ({@code com.c2f.ace.core.utils}).
+ * {@code ExtensionMapAccessor} .
  *
  * <p>继承 Spring {@link MapAccessor}, 重写 {@code canRead} / {@code read}
  * 方法, 当 Map 中不包含指定 key 时返回 {@link ZLcNullNode} 哨兵对象,

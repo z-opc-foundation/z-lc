@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums.dataasset;
 
 /**
  * 数据资产动作权限枚举 — 蒸馏自 ace-platform-core
- * {@code ActionAuthEnum} ({@code com.c2f.ace.core.enums.dataAsset}).
+ * {@code ActionAuthEnum} .
  *
  * <p>用于标识低代码平台"数据资产"模块对字段可执行的动作权限:
  *

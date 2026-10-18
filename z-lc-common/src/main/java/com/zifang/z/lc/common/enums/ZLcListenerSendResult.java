@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 监听器发送结果枚举 — 蒸馏自 ace-platform-core
- * {@code ListenerSendResultEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code ListenerSendResultEnum} .
  *
  * <p>用于低代码平台"流程监听器"或"业务监听器"的发送结果判定:
  *

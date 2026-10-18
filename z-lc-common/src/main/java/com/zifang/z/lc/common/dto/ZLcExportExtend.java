@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * 数据导出扩展参数 — 蒸馏自 ace-platform-core
- * {@code ExportExtend} ({@code com.c2f.ace.core.middleware.task}).
+ * {@code ExportExtend} .
  *
  * <p>封装数据导出任务的扩展参数: Token、部门 ID、批量大小、分页状态等.
  * 支持挂起续导、动态分页大小调整等高级导出场景.

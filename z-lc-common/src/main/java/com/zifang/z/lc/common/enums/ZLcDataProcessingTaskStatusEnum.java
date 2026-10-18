@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * 数据处理任务状态枚举 — 蒸馏自 ace-platform-core
- * {@code DataProcessingTaskStatusEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code DataProcessingTaskStatusEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台「数据导入/导出」任务的生命周期状态展示.
  *

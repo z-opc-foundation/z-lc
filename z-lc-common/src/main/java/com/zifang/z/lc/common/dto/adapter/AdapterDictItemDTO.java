@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 字典项调整 DTO — 把多个字典项从一个位置调整到另一个位置.
  *
- * <p>蒸馏自 ace-platform-core {@code AdapterDictItemDTO}
- * （{@code com.c2f.ace.core.service.app.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-core {@code AdapterDictItemDTO}，字段语义完全对齐.
  *
  * <p>用途：字典管理中「拖拽移动」功能 — 一次请求把多个字典项
  * 从原父节点移动到目标父节点.

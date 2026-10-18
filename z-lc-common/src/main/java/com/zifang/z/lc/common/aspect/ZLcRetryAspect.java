@@ -12,7 +12,7 @@ import java.lang.reflect.Method;
 
 /**
  * 重试切面 — 蒸馏自 ace-platform-core
- * {@code RetryAspect} ({@code com.c2f.ace.core.common.aspect}).
+ * {@code RetryAspect} .
  *
  * <p>拦截标有 {@link ZLcRetry} 注解的方法, 在方法抛出异常时按注解配置重试.
  * 重试执行委托给 {@link ZLcTaskExecutionUtil}.

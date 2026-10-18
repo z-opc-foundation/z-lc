@@ -4,8 +4,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 /**
- * 实体基础字段 — 蒸馏自 ace-platform-core {@code BaseDO}
- * （{@code com.c2f.boot.starter.datasource.base}），去除 lombok 与 MyBatis Plus 依赖，
+ * 实体基础字段 — 蒸馏自 ace-platform-core {@code BaseDO}，去除 lombok 与 MyBatis Plus 依赖，
  * 改为 z-lc 手写 getter/setter 风格的纯 DTO.
  *
  * <p>每个持久化对象（DataModel / DataField / DictItem / DictItemValue /

@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 
 /**
  * 权限校验注解 — 蒸馏自 ace-platform-core
- * {@code PermissionValidator} ({@code com.c2f.ace.core.common.permission}).
+ * {@code PermissionValidator} .
  *
  * <p>标记在 Controller 方法上, 由权限校验切面拦截,
  * 在方法被调用前验证当前登录用户是否具备 {@link #permissions()} 中的权限.

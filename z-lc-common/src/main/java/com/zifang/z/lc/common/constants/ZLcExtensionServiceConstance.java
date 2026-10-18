@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.constants;
 
 /**
  * 扩展服务常量 — 蒸馏自 ace-platform-core
- * {@code ExtensionServiceConstance} ({@code com.c2f.ace.core.common}).
+ * {@code ExtensionServiceConstance} .
  *
  * <p>定义低代码平台各业务环节的扩展点标识,
  * 用于 SPI 注册中心按扩展点名称路由到对应的业务实现.

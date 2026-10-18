@@ -13,8 +13,7 @@ import java.util.stream.Collectors;
 /**
  * 通用树容器 — 提供从扁平节点列表构造树、扁平化、剔除深度、挑选子树等能力.
  *
- * <p>蒸馏自 ace-platform-client {@code Tree}
- * （{@code com.c2f.ace.client.dto.tree}），行为完全对齐：
+ * <p>蒸馏自 ace-platform-client {@code Tree}，行为完全对齐：
  * <ul>
  *   <li>{@link #build()} 把 {@code originNode} 按 {@code parentTreeNodeId} 拼装成树，
  *       并把根节点列表存入 {@link #roots}</li>

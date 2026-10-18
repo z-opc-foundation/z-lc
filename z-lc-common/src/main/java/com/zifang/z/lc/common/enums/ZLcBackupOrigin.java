@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 备份来源枚举 — 蒸馏自 ace-platform-core
- * {@code BackupOriginEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code BackupOriginEnum} .
  *
  * <p>用于标识低代码平台"版本快照"的产生来源:
  *

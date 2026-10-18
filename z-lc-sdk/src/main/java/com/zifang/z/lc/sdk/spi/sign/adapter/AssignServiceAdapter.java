@@ -10,8 +10,7 @@ import com.zifang.z.lc.common.dto.sign.VerifySignExtendDTO;
 import java.util.Map;
 
 /**
- * 签名任务 RPC 适配器接口 — 蒸馏自 ace-platform-engine {@code AssignServiceAdapter}
- * （{@code com.c2f.ace.engine.adapter}），字段语义完全对齐.
+ * 签名任务 RPC 适配器接口 — 蒸馏自 ace-platform-engine {@code AssignServiceAdapter}，字段语义完全对齐.
  *
  * <p>本接口是 {@link com.zifang.z.lc.sdk.spi.sign.AssignService} 的 RPC 风格对应物 —
  * 用于「业务方实现 AssignService SPI → 引擎暴露 RPC 接口给跨进程调用方」场景.

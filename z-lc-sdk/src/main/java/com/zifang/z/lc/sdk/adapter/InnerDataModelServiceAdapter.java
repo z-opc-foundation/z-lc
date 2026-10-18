@@ -19,8 +19,7 @@ import java.util.Map;
  * 内部 ServiceAdapter — 把 {@link AbstractDataModelService}{@code <T>}
  * 包装成 {@link ServiceAdapter}（Map 形式）.
  *
- * <p>蒸馏自 ace-platform-engine {@code InnerDataModelServiceAdapter}
- * （{@code com.c2f.ace.engine.adapter}），行为完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code InnerDataModelServiceAdapter}，行为完全对齐.
  *
  * <p>关键转换：
  * <ul>

@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.context;
 
 /**
  * ThreadLocal 上下文持有器 — 蒸馏自 ace-platform-core
- * {@code FormInstanceThreadLocalHolder} ({@code com.c2f.ace.core.bpmn.config}).
+ * {@code FormInstanceThreadLocalHolder} .
  *
  * <p>通用 {@link ThreadLocal} 持有器, 用于在"流程 / 请求"线程内传递上下文对象,
  * 避免层层方法签名传递. 业务方在使用后必须调用 {@link #clean()} 以避免

@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * BPMN 开始事件 DTO — 蒸馏自 ace-platform-core
- * {@code StartEventInfo} ({@code com.c2f.ace.core.bpmn.model}).
+ * {@code StartEventInfo} .
  *
  * <p>用于低代码平台"流程引擎"建模 — 描述 BPMN 中一个 StartEvent 开始事件节点.
  *

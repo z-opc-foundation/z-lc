@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 作业状态枚举 — 蒸馏自 ace-platform-core
- * {@code JobStateEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code JobStateEnum} .
  *
  * <p>用于低代码平台调度作业 (定时任务 / 异步任务) 的运行状态:
  *

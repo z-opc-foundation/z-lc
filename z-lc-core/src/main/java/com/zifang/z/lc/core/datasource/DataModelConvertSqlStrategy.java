@@ -11,8 +11,7 @@ import java.util.List;
 /**
  * 数据源 SQL 转换策略接口 — 不同方言的元数据扫描 + DDL/DML 生成.
  *
- * <p>蒸馏自 ace-platform-core {@code DataModelConvertSqlStrategy}
- * （{@code com.c2f.ace.core.service.data.source}），精简为 z-lc 所需核心 5 个方法.
+ * <p>蒸馏自 ace-platform-core {@code DataModelConvertSqlStrategy}，精简为 z-lc 所需核心 5 个方法.
  *
  * <p>设计哲学：
  * <ul>

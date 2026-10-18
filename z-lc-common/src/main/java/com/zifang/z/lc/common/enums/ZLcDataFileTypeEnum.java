@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 数据文件类型枚举 — 蒸馏自 ace-platform-core
- * {@code DataFileTypeEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code DataFileTypeEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台「数据导出」时选择输出文件格式 —
  * EXCEL / CSV / PDF / 打印模板.

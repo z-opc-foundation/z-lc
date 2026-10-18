@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.task;
 
 /**
  * 数据导入/导出处理 SPI 接口 — 蒸馏自 ace-platform-core
- * {@code IDataImportOrExportProcess} ({@code com.c2f.ace.core.middleware.task}).
+ * {@code IDataImportOrExportProcess} .
  *
  * <p>用于低代码平台"数据导入/导出"模块 — 业务方实现本接口, 提供"任务执行 /
  * 拉取下一个任务 / 异常中断"等核心能力. z-lc-engine 通过本接口调度任务的执行.

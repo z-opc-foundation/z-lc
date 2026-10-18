@@ -6,7 +6,7 @@ import java.io.Serializable;
  * 树节点访问器（Visitor 模式）.
  *
  * <p>蒸馏自 ace-platform-client {@code TreeNodeAcceptor}
- * （{@code com.c2f.ace.client.dto.tree}）。
+ * 。
  *
  * <p>用于递归遍历 {@link Tree} 时回调处理每个节点 — 比手写 for 循环更优雅，
  * 尤其在节点上要做「查找 / 统计 / 转换」等通用操作时.

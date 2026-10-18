@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 数据导出类型枚举 — 蒸馏自 ace-platform-core
- * {@code DataExportTypeEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code DataExportTypeEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台「数据导出」操作时选择导出范围：
  * <ul>

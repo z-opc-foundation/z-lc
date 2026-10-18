@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 数据源表元数据 DTO — 描述「一个数据源下的一张表及其所有列」.
  *
- * <p>蒸馏自 ace-platform-core {@code DataSourceTableDTO}
- * （{@code com.c2f.ace.core.service.app.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-core {@code DataSourceTableDTO}，字段语义完全对齐.
  *
  * <p>用途：「数据库管理 → 模型」链路中，元数据扫描阶段产出的中间对象；
  * 之后通过 {@code DataModelManagerService} 把每个表转换为 z-lc 的 {@code EntityDefDTO}.

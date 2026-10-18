@@ -1,8 +1,7 @@
 package com.zifang.z.lc.core.domain;
 
 /**
- * 数据字段 DO — 蒸馏自 ace-platform-core {@code DataFieldDO}
- * （{@code com.c2f.ace.core.domain.entity}），去除 lombok + MyBatis Plus 依赖.
+ * 数据字段 DO — 蒸馏自 ace-platform-core {@code DataFieldDO}，去除 lombok + MyBatis Plus 依赖.
  *
  * <p>对应 {@code data_field} 表的内存表示 — 包含父类 8 个通用字段 + 字段特有的 12 个属性.
  *

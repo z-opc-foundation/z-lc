@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 
 /**
  * 数据订正记录注解 — 蒸馏自 ace-platform-core
- * {@code DataCorrectRecord} ({@code com.c2f.ace.core.common.aspect}).
+ * {@code DataCorrectRecord} .
  *
  * <p>标记在 Controller/Service 方法或参数上, 由
  * {@code ZLcDataCorrectRecordAspect} 切面拦截,

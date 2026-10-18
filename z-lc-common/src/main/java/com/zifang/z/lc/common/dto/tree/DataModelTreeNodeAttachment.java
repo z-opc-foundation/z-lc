@@ -6,8 +6,7 @@ import java.util.Map;
 /**
  * 数据模型树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code DataModelTreeNodeAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code DataModelTreeNodeAttachment}，字段语义完全对齐.
  *
  * <p>用途：「模型管理」树节点的附加信息 — appCode / modelId / modelCode /
  * physicalFlag（虚拟 vs 物理）/ extend（自定义 Map 扩展）.

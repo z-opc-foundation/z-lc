@@ -2,7 +2,7 @@ package com.zifang.z.lc.core.domain;
 
 /**
  * 数据源表 DO — 蒸馏自 ace-platform-core
- * {@code DataSourceTableDO} （{@code com.c2f.ace.core.domain.entity}}，
+ * {@code DataSourceTableDO} ，
  * 字段语义完全对齐.
  *
  * <p>对应 {@code datasource_table} 表 — 数据源扫描结果的表清单，

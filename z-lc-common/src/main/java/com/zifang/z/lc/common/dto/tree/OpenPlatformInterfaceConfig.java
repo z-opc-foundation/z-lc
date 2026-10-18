@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 开放平台接口配置.
  *
- * <p>蒸馏自 ace-platform-client {@code OpenPlatformInterfaceConfig}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code OpenPlatformInterfaceConfig}，字段语义完全对齐.
  *
  * <p>用途：「开放平台 API」调用配置 — 类似 HttpInterfaceConfig 但额外包含 appId /
  * apiId 标识开放平台侧资源.

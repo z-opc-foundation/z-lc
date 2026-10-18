@@ -7,7 +7,7 @@ import java.util.function.Function;
 
 /**
  * 分页结果转换工具 — 蒸馏自 ace-platform-core
- * {@code PageUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code PageUtil} .
  *
  * <p>提供 MyBatis Plus Page → 通用分页 Map 的转换,
  * 以及跨类型的分页记录拷贝.

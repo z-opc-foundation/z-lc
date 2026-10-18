@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 请求类型枚举 — 蒸馏自 ace-platform-core
- * {@code RequestTypeEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code RequestTypeEnum} ，字段语义完全对齐.
  *
  * <p>用于业务方标注跨进程调用的来源类型 — 业务方做监控 / 限流 / 安全审计时按 type 区分.
  *

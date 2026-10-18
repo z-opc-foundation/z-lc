@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 /**
  * 任务执行参数 — 蒸馏自 ace-platform-core
- * {@code JobParam} ({@code com.c2f.ace.core.middleware.param}).
+ * {@code JobParam} .
  *
  * <p>封装异步任务执行时所需的上下文参数: 任务编码、组织 ID、员工 ID、账号等.
  * 蒸馏时移除了 ace 对 Lombok @Data 的依赖, 改为手写 getter/setter.

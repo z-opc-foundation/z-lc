@@ -7,8 +7,7 @@ import java.util.List;
 /**
  * 通用树节点.
  *
- * <p>蒸馏自 ace-platform-client {@code TreeNode}
- * （{@code com.c2f.ace.client.dto.tree}），但去除 lombok 依赖改为手写 getter/setter，
+ * <p>蒸馏自 ace-platform-client {@code TreeNode}，但去除 lombok 依赖改为手写 getter/setter，
  * 字段语义完全对齐.
  *
  * <p>设计要点：

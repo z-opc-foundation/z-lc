@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.constance;
 
 /**
  * z-lc 平台常量 — 蒸馏自 ace-platform-core
- * {@code Constance} ({@code com.c2f.ace.core.common}).
+ * {@code Constance} .
  *
  * <p>包含低代码平台流程引擎、MQ 消息、系统上下文、模型标识等核心常量.
  * 业务方引用本类获取平台级常量，无需硬编码字符串.

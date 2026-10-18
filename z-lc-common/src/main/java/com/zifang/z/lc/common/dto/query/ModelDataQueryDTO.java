@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * 模型数据查询 DTO（不分页）.
  *
- * <p>蒸馏自 ace-platform-engine {@code ModelDataQueryDTO}
- * （{@code com.c2f.ace.engine.dto}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-engine {@code ModelDataQueryDTO}，字段语义完全对齐.
  *
  * <p>用途：业务方调用 {@code DataModelService.queryList(ModelDataQueryDTO, boolean)} 时入参 —
  * 与 {@code RuntimeQueryDTO} 互补：后者走 z-lc 原生 RuntimeCrudExecutor，

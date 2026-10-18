@@ -3,8 +3,7 @@ package com.zifang.z.lc.common.constance;
 /**
  * 权限类型常量.
  *
- * <p>蒸馏自 ace-platform-client {@code PermissionType}
- * （{@code com.c2f.ace.client.constance}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code PermissionType}，字段语义完全对齐.
  *
  * <p>用于 {@code AuthorityAttachment.permissionType} 字段 — 区分「菜单 / 按钮 / API」三种权限.
  *

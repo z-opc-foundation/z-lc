@@ -9,7 +9,7 @@ import java.util.*;
 
 /**
  * HTTP 请求工具 — 蒸馏自 ace-platform-core
- * {@code RequestUtils} ({@code com.c2f.ace.core.utils}).
+ * {@code RequestUtils} .
  *
  * <p>提供请求参数签名和 JSON 生成能力. 适用于低代码平台与外部系统对接时的
  * HMAC-SHA256 签名验证场景.

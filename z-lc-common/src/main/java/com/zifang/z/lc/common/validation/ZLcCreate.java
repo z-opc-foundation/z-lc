@@ -6,7 +6,7 @@ import javax.validation.groups.Default;
  * Bean Validation 分组 — Create 场景（新增操作）.
  *
  * <p>蒸馏自 ace-platform-core
- * {@code Create} （{@code com.c2f.ace.core.common.valid}}，行为完全对齐.
+ * {@code Create} ，行为完全对齐.
  *
  * <p>用于 JSR-303 校验分组 — 同一 DTO 在 Create / Update 场景下校验规则不同时，
  * 给字段标注 {@code @NotNull(groups = {ZLcCreate.class})} 等，

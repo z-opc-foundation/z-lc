@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * RSA 加解密工具 — 蒸馏自 ace-platform-core
- * {@code RSAUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code RSAUtil} .
  *
  * <p>提供 RSA 密钥对生成、公钥加密、私钥解密能力.
  * 蒸馏时移除了 ace 对 BouncyCastle / BusinessException 的依赖,

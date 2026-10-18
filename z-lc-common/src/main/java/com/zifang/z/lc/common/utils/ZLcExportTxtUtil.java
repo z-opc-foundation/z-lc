@@ -9,7 +9,7 @@ import java.nio.file.Path;
 
 /**
  * 文本导出工具 — 蒸馏自 ace-platform-core
- * {@code ExportTxtUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ExportTxtUtil} .
  *
  * <p>提供文本文件导出、目录创建、文件名生成等操作.
  * 蒸馏时移除了 ace 对 hutool / MyBatis Plus 的依赖, 改为纯 JDK 实现.

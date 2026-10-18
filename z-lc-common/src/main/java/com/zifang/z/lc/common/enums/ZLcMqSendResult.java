@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * MQ 发送结果枚举 — 蒸馏自 ace-platform-core
- * {@code MqSendResultEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code MqSendResultEnum} .
  *
  * <p>用于低代码平台异步消息发送回调的结果判定:
  *

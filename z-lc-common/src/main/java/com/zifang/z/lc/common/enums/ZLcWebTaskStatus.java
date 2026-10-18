@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * Web 任务状态枚举 — 蒸馏自 ace-platform-core
- * {@code WebTaskStatusEnum} ({@code com.c2f.ace.core.enums}).
+ * {@code WebTaskStatusEnum} .
  *
  * <p>用于标识低代码平台"Web 任务"在生命周期中的状态:
  *

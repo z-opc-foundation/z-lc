@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.utils;
 
 /**
  * 审批意见解析工具 — 蒸馏自 ace-platform-core
- * {@code ApprovalOpinionUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code ApprovalOpinionUtil} .
  *
  * <p>从流程审批操作描述中提取审批意见文本.
  * 支持多种操作类型的解析: 普通审批、改派、委派、加签等.

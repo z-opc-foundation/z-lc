@@ -5,8 +5,7 @@ import java.io.Serializable;
 /**
  * 部门-人员树节点附件.
  *
- * <p>蒸馏自 ace-platform-client {@code DeptStaffAttachment}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐（ace 原生类也仅含默认实现）.
+ * <p>蒸馏自 ace-platform-client {@code DeptStaffAttachment}，字段语义完全对齐（ace 原生类也仅含默认实现）.
  *
  * <p>用途：「部门人员」树节点 — 部门 / 人员两种节点复用同一附件类，运行时按
  * {@code instanceOf} 区分.

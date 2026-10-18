@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 导入模板表头定义 — 蒸馏自 ace-platform-core
- * {@code ImportTemplateExcelHeader} ({@code com.c2f.ace.core.utils.excel}).
+ * {@code ImportTemplateExcelHeader} .
  *
  * <p>定义数据导入模板的 Excel 表头列名, 用于校验上传文件的表头是否正确.
  * 蒸馏时移除了 ace 对 Lombok @Getter / Apache POI / BusinessException 的依赖,

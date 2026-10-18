@@ -5,7 +5,7 @@ import java.util.Set;
 
 /**
  * 任务执行工具 (带重试) — 蒸馏自 ace-platform-core
- * {@code TaskExecutionUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code TaskExecutionUtil} .
  *
  * <p>提供带重试机制的任务执行能力, 支持指定重试次数、间隔和忽略异常类型.
  * 蒸馏时移除了 ace 对 BdpInvokerContext / UUID 的依赖, 改为纯 JDK 实现.

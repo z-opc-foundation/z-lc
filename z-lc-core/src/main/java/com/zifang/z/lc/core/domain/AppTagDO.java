@@ -2,7 +2,7 @@ package com.zifang.z.lc.core.domain;
 
 /**
  * 应用标签 DO — 蒸馏自 ace-platform-core
- * {@code AppTagDO} （{@code com.c2f.ace.core.domain.entity}}，
+ * {@code AppTagDO} ，
  * 字段语义完全对齐.
  *
  * <p>对应 {@code app_tag} 表 — 应用级别的标签维度，

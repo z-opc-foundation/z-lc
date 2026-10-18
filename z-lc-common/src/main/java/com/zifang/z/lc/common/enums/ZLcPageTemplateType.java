@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 页面模板类型枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.PageTemplateType} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.PageTemplateType} ，
  * 字段语义完全对齐.
  *
  * <p>用于区分页面模板的不同形态，对应 PageTemplateDO.pageType 字段.

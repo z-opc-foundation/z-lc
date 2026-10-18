@@ -5,7 +5,7 @@ import java.util.List;
 
 /**
  * 模型字段默认值策略枚举 — 蒸馏自 ace-platform-core
- * {@code Enums.DefaultValueStrategy} （{@code com.c2f.ace.core.common}}，
+ * {@code Enums.DefaultValueStrategy} ，
  * 字段语义完全对齐.
  *
  * <p>每个枚举项提供：

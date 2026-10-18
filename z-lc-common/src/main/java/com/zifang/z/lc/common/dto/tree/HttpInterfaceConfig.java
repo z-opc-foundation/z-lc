@@ -6,8 +6,7 @@ import java.util.List;
 /**
  * HTTP 接口配置.
  *
- * <p>蒸馏自 ace-platform-client {@code HttpInterfaceConfig}
- * （{@code com.c2f.ace.client.dto.tree}），字段语义完全对齐.
+ * <p>蒸馏自 ace-platform-client {@code HttpInterfaceConfig}，字段语义完全对齐.
  *
  * <p>用途：「外部 HTTP 服务」调用配置 — requestUrl + requestType (GET/POST) +
  * requestBody (POST 时使用) + requestParamList (URL query 参数列表).

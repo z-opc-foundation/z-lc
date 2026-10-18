@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * 深拷贝工具 — 蒸馏自 ace-platform-core
- * {@code DeepCopyUtil} ({@code com.c2f.ace.core.utils}).
+ * {@code DeepCopyUtil} .
  *
  * <p>基于 JSON 序列化/反序列化实现深拷贝, 移除了 ace 对 fastjson 的依赖.
  * 适用于不可变对象拷贝、SPI 数据隔离等场景.

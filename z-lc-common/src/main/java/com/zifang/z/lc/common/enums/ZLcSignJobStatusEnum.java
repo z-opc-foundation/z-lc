@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.enums;
 
 /**
  * 签任务状态枚举 — 蒸馏自 ace-platform-core
- * {@code SignJobStatusEnum} （{@code com.c2f.ace.core.common}}，字段语义完全对齐.
+ * {@code SignJobStatusEnum} ，字段语义完全对齐.
  *
  * <p>用于低代码平台电子签功能 — 签任务生命周期状态展示:
  * <ul>
