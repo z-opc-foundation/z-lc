@@ -1,10 +1,10 @@
 package com.zifang.z.lc.core.ai;
 
 import com.zifang.util.json.JsonUtil;
-import com.zifang.z.llm.api.dto.UnifiedMessage;
-import com.zifang.z.llm.api.dto.UnifiedRequest;
-import com.zifang.z.llm.api.dto.UnifiedResponse;
-import com.zifang.z.llm.core.service.ChatGatewayService;
+import com.zifang.z.llm.gateway.api.dto.UnifiedMessage;
+import com.zifang.z.llm.gateway.api.dto.UnifiedRequest;
+import com.zifang.z.llm.gateway.api.dto.UnifiedResponse;
+import com.zifang.z.llm.gateway.core.service.ChatGatewayService;
 import com.zifang.z.lc.core.app.AppAdminService;
 import com.zifang.z.lc.core.event.EventService;
 import com.zifang.z.lc.mapper.executor.LcAppEntityMapper;
