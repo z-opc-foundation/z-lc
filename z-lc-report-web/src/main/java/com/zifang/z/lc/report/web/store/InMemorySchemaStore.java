@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 契约存储内存实现 (M1/M2): DatasetSchema / ViewSchema 注册表。
  * M2 已接口化为 {@link SchemaStore}; M2.5 迁移至 DB (MyBatis-Plus),
- * 存储形态为 JSON 列 (对齐 z-lc viewconfig 模式), DDL 见 _doc/002_deploy/init/001_schema.sql。
+ * 存储形态为 JSON 列 (对齐 z-lc viewconfig 模式), DDL 见 z-lc-admin/src/main/resources/db/schema-h2.sql。
  */
 @Component
 public class InMemorySchemaStore implements SchemaStore {

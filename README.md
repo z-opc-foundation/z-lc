@@ -273,6 +273,7 @@ _Maintained by the z-opc-foundation organization._
 
 ## 文档目录
 
+- [`_doc/008_troubleshooting/`](_doc/008_troubleshooting/) — 踩坑与失败要点（DB schema 契约与已知坑）
 本项目文档统一收口在 `_doc/` 下，以下逐条按 `find _doc -mindepth 1` 的**真实存在**列出：
 
 - [`_doc/001_arch/`](_doc/001_arch/) — 架构文档，**目前只有 1 份**：

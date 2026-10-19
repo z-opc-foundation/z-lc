@@ -11,7 +11,7 @@ import java.util.List;
  * - 语法面即白名单: 列引用 / 字面量 / 算术(+ - * / %) / 比较(= == != > >= < <=) /
  *   逻辑(AND OR NOT, 亦支持 &amp;&amp; ||) / IS [NOT] NULL / IN (...) / LIKE (退化为 contains)
  * - 不支持函数调用与动态标识符 → 不存在注入面; 更复杂表达式 (函数/日期运算) 由 z-util-expr
- *   接入 (M2+, 见 _doc/008_troubleshooting/失败要点与坑.md), 届时必须白名单限定可用函数
+ *   接入 (M2+, 见 _doc/008_troubleshooting/01-db-schema-contract-and-pitfalls.md), 届时必须白名单限定可用函数
  * <p>
  * 语法 (优先级从低到高): OR → AND → 相等 → 比较 → 加减 → 乘除模 → 一元(- ! NOT) → primary。
  * 关键字 AND/OR/NOT/IS/NULL/IN/LIKE/TRUE/FALSE 大小写不敏感; 列名大小写敏感。

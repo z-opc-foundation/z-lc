@@ -9,8 +9,8 @@ import java.util.List;
  * 契约存储 SPI (M2 接口化): 数据集/视图 schema 的持久化抽象。
  * <p>
  * M2 内置实现: {@link InMemorySchemaStore} (重启即失)。
- * DB 实现约定 (同伴接手, 见 _doc/008_troubleshooting/失败要点与坑.md): MyBatis-Plus + JSON 列存 schema 全文
- * (对齐 z-lc viewconfig 模式), 表结构见 _doc/002_deploy/init/001_schema.sql;
+ * DB 实现约定 (同伴接手, 见 _doc/008_troubleshooting/01-db-schema-contract-and-pitfalls.md): MyBatis-Plus + JSON 列存 schema 全文
+ * (对齐 z-lc viewconfig 模式), 表结构见 z-lc-admin/src/main/resources/db/schema-h2.sql;
  * 只需提供同名 Bean 替换 InMemorySchemaStore 的 @Component 注册即可整体切换。
  * <p>
  * 语义约定:

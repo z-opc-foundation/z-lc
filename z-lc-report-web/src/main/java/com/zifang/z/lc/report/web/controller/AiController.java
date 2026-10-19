@@ -22,7 +22,7 @@ import java.util.Map;
  * 产物经本地契约校验后自动入库, 前端直接消费 id 渲染。
  * <p>
  * 大表注意: 视图生成需要数据集列元数据, fields 契约缺失时会实际执行数据集获取列头
- * (M1 全量内存语义可接受; M2 改用字段契约/下推元数据, 见 _doc/008_troubleshooting/失败要点与坑.md)。
+ * (M1 全量内存语义可接受; M2 改用字段契约/下推元数据, 见 _doc/008_troubleshooting/01-db-schema-contract-and-pitfalls.md)。
  */
 @RestController
 @RequestMapping("/api/lc/report/ai")

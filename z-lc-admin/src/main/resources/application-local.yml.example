@@ -9,9 +9,9 @@
 
 spring:
   datasource:
-    url: jdbc:mysql://rm-bp108uqlgwn712k54ho.mysql.rds.aliyuncs.com:3306/oc?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true
-    username: zifang
-    password: REPLACE_WITH_REAL_PASSWORD
+    url: "${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/oc?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true}"
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
 
 z-lc:
   adapter:
