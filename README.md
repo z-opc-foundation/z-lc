@@ -7,7 +7,9 @@
 导入导出、视图配置、物化、撤销、流水线、流程绑定这套动作真的执行出来；`z-lc-sdk` 用 SPI 把
 表单/审批/任务/印章/流程的业务钩子留给宿主实现，`z-lc-design` 用 `@LowCodeModel` /
 `@LowCodeModelService` 注解 + 收集器把"一个 Java 类"变成"平台上可配的一个模型"。
-对外只有一层 `/api/lc/*` 的 HTTP 面（18 个 Controller），前端是独立的 `z-lc-admin-ui`（React + antd）。
+对外是一层 `/api/lc/*` 的 HTTP 面（**25 个 Controller**，分三组前缀：`z-lc-web` 的 `/api/lc/*` 主体、
+`z-lc-report-web` 的 `/api/lc/report/*`、`z-lc-design` 的 `/api/lc/design`），前端是独立的
+`z-lc-admin-ui`（React + antd）。
 
 ---
 
@@ -18,8 +20,8 @@
 | **仓库** | `z-lc`（`git@github.com:z-opc-foundation/z-lc.git`，分支 `main`） |
 | **Maven 坐标** | `io.github.yuku123:z-lc:1.0.0`（根 POM `<packaging>pom</packaging>`） |
 | **当前版本** | `1.0.0` —— 根 POM 写的是**字面 `<version>1.0.0</version>`，不是 `${revision}`**；`de33a9e`（2026-09-30）把 `com.zifang:z-opc:1.0.0-SNAPSHOT` 幻影父链与 `1.0.0-SNAPSHOT` 一起换掉的 |
-| **父项目** | `io.github.yuku123:z-boot-parent:1.0.21`（`<relativePath/>` 留空，parent 在 repo1 不在磁盘）；其父为地板 `z-boot-dependencies:1.0.20`，并 import 兄弟仓权威表 `z-boot-fleet:1.0.1` |
-| **Maven Central（ranged GET 实测）** | 已发布：`z-lc:1.0.0`（pom）与 `z-lc-common` / `z-lc-sdk` / `z-lc-core` / `z-lc-design` / `z-lc-web` 的 `1.0.0` jar 全部 `200`；`z-lc-admin:1.0.0` = `404`（`central` profile 的 `excludeArtifacts` 把它排除，胖 jar 只作本地/部署演练用） |
+| **父项目** | `io.github.yuku123:z-boot-parent:1.1.0`（`<relativePath/>` 留空，parent 在 repo1 不在磁盘）；它的父是 `io.github.yuku123:z-boot:1.0.19`，**`z-boot-parent:1.1.0` 自身不再 import `z-boot-fleet`**（现读 repo1 上那份 pom：地板由 `netty-bom` / `junit-bom` / `jackson-bom` / `spring-framework-bom` / `spring-boot-dependencies` 五条 BOM import 供给，兄弟仓版本改由它自己的 `<properties>` 下发） |
+| **Maven Central（ranged GET 实测）** | 已发布：`z-lc:1.0.0`（pom）与 `z-lc-common` / `z-lc-sdk` / `z-lc-core` / `z-lc-design` / `z-lc-web` 的 `1.0.0` jar 全部 `200`；`z-lc-admin:1.0.0` = `404`（`central` profile 的 `excludeArtifacts` 把它排除，胖 jar 只作本地/部署演练用）。**7 支 `z-lc-report-*` 在 repo1 上全 404**（pom+jar 都是）—— 它们 2026-10-11 才进 reactor，而 `1.0.0` 是 2026-09-30 发的，还没另发版本号 |
 | **默认端口** | 默认 profile **不设** `server.port`（[`z-lc-admin/src/main/resources/application.yml`](z-lc-admin/src/main/resources/application.yml) 第一行就写了这一格已移除）；`dev` profile 用 `SERVER_PORT`，缺省 **18090** |
 | **context-path** | 无。全部路由是绝对路径 `/api/lc/...`（`application.yml` 里那句 `--server.servlet.context-path=/meta` 是从 z-meta 抄来的残留注释，本仓没有 `/meta` 前缀） |
 | **运行口径** | Java 8（`maven.compiler.source/target=8` 由 parent 下发）· Spring Boot 2.7.18（地板面值；本仓 `pluginManagement` 刻意把 `spring-boot-maven-plugin` 留在字面 `2.7.12`） |
@@ -30,13 +32,14 @@
 组织里确实有仓（例如 z-webide 用 `String.repeat`、z-util-jdbc 的某些测试）需要 JDK ≥ 11/17 才能编过。
 本仓逐条查过，**结论是 Java 8 口径真实可用，没有任何 JDK 17 硬要求**，证据：
 
-- 7 份 POM（根 + 6 模块）里 `<release>`、`maven-enforcer-plugin`、`requireJavaVersion`、
+- 14 份 POM（根 + 13 模块）里 `<release>`、`maven-enforcer-plugin`、`requireJavaVersion`、
   `maven-toolchains`、抬 Java 级别的 profile —— 全部 **0 命中**；也没有 `.mvn/jvm.config`。
   编译级别只有 parent 下发的 `source/target 8`。
 - 本仓自己的产物：`z-lc-common` / `-sdk` / `-core` / `-design` / `-web` / `-admin` 的
   `target/classes` 各抽一支 class 读头 8 字节，major 全是 **52（Java 8）**。
-- 上游关键件同为 major 52：`z-llm-core:0.1.7`、`z-llm-api:0.1.7`、`z-script-engine:1.0.1`、
-  `z-util-core:1.0.14`（fleet 现钉这一格）、`z-boot-datasource-starter:1.0.21`、
+- 上游关键件同为 major 52（2026-10-20 对 repo1 上那几支 jar 各抽一支 class 读头 8 字节实测）：
+  `z-llm-gateway-core:0.1.7`（本仓吃的是改过名的新坐标）、`z-script-engine:1.0.2`、
+  `z-util-core:1.2.4`（本仓根 DM 直钉这一格）、`z-boot-datasource-starter:1.1.0`、
   `okhttp:4.12.0`、`caffeine:2.9.3`（3.x 才要 Java 11，本仓吃的是 2.9.3）。
 - 源码里没有 Java 9+ API：`bc4993f fix(java8)` 正是把 `ZLcIOUtil` 与 4 支测试里的 Java 9+ API 摘掉；
   现在再扫 `List.of` / `Map.of` / `String.repeat` / `isBlank` 只落在 javadoc 注释里，
@@ -82,14 +85,21 @@
 
 ```
 z-lc/
-├── pom.xml                # 根聚合 POM：挂 z-boot-parent:1.0.21，版本字面 1.0.0，常开 flatten(oss) 1.5.0
-├── z-lc-common/           # 公共层：DTO / 枚举 / 38 支 utils / 域模型（267 main + 270 test java）
+├── pom.xml                # 根聚合 POM：挂 z-boot-parent:1.1.0，版本字面 1.0.0，常开 flatten(oss) 1.5.0
+├── z-lc-common/           # 公共层：DTO / 枚举 / 38 支 utils / 域模型（258 main + 261 test java）
 ├── z-lc-sdk/              # SPI 框架：27 支接口 + 注解 + 抽象基类，纯 API 无业务实现（62 + 55）
 ├── z-lc-core/             # 引擎：CRUD / fieldtype / adapter / pipeline / event / materialize /
-│                          #   deployment / undo / permission / workflow / ai（122 + 103）
+│                          #   deployment / undo / permission / workflow / ai（122 + 106）
 ├── z-lc-design/           # 设计框架：@LowCodeModel 族、PageTemplate、collector、knife4j（10 + 10）
-├── z-lc-web/              # HTTP 层：18 个 Controller 里的 17 个 + 健康探测 + 自动配置（24 + 10）
-├── z-lc-admin/            # 独立启动入口（pom 的 <name> 仍叫 z-lc-bootstrap）：3 个类、0 测试、
+├── z-lc-web/              # HTTP 层：17 个 Controller（/api/lc/* 主体）+ 健康探测 + 自动配置（24 + 12）
+├── z-lc-report-common/    # 报表域模型 / JSON Schema 契约：ViewSchema / DatasetSchema / WidgetSpec（20 + 0）
+├── z-lc-report-datasource/# 报表多数据源 SPI：接入 / 注册 / 读取（8 + 4）
+├── z-lc-report-dataset/   # 报表核心：内存 typed 列式引擎，多键 join / groupby / 表达式 / 过滤（11 + 5）
+├── z-lc-report-render/    # WidgetSpec → echarts option 服务端组装（9 + 1）
+├── z-lc-report-book/      # ReportBook 树状组织 / 整体发布快照（3 + 0）
+├── z-lc-report-ai/        # LlmClient SPI + OpenAI 兼容实现，NL2Report（5 + 1）
+├── z-lc-report-web/       # 报表 HTTP 层：7 个 Controller（/api/lc/report/*）（11 + 1）
+├── z-lc-admin/            # 独立启动入口（pom 的 <name> 仍叫 z-lc-bootstrap）：3 个类、2 个测试类、
 │                          #   spring-boot repackage 出胖 jar，不进 Maven Central
 ├── z-lc-admin-ui/         # React 18 + antd 5.29.3 + Vite 的管理台（独立 npm 工程，不在 reactor）
 ├── _e2e/                  # 端到端与注入自证脚本 + 250 部署演练，见 _e2e/README.md
@@ -99,9 +109,11 @@ z-lc/
 └── README.md
 ```
 
-Maven reactor 里只有 **6 个模块**（根 POM `<modules>`：`z-lc-common`、`z-lc-sdk`、`z-lc-core`、
-`z-lc-design`、`z-lc-web`、`z-lc-admin`）。工作区里还有两个**不在 reactor、也没有任何被 git 跟踪的文件**
-的目录，别当模块读：
+Maven reactor 里是 **13 个模块**（根 POM `<modules>` 实测：`z-lc-common`、`z-lc-sdk`、`z-lc-core`、
+`z-lc-design`、`z-lc-web`、`z-lc-report-common`、`z-lc-report-datasource`、`z-lc-report-dataset`、
+`z-lc-report-render`、`z-lc-report-book`、`z-lc-report-ai`、`z-lc-report-web`、`z-lc-admin`）。
+其中 `z-lc-report-*` 那 7 支是 2026-10-11 CEO 拍板自 `z-report` 仓收编进来的报表能力域。
+工作区里还有两个**不在 reactor、也没有任何被 git 跟踪的文件**的目录，别当模块读：
 
 - `z-lc-bootstrap/` —— 只剩 `target/`；那是 `z-lc-admin` 改名前的旧壳（admin 的 `<name>` 与
   `spring.application.name` 至今仍是 `z-lc-bootstrap`）。
@@ -118,10 +130,10 @@ Maven reactor 里只有 **6 个模块**（根 POM `<modules>`：`z-lc-common`、
 | 层级 | 技术 |
 |------|------|
 | 语言 / 编译 | Java 8（`source/target 8`，非 `--release`），UTF-8，`-parameters` |
-| 框架 | Spring Boot 2.7.18（地板 `z-boot-dependencies:1.0.20` 的 `spring-boot.version`） |
+| 框架 | Spring Boot 2.7.18（`z-boot-parent:1.1.0` import 的 `spring-boot-dependencies:${spring-boot.version}`，其 `spring-boot.version` = 2.7.18） |
 | 打包插件 | `spring-boot-maven-plugin` 本仓 `pluginManagement` 字面留 **2.7.12**（刻意分歧，动它等于换 fat jar loader） |
-| 兄弟仓版本权威 | `z-boot-fleet:1.0.1`：`z-util` 一族 **1.0.14**、`z-llm` **0.1.7**、`z-script-engine` **1.0.1** |
-| 数据源 | `z-boot-datasource-starter:1.0.21`（含 Druid；本仓不再直引 mybatis-plus）+ `spring-jdbc` |
+| 兄弟仓版本权威 | 由 `z-boot-parent:1.1.0` 的 `<properties>` 下发（**不再是 fleet**）：`z-util.version` **1.0.19**（本仓根 DM 另把 `z-util-core` / `-parser-json` / `-dsl-kernel` 直钉 **1.2.4**，就近优先）、`z-llm.version` **0.1.7**（`z-llm-gateway-core`）、`z-script.version` **1.0.2**（`z-script-engine`） |
+| 数据源 | `z-boot-datasource-starter:1.1.0`（含 Druid；吃 parent 的 `${z-boot.version}` = 1.1.0。本仓不再直引 mybatis-plus）+ `spring-jdbc` |
 | 驱动 | MySQL 驱动 `com.mysql:mysql-connector-j:8.0.33`（根 DM 顶住地板的 8.4.0，并整条抄回 `protobuf-java` exclusion）；`dev`/测试用 H2 内存库 |
 | 其它受管 | `org.yaml:snakeyaml:2.0`（地板不供这一坐标，直钉顶住 CVE-2022-1471 那格）、`caffeine:2.9.3`、`okhttp`（地板 4.12.0） |
 | 接口文档 | knife4j-openapi3-spring-boot-starter **4.1.0**（地板直钉同值） |
@@ -140,9 +152,9 @@ Maven reactor 里只有 **6 个模块**（根 POM `<modules>`：`z-lc-common`、
 mvn clean install -DskipTests
 ```
 
-第三方与兄弟仓版本全由 `z-boot-parent:1.0.21` → 地板 `z-boot-dependencies:1.0.20` +
-`z-boot-fleet:1.0.1` 供给，模块 POM 里不该再有字面版本钉；构建报找不到 parent 时，
-先确认能解析到 `io.github.yuku123:z-boot-parent:1.0.21`（在 repo1，不在磁盘相对路径上）。
+第三方与兄弟仓版本全由 `z-boot-parent:1.1.0` 供给（地板是它 import 的五条 BOM，兄弟仓版本是它的
+`<properties>`），模块 POM 里不该再有字面版本钉；构建报找不到 parent 时，
+先确认能解析到 `io.github.yuku123:z-boot-parent:1.1.0`（在 repo1，不在磁盘相对路径上）。
 
 ### 本地跑起来（不需要 MySQL、不需要 Docker）
 
@@ -183,7 +195,8 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0.jar --spring.profiles.active=dev
 
 ## 🔌 API 一览
 
-`rg --no-ignore -o "@RequestMapping\(\"[^\"]*\"\)" --glob '*.java'` 实测得到的类级前缀（18 个 Controller）：
+`rg --no-ignore -o "@RequestMapping\(\"[^\"]*\"\)" --glob '*.java'` 实测得到的类级前缀（**25 个 Controller**，
+24 个不同前缀 —— `/api/lc/app` 上挂了 `AppAdminController` 与 `EventController` 两个）：
 
 | 路径 | Controller | 模块 |
 |------|------------|------|
@@ -204,6 +217,18 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0.jar --spring.profiles.active=dev
 | `/api/lc/health` | `HealthController` | z-lc-web |
 | `/api/lc/ai` | `AiModelingController` | z-lc-web |
 | `/api/lc/design` | `PageTemplateController` | z-lc-design |
+| `/api/lc/report/ai` | `AiController` | z-lc-report-web |
+| `/api/lc/report/book` | `BookController` | z-lc-report-web |
+| `/api/lc/report/datasource` | `DataSourceController` | z-lc-report-web |
+| `/api/lc/report/dataset` | `DatasetController` | z-lc-report-web |
+| `/api/lc/report/render` | `RenderController` | z-lc-report-web |
+| `/api/lc/report/templates` | `TemplateController` | z-lc-report-web |
+| `/api/lc/report/view` | `ViewController` | z-lc-report-web |
+
+三组前缀的关系要写清，它们**不是**三张独立的面：对外仍是**一层** `/api/lc/*`，
+`/api/lc/report/*` 是它下面的一组二级前缀（报表能力域），`/api/lc/design` 是另一支二级前缀。
+计数口径：`find . -name '*Controller.java' -path '*/src/main/*'` = **25** 支 ——
+`z-lc-web` 17、`z-lc-report-web` 7、`z-lc-design` 1。
 
 `/api/approval-center` **不是**本仓的端点，它是 `CamudaAdapter` 调用远端 z-camuda 的路径（只出现在注释里）。
 
@@ -218,15 +243,17 @@ cd z-lc-admin-ui && npm run check # tsc --noEmit + eslint --max-warnings 0 + vit
 ```
 
 用例分布（`rg -c '^[[:space:]]*@Test'` 现数，注释里的 `@Test` 已避开）：
-`z-lc-common` 2709、`z-lc-sdk` 525、`z-lc-core` 1338、`z-lc-design` 112、`z-lc-web` 114、`z-lc-admin` 0。
-`z-lc-web` 那 114 条里 `LcHttpContractTest` 是真 HTTP 集成测试（自己起 server、用 OS 分配端口）。
+`z-lc-common` 2607、`z-lc-core` 1390、`z-lc-web` 118、`z-lc-sdk` 525、`z-lc-design` 110、
+`z-lc-report-dataset` 37、`z-lc-report-datasource` 20、`z-lc-report-ai` 10、`z-lc-report-render` 5、
+`z-lc-report-web` 1、`z-lc-admin` 6、`z-lc-report-common` 0、`z-lc-report-book` 0。
+`z-lc-web` 那 118 条里 `LcHttpContractTest` 是真 HTTP 集成测试（自己起 server、用 OS 分配端口）。
 
 注入自证（"闸能不能红"的负控）共 **43 支**：`_e2e/` 22 支后端 + `z-lc-admin-ui/e2e/` 21 支前端；
 带互斥锁的那批共用 `z-lc-admin-ui/e2e/_mutlock.py`，两支不能同时在飞。
 
 如实说明跑不过/要注意的：
 
-- `mvn` 全量要能解析到 repo1 上的 `z-boot-parent:1.0.21` 与 fleet 点名的兄弟仓构件，离线且
+- `mvn` 全量要能解析到 repo1 上的 `z-boot-parent:1.1.0` 与 fleet 点名的兄弟仓构件，离线且
   `~/.m2` 不全时会红在建 pom 阶段而不是在建逻辑。
 - `_e2e/README.md` 里的分母读数（Java 4790 / 浏览器 285 / 接口 555 等）出自 **2026-09-27 那一窗**，
   本 README 没有重跑，只按 `_e2e` 自己的规矩当"上一窗账"读，别当当前绿灯。
@@ -276,13 +303,15 @@ _Maintained by the z-opc-foundation organization._
 - [`_doc/008_troubleshooting/`](_doc/008_troubleshooting/) — 踩坑与失败要点（DB schema 契约与已知坑）
 本项目文档统一收口在 `_doc/` 下，以下逐条按 `find _doc -mindepth 1` 的**真实存在**列出：
 
-- [`_doc/001_arch/`](_doc/001_arch/) — 架构文档，**目前只有 1 份**：
+- [`_doc/001_arch/`](_doc/001_arch/) — 架构文档，**目前 2 份**：
+  - [`00-overview.md`](_doc/001_arch/00-overview.md) — 项目总览：模块架构、核心功能、对外集成与上下游、
+    技术特点、目录结构。现状以本文件为准。
   - [`01-module-structure.md`](_doc/001_arch/01-module-structure.md) — 2026-09-06 从
     `idea_workplace/z-opc/z-lc/` 拆仓时写的说明。⚠ 它的"父项目 `../pom.xml`
     （`com.zifang:z-opc:1.0.0-SNAPSHOT`）、单独 clone 无法 Maven build"那两条**已不成立**
     （`8361aea` 换挂 `z-boot-parent:1.0.19`、`c8041e6` 抬到 `1.0.21`，`<relativePath/>` 留空），
     读它当历史，别当现状；现状以本 README 与根 POM 为准。
-    规范里常见的 `00-overview.md` / `02-api.md` / `03-db-schema.md` / `05-frontend.md` / `07-roadmap.md`
+    规范里常见的 `02-api.md` / `03-db-schema.md` / `05-frontend.md` / `07-roadmap.md`
     在本仓 **都不存在**，没有对应实现或文档就不写链接。
 - `002_deploy` / `003_script` / `004_skill` — **槽位不建**：部署 SQL 实际在
   `z-lc-admin/src/main/resources/db/`，脚本实际在 `_e2e/`，本仓没有真 SKILL 定义。
@@ -291,6 +320,7 @@ _Maintained by the z-opc-foundation organization._
   - [`feature001_workflow_binding_fires/TASK.md`](_doc/007_backlog/feature001_workflow_binding_fires/TASK.md) — 缺陷 #61：流程绑定这条链其余四层覆盖面
   - [`feature002_http_status_not_checked/TASK.md`](_doc/007_backlog/feature002_http_status_not_checked/TASK.md) — 缺陷 #62：`isSuccess()` 不含状态码
   - [`feature003_dead_envelope_parses/TASK.md`](_doc/007_backlog/feature003_dead_envelope_parses/TASK.md) — 缺陷 #63：5 处 `fromJson` 结构上必抛
+  - [`feature004_codegen_identifier_crash/TASK.md`](_doc/007_backlog/feature004_codegen_identifier_crash/TASK.md) — 缺陷 #64：`camelCase` 在合法字段码上抛异常，一个坏字段让整批物化零产出
 - 私有演进稿 `_doc/001_arch/model-evolution-plan.md` **本机存在但被 `.gitignore`（第 82 行）排除**，
   不在 git 索引里、clone 下来看不到，所以这里不给链接；按规范口径这一层等于**无已提交文档**。
 
