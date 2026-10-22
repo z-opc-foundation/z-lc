@@ -13,7 +13,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { ImportOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { EntityDefDTO } from '@/lc/api/types';
 import { listApps } from '@/lc/api/app';
@@ -70,7 +70,7 @@ export function DbImportPage() {
     void scan();
   }, [scan]);
 
-  const columns = useMemo<ColumnsType<EntityDefDTO>>(
+  const columns = useMemo<TableColumnsType<EntityDefDTO>>(
     () => [
       { title: '表名', dataIndex: 'tableName', width: 240 },
       { title: '推断实体名', dataIndex: 'entityName', width: 200 },

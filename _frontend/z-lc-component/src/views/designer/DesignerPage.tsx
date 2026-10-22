@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Card,
-  Empty,
   Input,
   List,
   Modal,
@@ -18,7 +17,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
@@ -28,6 +27,7 @@ import {
   PlusOutlined,
   SaveOutlined,
 } from '@ant-design/icons';
+import { EmptyState, ErrorState } from '@yuku123/z-frontend-common/ui';
 import type { DictDTO, EntityDefDTO, FieldDefDTO } from '@/lc/api/types';
 import { listApps } from '@/lc/api/app';
 import type { ProvisionItem } from '@/lc/api/admin';
@@ -97,7 +97,7 @@ export function DesignerIndexPage() {
         error={query.error}
         onRetry={() => void query.refetch()}
         isEmpty={!query.isLoading && (query.data?.length ?? 0) === 0}
-        empty={<Empty description="还没有应用，先在「应用」页创建一个" />}
+        empty={<EmptyState title="还没有应用" description="先在「应用」页创建一个" size="sm" />}
       >
         <List
           dataSource={query.data ?? []}
@@ -374,7 +374,7 @@ export function DesignerPage() {
     }
   }, [appCode, reload]);
 
-  const fieldColumns = useMemo<ColumnsType<FieldDefDTO>>(() => {
+  const fieldColumns = useMemo<TableColumnsType<FieldDefDTO>>(() => {
     const defs = draft?.fields ?? [];
     return [
       {
@@ -579,10 +579,10 @@ export function DesignerPage() {
 
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {provisionProblems.length ? (
-          <Alert
-            type="error"
-            showIcon
-            message={`未建成（${provisionProblems.length}）`}
+          // 没建成的表是硬失败：它必须常驻在页面上，不能只靠那条三秒就消失的 toast。
+          <ErrorState
+            error={new Error(`${provisionProblems.length} 个实体没有建成物理表`)}
+            title={`未建成（${provisionProblems.length}）`}
             description={
               <ul style={{ margin: 0, paddingLeft: 18 }}>
                 {provisionProblems.map((item) => (
@@ -598,7 +598,7 @@ export function DesignerPage() {
           />
         ) : null}
         {!draft ? (
-          <Empty description="选择左侧实体开始编辑，或新建一个实体" />
+          <EmptyState title="选择左侧实体开始编辑，或新建一个实体" size="sm" />
         ) : (
           <>
             <Card size="small">

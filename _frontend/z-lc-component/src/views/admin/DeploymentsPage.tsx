@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Button, Drawer, Input, Modal, Select, Space, Table, Tag, Typography, message } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { DeploymentDTO } from '@/lc/api/types';
 import { createDeployment, getDeployment, listDeployments } from '@/lc/api/deployment';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
 import { formatTime } from './_scope';
-import { AdminScaffold, ListBanner } from './_shared';
-import { listEmptyText, useAppSelection, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { useAppSelection, useResourceList } from './_scope';
 import { deployTypeLabel, useDeploymentVocabulary } from './_deployment';
 
 const { Text, Paragraph } = Typography;
@@ -81,7 +81,7 @@ export function DeploymentsPage() {
     }
   }, [appCode, chosen, version, reload]);
 
-  const columns: ColumnsType<DeploymentDTO> = [
+  const columns: TableColumnsType<DeploymentDTO> = [
     { title: 'ID', dataIndex: 'id', width: 70 },
     {
       title: '方式',
@@ -166,7 +166,7 @@ export function DeploymentsPage() {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 20 }}
-        locale={{ emptyText: listEmptyText(state, '部署记录') }}
+        locale={{ emptyText: listEmptyState(state, '部署记录') }}
       />
 
       <Modal

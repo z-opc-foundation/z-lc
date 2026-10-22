@@ -11,7 +11,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import type { EntityDefDTO } from '@/lc/api/types';
 import { IMPORT_MAX_ROWS_REPORTED, importCommit, importPreview } from '@/lc/api/runtime';
@@ -266,8 +266,8 @@ export function ImportDialog({
     }
   }, [appCode, buildRecords, entity.entityCode, onImported, tenantCode, applyWarnings]);
 
-  const previewColumns = useMemo<ColumnsType<Record<string, string>>>(() => {
-    const cols: ColumnsType<Record<string, string>> = [
+  const previewColumns = useMemo<TableColumnsType<Record<string, string>>>(() => {
+    const cols: TableColumnsType<Record<string, string>> = [
       { title: '数据行', dataIndex: '__line', width: 84, fixed: 'left' },
     ];
     for (const resolved of importable) {
@@ -292,7 +292,7 @@ export function ImportDialog({
     return cols;
   }, [importable, mapping]);
 
-  const outcomeColumns: ColumnsType<RowOutcome> = [
+  const outcomeColumns: TableColumnsType<RowOutcome> = [
     { title: '数据行', dataIndex: 'line', width: 90 },
     {
       title: '结果',

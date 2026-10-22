@@ -13,7 +13,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import {
   DeleteOutlined,
   DownOutlined,
@@ -249,8 +249,8 @@ export function GridView({
     [entityCode, appCode, tenantCode],
   );
 
-  const tableColumns = useMemo<ColumnsType<LcRow>>(() => {
-    const list: ColumnsType<LcRow> = columns.visible.map(({ resolved, meta }) => {
+  const tableColumns = useMemo<TableColumnsType<LcRow>>(() => {
+    const list: TableColumnsType<LcRow> = columns.visible.map(({ resolved, meta }) => {
       const fieldCode = resolved.ctx.field.fieldCode;
       return {
         title: resolved.ctx.field.fieldName || fieldCode,

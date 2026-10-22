@@ -13,7 +13,8 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
+import { EmptyState } from '@yuku123/z-frontend-common/ui';
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { DictDTO, DictItemDTO } from '@/lc/api/types';
 import {
@@ -28,8 +29,8 @@ import {
 } from '@/lc/api/dict';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
 import { StateBlock } from '@/lc/components/StateBlock';
-import { AdminScaffold, ListBanner } from './_shared';
-import { listEmptyText, useAppSelection, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { useAppSelection, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
@@ -245,7 +246,7 @@ export function DictsPage() {
         </Space>
       ),
     },
-  ] as ColumnsType<DictItemDTO>;
+  ] as TableColumnsType<DictItemDTO>;
 
   return (
     <AdminScaffold
@@ -364,9 +365,11 @@ export function DictsPage() {
             pagination={false}
             scroll={{ x: 'max-content' }}
             locale={{
-              emptyText: active
-                ? listEmptyText(itemState, '字典项')
-                : '请先选择左侧字典',
+              emptyText: active ? (
+                listEmptyState(itemState, '字典项')
+              ) : (
+                <EmptyState title="请先选择左侧字典" size="sm" />
+              ),
             }}
           />
         </Card>

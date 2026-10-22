@@ -6,7 +6,6 @@ import {
   Card,
   Col,
   Dropdown,
-  Empty,
   Form,
   Input,
   Modal,
@@ -16,12 +15,8 @@ import {
   Tooltip,
   Typography,
 } from 'antd';
-import {
-  AppstoreAddOutlined,
-  EllipsisOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-} from '@ant-design/icons';
+import { AppstoreAddOutlined, EllipsisOutlined } from '@ant-design/icons';
+import { EmptyState, RefreshButton, SearchInput, TableToolbar } from '@yuku123/z-frontend-common/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { archiveApp, createApp, deleteApp, listApps, publishApp, updateApp } from '@/lc/api/app';
 import { listAdminEntities } from '@/lc/api/admin';
@@ -137,30 +132,34 @@ export function AppListPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-        <Text strong style={{ fontSize: 15 }}>
-          应用
-        </Text>
-        <Text type="secondary" style={{ fontSize: 12 }}>
-          共 {apps.length} 个
-        </Text>
-        <div style={{ flex: 1 }} />
-        <Input
-          allowClear
-          size="small"
-          style={{ width: 220 }}
-          prefix={<SearchOutlined />}
-          placeholder="搜索应用编码或名称"
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-        />
-        <Button size="small" icon={<ReloadOutlined />} onClick={refresh}>
-          刷新
-        </Button>
-        <Button size="small" type="primary" icon={<AppstoreAddOutlined />} onClick={openCreate}>
-          新建应用
-        </Button>
-      </div>
+      <TableToolbar
+        left={
+          <>
+            <Text strong style={{ fontSize: 15 }}>
+              应用
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              共 {apps.length} 个
+            </Text>
+          </>
+        }
+        right={
+          <>
+            {/* 搜索是前端过滤，不打接口；SearchInput 自带 300ms 防抖，键入时不会每敲一下就重算整列表。 */}
+            <SearchInput
+              size="small"
+              width={220}
+              value={keyword}
+              onChange={setKeyword}
+              placeholder="搜索应用编码或名称"
+            />
+            <RefreshButton onClick={refresh} title="刷新" />
+            <Button size="small" type="primary" icon={<AppstoreAddOutlined />} onClick={openCreate}>
+              新建应用
+            </Button>
+          </>
+        }
+      />
 
       {appsQuery.isLoading ? <LoadingBlock /> : null}
       {appsQuery.isError ? <ErrorBlock error={appsQuery.error} onRetry={refresh} /> : null}
@@ -170,15 +169,12 @@ export function AppListPage() {
             <EmptyBlock
               title="还没有应用"
               description="应用是实体、字典与视图的容器。先创建一个应用，再进入 Schema 设计器建模。"
-              action={
-                <Button type="primary" onClick={openCreate}>
-                  新建应用
-                </Button>
-              }
+              actionText="新建应用"
+              onAction={openCreate}
             />
           </Card>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`没有匹配 "${keyword}" 的应用`} />
+          <EmptyState title={`没有匹配 "${keyword}" 的应用`} size="sm" />
         )
       ) : null}
 
@@ -204,7 +200,7 @@ export function AppListPage() {
         confirmLoading={saveMutation.isPending}
         okText={editing ? '保存' : '创建'}
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)} requiredMark={false}>

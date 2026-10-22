@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, Button, Input, Select, Space, Table, Tag, Typography, message } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
+import { EmptyState } from '@yuku123/z-frontend-common/ui';
 import { CheckCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import type { PermissionEntity } from '@/lc/api/types';
 import {
@@ -12,8 +13,8 @@ import {
   revokePermission,
 } from '@/lc/api/permission';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
-import { AdminScaffold, ListBanner } from './_shared';
-import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { entityNotFoundContent, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
@@ -105,7 +106,7 @@ export function PermissionsPage() {
     };
   };
 
-  const columns: ColumnsType<PermissionEntity> = [
+  const columns: TableColumnsType<PermissionEntity> = [
     { title: '角色', dataIndex: 'roleCode', width: 160, render: (value: string) => <Text code>{value}</Text> },
     { title: '权限', dataIndex: 'permission', width: 120, render: (value: string) => <Tag color="blue">{value}</Tag> },
     {
@@ -322,9 +323,15 @@ export function PermissionsPage() {
           emptyText:
             // 'ready' 只在「读成功且库里非空」时成立（读成功但零行是 'empty'，见 _scope.ts 的 ListState），
             // 所以这一支说的是「有授权，只是被筛掉了」—— 与「这个应用压根没配过权限」是两句话。
-            state === 'ready' && allRows.length > 0
-              ? '当前筛选下没有匹配的授权（应用级授权覆盖所有实体，所以按实体筛时不会被排除）'
-              : listEmptyText(state, '权限配置'),
+            state === 'ready' && allRows.length > 0 ? (
+              <EmptyState
+                title="当前筛选下没有匹配的授权"
+                description="应用级授权覆盖所有实体，所以按实体筛时不会被排除。"
+                size="sm"
+              />
+            ) : (
+              listEmptyState(state, '权限配置')
+            ),
         }}
       />
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Descriptions, Tooltip, Typography, message } from 'antd';
+import { Button, Descriptions, Tooltip, Typography } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import type { EntityDefDTO, LcRow } from '@/lc/api/types';
 import { getRecord } from '@/lc/api/runtime';
@@ -76,7 +76,9 @@ export function DetailView({
           getRecord(entity.entityCode ?? '', recordId, { appCode, tenantCode })
             .then(setRow)
             .catch((err: unknown) => {
-              message.error(err instanceof Error ? err.message : '加载失败');
+              // 重试失败要回到错误态：只弹一条 toast 的话，toast 收走后页面会亮出
+              // 「记录不存在，可能已被删除」—— 那是一句谎，用户会以为数据真没了。
+              setError(err);
             })
             .finally(() => setLoading(false));
         }}

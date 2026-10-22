@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Empty, Input, Popconfirm, Select, Space, Typography, message } from 'antd';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Alert, Button, Input, Popconfirm, Select, Space, Typography, message } from 'antd';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import { EmptyState, ErrorState } from '@yuku123/z-frontend-common/ui';
 import { useWorkspace } from '@/lc/hooks/useWorkspace';
 import { resolveEntityFields } from '@yuku123/z-frontend-render/fields';
 import { createViewConfig, deleteViewConfig, newViewConfigDraft, updateViewConfig } from '@/lc/api/viewConfig';
@@ -244,10 +245,9 @@ export function DashboardPage() {
       </Space>
 
       {active && !stored ? (
-        <Alert
-          type="error"
-          showIcon
-          message={`视图 #${active.id} 存的不是仪表盘配置`}
+        <ErrorState
+          error={new Error(`视图 #${active.id} 的 config 里没有组件清单`)}
+          title={`视图 #${active.id} 存的不是仪表盘配置`}
           description="这一行的 config 里没有组件清单（可能是管理页手改过的表格视图）。保存当前这份会覆盖它，请先在视图管理页确认。"
         />
       ) : null}
@@ -262,23 +262,25 @@ export function DashboardPage() {
       ) : null}
 
       {!model || model.widgets.length === 0 ? (
-        <Empty
-          className="zlc-dash-empty"
+        <EmptyState
+          title={
+            chartViews.length === 0
+              ? '还没有可放进仪表盘的图表视图'
+              : active
+                ? '这个仪表盘还是空的'
+                : // 一份仪表盘都没有时说"这个仪表盘是空的"是在指一个不存在的东西
+                  '还没有仪表盘'
+          }
           description={
             chartViews.length === 0
-              ? '还没有可放进仪表盘的图表视图。先到某个实体的「图表」页把一张图存成命名视图。'
+              ? '先到某个实体的「图表」页把一张图存成命名视图。'
               : active
-                ? '这个仪表盘还是空的，用上面的「添加图表视图」放几张图进来。'
-                : // 一份仪表盘都没有时说"这个仪表盘是空的"是在指一个不存在的东西
-                  '还没有仪表盘。放几张图进来再保存，就会新建一份；也可以先「新建」起个名字。'
+                ? '用上面的「添加图表视图」放几张图进来。'
+                : '放几张图进来再保存，就会新建一份；也可以先「新建」起个名字。'
           }
-        >
-          {chartViews.length === 0 ? (
-            <Link to={`/lc/${appCode}`}>
-              <Button>去选一个实体</Button>
-            </Link>
-          ) : null}
-        </Empty>
+          actionText={chartViews.length === 0 ? '去选一个实体' : undefined}
+          onAction={chartViews.length === 0 ? () => navigate(`/lc/${appCode}`) : undefined}
+        />
       ) : (
         <div className="zlc-dash-grid">
           {widgets.map((widget) => {

@@ -42,6 +42,10 @@ export default defineConfig({
         emptyOutDir: true,
         sourcemap: false,
         rollupOptions: {
+            // 宿主（主壳 @yuku123/z-opc-frontend）统一提供 react / antd / 基座，
+            // 本包只产出业务代码。基座 `@yuku123/z-frontend-common` 及其 `/ui` 子路径
+            // 必须留在 external 里：打进 dist 会让宿主同时加载两份 antd，
+            // 主题与 ConfigProvider 会各说各话。
             external: (id) =>
                 id === 'react' ||
                 id === 'react-dom' ||

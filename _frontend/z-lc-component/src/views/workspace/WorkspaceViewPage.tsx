@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Empty, Typography } from 'antd';
-import { PartitionOutlined } from '@ant-design/icons';
+import { Alert, Button } from 'antd';
+import { EmptyState } from '@yuku123/z-frontend-common/ui';
 import { VIEW_TYPES, type ViewType } from '@/lc/api/types';
 import { useWorkspace } from '@/lc/hooks/useWorkspace';
 import { resolveEntityFields } from '@yuku123/z-frontend-render/fields';
@@ -16,8 +16,6 @@ import { CalendarView } from './CalendarView';
 import { ChartView } from './ChartView';
 import { PivotView } from './PivotView';
 import type { FilterState } from '@/lc/views/grid/FilterBar';
-
-const { Text } = Typography;
 
 /**
  * The entity workspace: one screen per (app, entity, viewType), all three
@@ -80,17 +78,12 @@ export function WorkspaceViewPage() {
     }
     return (
       <div style={{ padding: 48 }}>
-        <Empty
-          description={
-            <Text type="secondary">
-              实体「{entityCode}」不存在，可能已被删除，或在设计器里还没建。
-            </Text>
-          }
-        >
-          <Button icon={<PartitionOutlined />} onClick={() => navigate(`/lc/designer/${appCode}`)}>
-            去模型设计器
-          </Button>
-        </Empty>
+        <EmptyState
+          title={`实体「${entityCode}」不存在`}
+          description="可能已被删除，或在设计器里还没建。"
+          actionText="去模型设计器"
+          onAction={() => navigate(`/lc/designer/${appCode}`)}
+        />
       </div>
     );
   }

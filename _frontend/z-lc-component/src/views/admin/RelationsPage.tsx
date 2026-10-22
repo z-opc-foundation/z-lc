@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react';
 import { Button, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { RelationCreateReq, RelationDTO } from '@/lc/api/types';
 import { createRelation, deleteRelation, listRelations, updateRelation } from '@/lc/api/relation';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
 import { formatTime } from './_scope';
-import { AdminScaffold, ListBanner } from './_shared';
-import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { entityNotFoundContent, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
@@ -59,7 +59,7 @@ export function RelationsPage() {
     }
   }, [editing, appCode, reload]);
 
-  const columns: ColumnsType<RelationDTO> = [
+  const columns: TableColumnsType<RelationDTO> = [
     { title: '编码', dataIndex: 'relationCode', width: 160 },
     { title: '名称', dataIndex: 'relationName', width: 160 },
     {
@@ -145,7 +145,7 @@ export function RelationsPage() {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 20 }}
-        locale={{ emptyText: listEmptyText(state, '关系定义') }}
+        locale={{ emptyText: listEmptyState(state, '关系定义') }}
       />
 
       <Modal

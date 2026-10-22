@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Drawer, Input, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { WorkflowBindingEntity, WorkflowFireEntity } from '@/lc/api/types';
 import {
@@ -14,8 +14,8 @@ import type { FireWindow } from '@/lc/api/workflowBinding';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
 import { formatTime } from './_scope';
 import { triggerLabel, useWorkflowVocabulary } from './_workflow';
-import { AdminScaffold, ListBanner } from './_shared';
-import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { entityNotFoundContent, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
@@ -59,7 +59,7 @@ export function WorkflowsPage() {
     }
   }, [editing, appCode, reload]);
 
-  const columns: ColumnsType<WorkflowBindingEntity> = [
+  const columns: TableColumnsType<WorkflowBindingEntity> = [
     { title: '实体', dataIndex: 'entityCode', width: 160 },
     {
       title: '触发时机',
@@ -194,7 +194,7 @@ export function WorkflowsPage() {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 20 }}
-        locale={{ emptyText: listEmptyText(state, '流程绑定') }}
+        locale={{ emptyText: listEmptyState(state, '流程绑定') }}
       />
 
       <Modal
@@ -302,7 +302,7 @@ function WorkflowFiresDrawer({ binding, onClose }: { binding: WorkflowBindingEnt
     };
   }, [binding, page]);
 
-  const columns: ColumnsType<WorkflowFireEntity> = [
+  const columns: TableColumnsType<WorkflowFireEntity> = [
     { title: '记录', dataIndex: 'recordId', width: 110 },
     {
       title: '结果',

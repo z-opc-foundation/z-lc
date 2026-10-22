@@ -1,7 +1,7 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
-import { DashboardOutlined, PlusOutlined, ReloadOutlined, TableOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { DashboardOutlined, PlusOutlined, TableOutlined } from '@ant-design/icons';
+import type { TableColumnsType } from 'antd';
 import { useWorkspace } from '@/lc/hooks/useWorkspace';
 import { unreadReason } from '@/lc/api/meta';
 import type { EntityDefDTO } from '@/lc/api/types';
@@ -12,6 +12,7 @@ const { Text, Paragraph } = Typography;
 /** Landing page for `/:appCode` — summarises the model and routes into entities. */
 export function AppOverviewPage() {
   const { appCode = '' } = useParams();
+  const navigate = useNavigate();
   const { meta, isLoading, isError, error, refetch } = useWorkspace(appCode);
 
   const entities = meta?.entities ?? [];
@@ -22,7 +23,7 @@ export function AppOverviewPage() {
   /** A count that was never read must not render as a confident `0`. */
   const count = (key: 'entities' | 'dicts' | 'views', value: number) => (read?.[key] ? value : '—');
 
-  const columns: ColumnsType<EntityDefDTO> = [
+  const columns: TableColumnsType<EntityDefDTO> = [
     {
       title: '实体',
       dataIndex: 'entityName',
@@ -135,21 +136,15 @@ export function AppOverviewPage() {
               <EmptyBlock
                 title="该应用还没有实体"
                 description="在 Schema 设计器中创建实体，或从已有数据库表逆向导入。"
-                action={
-                  <Link to={`/lc/designer/${appCode}`}>
-                    <Button type="primary">打开 Schema 设计器</Button>
-                  </Link>
-                }
+                actionText="打开 Schema 设计器"
+                onAction={() => navigate(`/lc/designer/${appCode}`)}
               />
             ) : (
               <EmptyBlock
                 title="实体列表没有读到"
                 description={`${unreadReason(meta, 'entities')}。这里的空不代表这个应用真的没有实体。`}
-                action={
-                  <Button type="primary" icon={<ReloadOutlined />} onClick={() => void refetch()}>
-                    重试
-                  </Button>
-                }
+                actionText="重试"
+                onAction={() => void refetch()}
               />
             ),
           }}

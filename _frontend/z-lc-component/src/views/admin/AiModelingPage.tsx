@@ -11,7 +11,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { BulbOutlined, ExperimentOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { EntityDefDTO, FieldDefDTO, JsonMap } from '@/lc/api/types';
 import {
@@ -99,7 +99,7 @@ export function AiModelingPage() {
     if (result) message.success('建议已落库，去模型设计器确认字段与 provision');
   }, [suggestion, run, appCode, proposed]);
 
-  const columns: ColumnsType<FieldDefDTO> = [
+  const columns: TableColumnsType<FieldDefDTO> = [
     {
       title: '字段编码',
       dataIndex: 'fieldCode',

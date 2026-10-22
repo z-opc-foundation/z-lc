@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Dropdown,
-  Empty,
   Select,
   Space,
   Spin,
@@ -14,6 +13,7 @@ import {
   message,
 } from 'antd';
 import { ReloadOutlined, SwapOutlined } from '@ant-design/icons';
+import { EmptyState } from '@yuku123/z-frontend-common/ui';
 import type { Conjunction, EntityDefDTO, LcRow, QueryCondition } from '@/lc/api/types';
 import { aggregateRecords, listRecords, updateRecord } from '@/lc/api/runtime';
 import { readFieldValue } from '@yuku123/z-frontend-render/fields';
@@ -219,7 +219,7 @@ export function KanbanView({
       </Space>
 
       {!groupable.length ? (
-        <Empty description="这个实体没有适合分组的字段" />
+        <EmptyState title="这个实体没有适合分组的字段" size="sm" />
       ) : (
         <StateBlock
           isLoading={(buckets.isLoading || rows.isLoading) && columns.length === 0}
@@ -227,7 +227,7 @@ export function KanbanView({
           error={buckets.error ?? rows.error}
           onRetry={refetch}
           isEmpty={columns.length === 0}
-          empty={<Empty description="当前筛选下没有记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+          empty={<EmptyState title="当前筛选下没有记录" size="sm" />}
         >
           <Spin spinning={buckets.isFetching || rows.isFetching}>
             <div style={{ display: 'flex', gap: 10, overflowX: 'auto', alignItems: 'flex-start', paddingBottom: 8 }}>

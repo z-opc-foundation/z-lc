@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Empty, Pagination, Tag, Typography } from 'antd';
+import { Button, Card, Pagination, Tag, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import { EmptyState } from '@yuku123/z-frontend-common/ui';
 import { listRecords } from '@/lc/api/runtime';
 import { StateBlock } from '@/lc/components/StateBlock';
 import type { Conjunction, EntityDefDTO, LcRow, QueryCondition } from '@/lc/api/types';
@@ -79,7 +80,7 @@ export function GalleryView({
   const titleField = displayFields[0];
 
   if (displayFields.length === 0) {
-    return <div style={{ padding: 48 }}><Empty description="没有可显示的字段" /></div>;
+    return <div style={{ padding: 48 }}><EmptyState title="没有可显示的字段" size="sm" /></div>;
   }
 
   return (

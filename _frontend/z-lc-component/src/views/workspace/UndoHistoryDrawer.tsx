@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Descriptions, Drawer, Empty, Segmented, Space, Tag, Tooltip, Typography, message } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Segmented, Space, Tag, Tooltip, Typography, message } from 'antd';
 import { UndoOutlined } from '@ant-design/icons';
+import { EmptyState, LoadingState } from '@yuku123/z-frontend-common/ui';
 import { changeHistory, parseImage, undoLast } from '@/lc/api/undo';
 import { getActor } from '@/lc/api/actor';
 import { ErrorBlock } from '@/lc/components/StateBlock';
@@ -93,14 +94,14 @@ export function UndoHistoryDrawer({
         message="撤销在服务端按前像回放，不在浏览器重放"
         description="若一条记录之后又被改过，撤销会被拒绝而不是悄悄覆盖；重做新建时自增主键会变。"
       />
-      {query.isLoading ? <Text type="secondary">加载中…</Text> : null}
+      {query.isLoading ? <LoadingState variant="table" rows={3} /> : null}
       {query.isError ? (
         // 读失败时"这个实体还没有数据变更"是一句假话: 它把"我没查到"说成"没有过改动",
         // 用户会以为没人动过数据。错误要留在面板上, 并且给出重试。
         <ErrorBlock error={query.error} title="变更记录没有读到" onRetry={() => void query.refetch()} />
       ) : null}
       {!query.isLoading && !query.isError && entries.length === 0 ? (
-        <Empty description="这个实体还没有数据变更" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        <EmptyState title="这个实体还没有数据变更" size="sm" />
       ) : null}
       <Space style={{ width: '100%', justifyContent: 'space-between' }}>
         <Segmented

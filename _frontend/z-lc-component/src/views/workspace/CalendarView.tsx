@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Empty, Pagination, Typography } from 'antd';
+import { Button, Pagination, Typography } from 'antd';
 import { LeftOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
+import { EmptyState } from '@yuku123/z-frontend-common/ui';
 import { listRecords } from '@/lc/api/runtime';
 import { StateBlock } from '@/lc/components/StateBlock';
 import type { Conjunction, EntityDefDTO, LcRow, QueryCondition, QuerySort } from '@/lc/api/types';
@@ -149,7 +150,11 @@ export function CalendarView({
   if (!dateField) {
     return (
       <div style={{ padding: 48 }}>
-        <Empty description="日历视图需要至少一个日期/时间字段来作为日历轴" />
+        <EmptyState
+          title="日历视图缺少日期轴"
+          description="日历视图需要至少一个日期/时间字段来作为日历轴。"
+          size="sm"
+        />
       </div>
     );
   }

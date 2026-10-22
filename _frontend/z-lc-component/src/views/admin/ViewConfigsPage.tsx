@@ -11,7 +11,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnMeta, ViewConfigDTO } from '@/lc/api/types';
 import {
@@ -23,8 +23,8 @@ import {
   updateViewConfig,
 } from '@/lc/api/viewConfig';
 import { formatTime } from './_scope';
-import { AdminScaffold, ListBanner } from './_shared';
-import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { entityNotFoundContent, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
@@ -108,7 +108,7 @@ export function ViewConfigsPage() {
     }
   }, [draft, appCode, reload]);
 
-  const columns: ColumnsType<ViewConfigDTO> = [
+  const columns: TableColumnsType<ViewConfigDTO> = [
     { title: '实体', dataIndex: 'entityCode', width: 170 },
     {
       title: '视图类型',
@@ -169,7 +169,7 @@ export function ViewConfigsPage() {
     },
   ];
 
-  const metaColumns = useMemo<ColumnsType<ColumnMeta>>(
+  const metaColumns = useMemo<TableColumnsType<ColumnMeta>>(
     () => [
       { title: '字段', dataIndex: 'fieldCode', width: 200 },
       {
@@ -290,7 +290,7 @@ export function ViewConfigsPage() {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 20 }}
-        locale={{ emptyText: listEmptyText(state, '视图') }}
+        locale={{ emptyText: listEmptyState(state, '视图') }}
       />
 
       <Modal

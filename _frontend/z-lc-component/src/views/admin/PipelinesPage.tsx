@@ -12,7 +12,7 @@ import {
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import type { TableColumnsType } from 'antd';
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import type { PipelineConfigEntity, PipelineStage, TriggerEvent } from '@/lc/api/types';
 import {
@@ -32,8 +32,8 @@ import {
 } from '@/lc/api/pipeline';
 import { DEFAULT_TENANT_CODE } from '@/lc/api/client';
 import { formatTime } from './_scope';
-import { AdminScaffold, ListBanner } from './_shared';
-import { entityNotFoundContent, listEmptyText, useAppSelection, useEntityOptions, useResourceList } from './_scope';
+import { AdminScaffold, ListBanner, listEmptyState } from './_shared';
+import { entityNotFoundContent, useAppSelection, useEntityOptions, useResourceList } from './_scope';
 
 const { Text } = Typography;
 
@@ -76,7 +76,7 @@ export function PipelinesPage() {
     }
   }, [editing, stages, appCode, reload]);
 
-  const columns: ColumnsType<PipelineConfigEntity> = [
+  const columns: TableColumnsType<PipelineConfigEntity> = [
     { title: '实体', dataIndex: 'entityCode', width: 180 },
     {
       title: '触发时机',
@@ -201,7 +201,7 @@ export function PipelinesPage() {
         columns={columns}
         dataSource={rows}
         pagination={{ pageSize: 20 }}
-        locale={{ emptyText: listEmptyText(state, '流水线') }}
+        locale={{ emptyText: listEmptyState(state, '流水线') }}
       />
 
       <Modal
