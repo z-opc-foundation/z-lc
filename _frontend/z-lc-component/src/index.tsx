@@ -17,6 +17,7 @@ import { WorkflowsPage } from '@/lc/views/admin/WorkflowsPage';
 import { PermissionsPage } from '@/lc/views/admin/PermissionsPage';
 import { DeploymentsPage } from '@/lc/views/admin/DeploymentsPage';
 import { AiModelingPage } from '@/lc/views/admin/AiModelingPage';
+import ComponentDocPage from '@/lc/pages/ComponentDoc';
 import '@/lc/styles/global.css';
 
 /**
@@ -64,6 +65,10 @@ function LcRoutes() {
           <Route path="admin/permissions" element={<PermissionsPage />} />
           <Route path="admin/deployments" element={<DeploymentsPage />} />
           <Route path="admin/ai" element={<AiModelingPage />} />
+          {/* 组件文档（lead 008 §7）。静态段必须排在下面 :appCode 动态段之前 ——
+              react-router 按「静态 > 动态」打分选最优匹配，docs 段不会被 :appCode 吃掉；
+              但它同时也在最后的 catch-all path="*" 之前 ⇒ 不会被兜底重定向绕走。 */}
+          <Route path="docs" element={<ComponentDocPage />} />
         </Route>
 
         {/* 应用工作区: 自带实体导航, 但不要 z-lc 顶栏 (宿主已有一层) */}
@@ -81,5 +86,15 @@ function LcRoutes() {
     </QueryClientProvider>
   );
 }
+
+/**
+ * 组件文档页（lead 008 §7）的具名再导出。
+ *
+ * 主壳按**统一名**取各域文档页：
+ *   lazyNamed(() => import('@yuku123/z-lc-component'), 'ComponentDocPage')
+ * 本仓原先**完全没有**文档页导出 ⇒ 主壳按统一名取会取不到，运行期 lazy 抛错。
+ * 与默认导出 LcRoutes 并存：宿主既可整包挂路由（默认导出），也可单独取文档页（具名）。
+ */
+export { ComponentDocPage };
 
 export default LcRoutes;
