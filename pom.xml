@@ -23,7 +23,12 @@
     <parent>
         <groupId>io.github.yuku123</groupId>
         <artifactId>z-boot-parent</artifactId>
-        <version>1.1.0</version>
+        <!-- 1.1.0 → 1.1.2（2026-10-22 · TASK-20261012-001）：指标暴露口径收口。
+             1.1.2 火车起，z-boot-web-starter 自带 actuator + micrometer-registry-prometheus，
+             并统一了 common tags（app/instance/env）与暴露面基线（health/info/metrics/prometheus）。
+             本仓 z-lc-report-web 引 z-boot-web-starter ⇒ 1.1.0 那一版不带 actuator，
+             /actuator/prometheus 此前在本仓任何宿主上都不存在。 -->
+        <version>1.1.2</version>
         <relativePath/>
     </parent>
 
