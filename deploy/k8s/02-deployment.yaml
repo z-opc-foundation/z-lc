@@ -1,0 +1,93 @@
+# ============================================================
+# z-lc —— Deployment（工作负载）
+#
+# 【镜像 tag 为什么这样写】
+#   image: zopc/z-lc:local
+#   —— 裸 tag，**不带 Nexus 仓库前缀**。铁律：本集群 imagePullPolicy=Never，
+#      镜像只存在于两个节点的 containerd，不在任何 registry。k3s 不会去拉，
+#      它按 `image:` 字段的**字面引用**去节点本地 content store 里找。
+#      如果喂进 containerd 的 tag 带前缀（例如 nexus.internal/zopc/z-lc:local）
+#      而清单里写的是裸 tag（或反过来），本地查不到 ⇒ Pod 卡 ErrImageNeverPull。
+#      喂镜像的 tag 必须与这里的 `image:` 逐字一致，见 README §2。
+#   imagePullPolicy: Never —— 照抄线上。
+#
+# 【探针为什么选 /api/lc/health】
+#   本域线上 1 副本在跑，`/api/lc/health` **实测返回 200** ⇒ 本域真实可用的健康端点。
+#   线上基线里的 readinessProbe 打的是 `httpGet /doc.html`（Swagger 文档页）——
+#   那个端点「能打开」只说明 Web 容器活着，不说明业务健康；本清单换成实测过的
+#   业务健康端点。两者都是 httpGet 语义上的替换，不改端口、不改行为面。
+#
+# 【secret 从哪来】
+#   SPRING_DATASOURCE_PASSWORD → secretKeyRef: secret z-lc-db / 键 password。
+#   secret z-lc-db 已在集群里（手工灌的），本仓不写它的内容。
+#   重建集群时按 README §3 的命令补灌。
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: z-lc-admin
+  namespace: z-lc
+  labels:
+    app.kubernetes.io/name: z-lc-admin
+    app.kubernetes.io/part-of: z-opc-foundation
+spec:
+  replicas: 1
+  # 保留 10 个历史版本 ⇒ `kubectl rollout undo deploy/z-lc-admin -n z-lc` 可用。
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: z-lc-admin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: z-lc-admin
+    spec:
+      containers:
+        - name: z-lc
+          image: zopc/z-lc:local
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # JVM 参数：与线上逐字一致。
+            - name: JAVA_OPTS
+              value: "-Xms256m -Xmx1024m"
+            # ===== 数据源：共享 RDS 的 oc 库（z-opc 系各仓共用同一个库）=====
+            # 地址/账号照线上现状明文（要求「集群可从代码复现」⇒ 与线上一字不差）；
+            # 口令一律走 secret 引用，仓里不出现明文口令。
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:mysql://rm-bp108uqlgwn712k54ho.mysql.rds.aliyuncs.com:3306/oc?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: zifang
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: z-lc-db
+                  key: password
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: 300m
+              memory: 1536Mi
+          # 探针打 /api/lc/health：本域实测 200，是本域真实可用的业务健康端点。
+          readinessProbe:
+            httpGet:
+              path: /api/lc/health
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/lc/health
+              port: http
+              scheme: HTTP
+            # 启动比就绪慢：JVM 起 + 连 RDS，放宽到 120s 再开始判活。
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 6
