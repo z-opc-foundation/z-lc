@@ -125,6 +125,39 @@ Maven reactor 里是 **13 个模块**（根 POM `<modules>` 实测：`z-lc-commo
 
 ---
 
+## 与邻居的边界（防功能漂移）
+
+<!-- D5-BOUNDARY-BEGIN：本块与 z-etl/README.md、z-lc/README.md 的同名小节**逐字一致**，改一处必须改另一处 -->
+
+三条分工边界（2026-10-12 D5 拍板）—— 每条都配一个「这个需求该找谁」的判例，
+防止后来者按感觉选仓。
+
+| # | 主题 | 谁管 | 边界一句话 |
+|---|---|---|---|
+| 1 | 运行时事件流 | `z-mq` | 事件**产生即消费**；**实时流不归 ETL**，ETL 只做**存量与批量**。 |
+| 2 | 应用内处理器链 | `z-lc` pipeline | 表单 / 数据流的**应用内**处理器链归 z-lc；**ETL 不做应用内处理**，只做**跨系统、跨库**搬运。 |
+| 3 | 取数渲染 vs 物化落地 | `z-lc` 报表子域 dataset（原 z-report） | dataset 管**取数渲染（查询态）**；**ETL 管物化落地（存储态）**。 |
+
+### 判例：这个需求该找谁
+
+| # | 需求（具体形态） | 找谁 | 不找谁 | 为什么 |
+|---|---|---|---|---|
+| 1 | 订单支付成功后，下游要**秒级**收到通知并立刻处理（持续流量） | `z-mq`（`z-mq-client` 发 / `z-mq-broker` 消费） | `z-etl` | 产生即消费的运行时事件流是 z-mq 的活；ETL 只做存量与批量，不做实时流。 |
+| 2 | 表单提交前，按配置依次做**字典解析、类型转换、必填校验、外键引用检查**（都在同一个应用内） | `z-lc` 的 `core/pipeline`（processor 链；配置端点 `PipelineConfigController` `/api/lc/pipeline-config`） | `z-etl` | 应用内处理器链归 z-lc pipeline；ETL 是跨系统、跨库搬运，不承接应用内处理。 |
+| 3 | 每晚把 A 库的订单**历史全量**搬进 B 库的汇总表并**落库** | `z-etl`（`z-etl-core` 的 reader → transform → writer 作业；管控端点 `EtlJobController` `/api/etl/jobs`） | `z-lc` 的 `z-lc-report-dataset`（`/api/lc/report/dataset`） | 物化落地是存储态，归 ETL；dataset 只做查询态取数渲染，不负责把结果写回存储。 |
+
+<!-- D5-BOUNDARY-END -->
+
+本仓在这三条边界上各自的位置（具体落点见上文「能力清单」与「API 一览」）：
+
+| 边界 | 本仓（z-lc）落点 | 不在本仓的落点 |
+|---|---|---|
+| 1 运行时事件流 | `z-lc-core/adapter` 的 `MqAdapter` 只是**发消息 / 订阅**这一侧 | 消息中间件本体在 `z-mq`；ETL 不接实时流 |
+| 2 应用内处理器链 | `z-lc-core` 的 `core/pipeline`（`Pipeline` / `FieldProcessor` / 5 支 processor），配置端点 `/api/lc/pipeline-config` | 跨系统、跨库搬运在 `z-etl` |
+| 3 取数渲染 vs 物化落地 | `z-lc-report-dataset` 的 `DatasetExecutor` / `CachingDatasetExecutor`（内存 typed 列式引擎），端点 `/api/lc/report/dataset` | 物化落地（写进目标存储）在 `z-etl` |
+
+---
+
 ## 🔧 技术栈（全部取自 POM 实测）
 
 | 层级 | 技术 |
