@@ -2,14 +2,16 @@
 # z-lc —— Deployment（工作负载）
 #
 # 【镜像 tag 为什么这样写】
-#   image: zopc/z-lc:local
+#   image: zopc/z-lc:1.0.0-zboot112
 #   —— 裸 tag，**不带 Nexus 仓库前缀**。铁律：本集群 imagePullPolicy=Never，
 #      镜像只存在于两个节点的 containerd，不在任何 registry。k3s 不会去拉，
 #      它按 `image:` 字段的**字面引用**去节点本地 content store 里找。
-#      如果喂进 containerd 的 tag 带前缀（例如 nexus.internal/zopc/z-lc:local）
+#      如果喂进 containerd 的 tag 带前缀（例如 nexus.internal/zopc/z-lc:1.0.0-zboot112）
 #      而清单里写的是裸 tag（或反过来），本地查不到 ⇒ Pod 卡 ErrImageNeverPull。
 #      喂镜像的 tag 必须与这里的 `image:` 逐字一致，见 README §2。
 #   imagePullPolicy: Never —— 照抄线上。
+#   ⚠ 2026-10-23（卡 TASK-20261023-008）：原先写的是 `zopc/z-lc:local` ——
+#      裸 tag 不可回滚、不可追溯 ⇒ 本轮换成版本化 tag（z-boot-datasource-starter 抬到 1.1.2）。
 #
 # 【探针为什么选 /api/lc/health】
 #   本域线上 1 副本在跑，`/api/lc/health` **实测返回 200** ⇒ 本域真实可用的健康端点。
@@ -44,7 +46,7 @@ spec:
     spec:
       containers:
         - name: z-lc
-          image: zopc/z-lc:local
+          image: zopc/z-lc:1.0.0-zboot112
           imagePullPolicy: Never
           ports:
             - name: http
