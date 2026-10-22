@@ -150,8 +150,16 @@ function saveButton() {
   return matches[0] as HTMLButtonElement;
 }
 
+/**
+ * 按**语义角色**找「无法保存」这块告警横幅。
+ *
+ * 为什么不用 `.ant-alert` 类名：类名是 antd 的实现细节，antd 升级或换主题就可能改名，
+ * 一旦改名这个查找会静默返回 undefined ⇒ 断言变成「本来就没有横幅」，测不出任何东西
+ * （假绿）。`role="alert"` 是 ARIA 语义契约，跨 antd 版本稳定
+ * （antd 的 Alert 组件本身就渲染 role="alert"），且基座 ErrorState 用的也是同一个角色。
+ */
 function blockAlert() {
-  return Array.from(document.querySelectorAll('.ant-alert')).find(
+  return Array.from(document.querySelectorAll('[role="alert"]')).find(
     (node) => (node.textContent ?? '').includes('无法保存'),
   );
 }
