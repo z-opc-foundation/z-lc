@@ -185,7 +185,9 @@ function clickRetry(where: ParentNode) {
 
 function errorAlert(text: string): HTMLElement {
   const banner = screen.getByText(text);
-  const alert = banner.closest('.ant-alert');
+  // 错误块按语义角色找，不按类名找：本包的错误块是基座 ErrorState（role="alert"，
+  // 不带 antd 类名），antd6 的 Alert 类名与它不是一回事，只有语义角色跨版本稳定。
+  const alert = banner.closest('[role="alert"]');
   if (!alert) throw new Error(`「${text}」不在错误块里`);
   return alert as HTMLElement;
 }
@@ -244,7 +246,7 @@ describe('GalleryView：读失败不是一句"暂无数据"', () => {
     clickRetry(alert);
     await waitFor(() => expect(container.querySelectorAll('.ant-card')).toHaveLength(3));
     expect(listCalls()).toBeGreaterThan(before);
-    expect(container.querySelector('.ant-alert'), '重试成功后错误块该收走').toBeNull();
+    expect(container.querySelector('[role="alert"]'), '重试成功后错误块该收走').toBeNull();
   });
 
   it('换筛选后读失败，旧卡片不许留在页面上装作还在', async () => {
@@ -312,7 +314,7 @@ describe('CalendarView：挂掉的月份不能长得像空的月份', () => {
     clickRetry(alert);
     await waitFor(() => expect(container.querySelectorAll('.zlc-cal-chip')).toHaveLength(3));
     expect(listCalls()).toBeGreaterThan(before);
-    expect(container.querySelector('.ant-alert'), '重试成功后错误块该收走').toBeNull();
+    expect(container.querySelector('[role="alert"]'), '重试成功后错误块该收走').toBeNull();
   });
 });
 

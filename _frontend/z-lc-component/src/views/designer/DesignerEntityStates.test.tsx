@@ -136,12 +136,17 @@ function listItems(container: HTMLElement) {
   return Array.from(sidebar(container).querySelectorAll('.ant-list-item'));
 }
 
-/** 错误必须长在**侧栏自己**的 .ant-alert 上：别处冒出一句同样的话不算这条用例过了。 */
+/**
+ * 错误必须长在**侧栏自己**的 [role="alert"] 上：别处冒出一句同样的话不算这条用例过了。
+ *
+ * 为什么按语义角色而不按 `.ant-alert` 类名找：本包的错误块是基座 ErrorState（role="alert"，
+ * 不带 antd 类名），只有语义角色在 antd5 的 Alert 与基座 ErrorState 两种实现上都成立。
+ */
 function errorAlert(container: HTMLElement, title: string) {
-  const alert = Array.from(sidebar(container).querySelectorAll('.ant-alert')).find((node) =>
+  const alert = Array.from(sidebar(container).querySelectorAll('[role="alert"]')).find((node) =>
     (node.textContent ?? '').includes(title),
   );
-  if (!alert) throw new Error(`「${title}」没有长在侧栏的 .ant-alert 上`);
+  if (!alert) throw new Error(`「${title}」没有长在侧栏的 [role="alert"] 上`);
   return alert;
 }
 
@@ -193,7 +198,7 @@ describe('DesignerPage 侧栏：读不到实体不是"这个应用没有实体"'
     modes.entities = 'empty';
     const { container } = render(designerTree());
     await waitFor(() => expect(sidebarText(container)).toContain('还没有实体'));
-    expect(container.querySelector('.ant-alert')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('挂载到响应回来之间那一帧说的是"在读"，不是"还没有实体"', async () => {
@@ -221,7 +226,7 @@ describe('DesignerPage 侧栏：读不到实体不是"这个应用没有实体"'
     clickRetry(container);
     await waitFor(() => expect(listItems(container)).toHaveLength(2));
     expect(entityCalls()).toBeGreaterThan(before);
-    expect(container.querySelector('.ant-alert')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('切到另一个应用时读失败，上一个应用的实体清单不许留在侧栏', async () => {

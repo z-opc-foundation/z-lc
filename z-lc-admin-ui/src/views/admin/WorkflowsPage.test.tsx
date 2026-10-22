@@ -268,7 +268,8 @@ async function openDraft() {
 
 /** 词表那一条告警里的「重试」—— 点它要走完整条重读路径，不是把 banner 藏起来。 */
 function clickVocabularyRetry() {
-  const alert = Array.from(document.querySelectorAll('.ant-alert')).find((node) =>
+  // 按语义角色找告警块：类名会随 antd 版本变，role="alert" 不会。
+  const alert = Array.from(document.querySelectorAll('[role="alert"]')).find((node) =>
     (node.textContent ?? '').includes('触发时机词表'),
   );
   if (!alert) throw new Error('没有「触发时机词表没有读到」这一条告警');
@@ -289,7 +290,7 @@ async function toasts(): Promise<string> {
 }
 
 function alerts(): string {
-  return Array.from(document.querySelectorAll('.ant-alert'))
+  return Array.from(document.querySelectorAll('[role="alert"]'))
     .map((node) => node.textContent ?? '')
     .join(' | ');
 }

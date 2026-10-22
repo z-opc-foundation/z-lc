@@ -186,14 +186,15 @@ function toastText(): string {
  *
  * 这个目录下的用例每支都 render 一棵新树，而 RTL 的自动 cleanup 在本仓没注册
  * （`DesignerFieldCode.test.tsx` 那份靠"前面几支不产生同类节点"侥幸躲过）。整页
- * `document.querySelectorAll('.ant-alert')` 于是会把上一支残留的那棵树一起读进来 ——
+ * `document.querySelectorAll('[role="alert"]')` 于是会把上一支残留的那棵树一起读进来 ——
  * 实测症状：CREATED 那一支读到前一分支留下的「未建成（1）」，红得像是产品坏了。
  * toast 只能按全局读（antd 挂在 body 上），那一类靠每次点之前 destroy 一次兜住。
  */
 let root: HTMLElement = document.createElement('div');
 
 function alertText(): string {
-  return Array.from(root.querySelectorAll('.ant-alert'))
+  // 按语义角色找告警块：类名会随 antd 版本变，role="alert" 不会。
+  return Array.from(root.querySelectorAll('[role="alert"]'))
     .map((node) => node.textContent ?? '')
     .join(' | ');
 }

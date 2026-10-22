@@ -257,7 +257,8 @@ describe('RelationsPage：三句话要分得开', () => {
     modes.relation = 'fail';
     renderPage(<RelationsPage />);
     const banner = await screen.findByText(/实体关系没有读到/);
-    const alert = banner.closest('.ant-alert') as HTMLElement;
+    // 按语义角色找错误块：类名会随 antd 版本变，role="alert" 不会。
+    const alert = banner.closest('[role="alert"]') as HTMLElement;
 
     modes.relation = 'ok';
     const before = requestLog.filter((url) => url.includes('/relation/list')).length;
