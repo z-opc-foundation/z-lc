@@ -44,7 +44,7 @@
          全组织 pom grep 实测除 z-opc 那份单体副本外没有别的仓引用这几个构件 ⇒ 对已发布件零影响。 -->
     <groupId>io.github.yuku123</groupId>
     <artifactId>z-lc</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>pom</packaging>
 
     <!-- 身份元数据自报（写法照 z-ext/pom.xml:30-55、z-meta/pom.xml:42-75）：加了 <parent> 之后常开
