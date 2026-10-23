@@ -57,10 +57,13 @@ spec:
             - name: JAVA_OPTS
               value: "-Xms256m -Xmx1024m"
             # ===== 数据源：共享 RDS 的 oc 库（z-opc 系各仓共用同一个库）=====
-            # 地址/账号照线上现状明文（要求「集群可从代码复现」⇒ 与线上一字不差）；
-            # 口令一律走 secret 引用，仓里不出现明文口令。
+            # 地址走 secret 引用（001_凭证管理规范：仓内不留云端地址字面量）；
+            # 账号照线上现状明文（与线上一字不差）；口令一律走 secret 引用，仓里不出现明文口令。
             - name: SPRING_DATASOURCE_URL
-              value: "jdbc:mysql://rm-bp108uqlgwn712k54ho.mysql.rds.aliyuncs.com:3306/oc?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+              valueFrom:
+                secretKeyRef:
+                  name: z-lc-db
+                  key: db-url
             - name: SPRING_DATASOURCE_USERNAME
               value: zifang
             - name: SPRING_DATASOURCE_PASSWORD
