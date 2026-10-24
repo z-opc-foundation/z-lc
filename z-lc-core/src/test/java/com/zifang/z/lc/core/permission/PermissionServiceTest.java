@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.zifang.z.lc.core.permission.entity.PermissionEntity;
-import com.zifang.z.lc.mapper.permission.PermissionMapper;
+import com.zifang.z.lc.mapper.permission.LcPermissionMapper;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.stereotype.Service;
@@ -31,7 +31,7 @@ import static org.junit.Assert.fail;
  * PermissionService 单元测试 —— 只量"这一层自己拼出来的条件"，行为契约在真 HTTP + 真库的
  * {@code LcHttpContractTest} 那一层（缺陷 #48 的六条都在那里被逐条证过牙）。
  * <p>
- * 这一支原来是用 JDK 动态代理 mock {@code PermissionMapper}，把 {@code revoke} 的
+ * 这一支原来是用 JDK 动态代理 mock {@code LcPermissionMapper}，把 {@code revoke} 的
  * {@code deleteById} 当成期望钉下来（"revokeShouldDelegateToDeleteById"），于是"谁的 id 都删得掉"
  * 这件事在测试层是绿的。签名改了（三个列表查询与判定都带租户、回收要回报受影响行数），
  * 那条期望连同它保护的错误行为一起删掉。
@@ -89,12 +89,12 @@ public class PermissionServiceTest {
             }
         };
 
-        PermissionMapper mapper = (PermissionMapper) Proxy.newProxyInstance(
-                PermissionMapper.class.getClassLoader(),
-                new Class<?>[]{PermissionMapper.class, BaseMapper.class},
+        LcPermissionMapper mapper = (LcPermissionMapper) Proxy.newProxyInstance(
+                LcPermissionMapper.class.getClassLoader(),
+                new Class<?>[]{LcPermissionMapper.class, BaseMapper.class},
                 handler);
 
-        Field f = PermissionService.class.getDeclaredField("permissionMapper");
+        Field f = PermissionService.class.getDeclaredField("lcPermissionMapper");
         f.setAccessible(true);
         f.set(service, mapper);
     }

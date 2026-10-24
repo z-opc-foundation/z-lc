@@ -2,7 +2,7 @@ package com.zifang.z.lc.core.permission;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.zifang.z.lc.core.permission.entity.PermissionEntity;
-import com.zifang.z.lc.mapper.permission.PermissionMapper;
+import com.zifang.z.lc.mapper.permission.LcPermissionMapper;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
@@ -25,11 +25,18 @@ public class PermissionService {
 
     private static final Logger log = LogManager.getLogger(PermissionService.class);
 
+    /**
+     * 字段名 = mapper 的规范 bean 名（{@code LcPermissionMapper} ⇒ {@code lcPermissionMapper}）。
+     * <p>
+     * ⚠ 不要改回 {@code permissionMapper}：{@code @Resource} 是**按名优先**注入，
+     * 字段名一旦是通用裸名，就会被容器里**别的模块**注册的同名 bean 抢走
+     * （生产实证见 {@link LcPermissionMapper} 的类注释）。
+     */
     @Resource
-    private PermissionMapper permissionMapper;
+    private LcPermissionMapper lcPermissionMapper;
 
     public List<PermissionEntity> listByApp(String tenantCode, String appCode) {
-        return permissionMapper.selectList(
+        return lcPermissionMapper.selectList(
                 new QueryWrapper<PermissionEntity>()
                         .eq("tenant_code", require(tenantCode, "tenantCode"))
                         .eq("app_code", require(appCode, "appCode"))
@@ -37,7 +44,7 @@ public class PermissionService {
     }
 
     public List<PermissionEntity> listByEntity(String tenantCode, String appCode, String entityCode) {
-        return permissionMapper.selectList(
+        return lcPermissionMapper.selectList(
                 new QueryWrapper<PermissionEntity>()
                         .eq("tenant_code", require(tenantCode, "tenantCode"))
                         .eq("app_code", require(appCode, "appCode"))
@@ -45,7 +52,7 @@ public class PermissionService {
     }
 
     public List<PermissionEntity> listByRole(String tenantCode, String appCode, String roleCode) {
-        return permissionMapper.selectList(
+        return lcPermissionMapper.selectList(
                 new QueryWrapper<PermissionEntity>()
                         .eq("tenant_code", require(tenantCode, "tenantCode"))
                         .eq("app_code", require(appCode, "appCode"))
@@ -87,7 +94,7 @@ public class PermissionService {
             same.eq("entity_code", entityCode);
         }
 
-        PermissionEntity existing = permissionMapper.selectOne(same);
+        PermissionEntity existing = lcPermissionMapper.selectOne(same);
         if (existing != null) {
             return existing;
         }
@@ -98,7 +105,7 @@ public class PermissionService {
         entity.setPermission(permission);
         entity.setTenantCode(tenantCode);
         entity.setCreateTime(new Date());
-        permissionMapper.insert(entity);
+        lcPermissionMapper.insert(entity);
         log.info("Permission granted: tenant={} app={} entity={} role={} perm={}",
                 tenantCode, appCode, entityCode, roleCode, permission);
         return entity;
@@ -114,7 +121,7 @@ public class PermissionService {
         if (id == null) {
             throw new IllegalArgumentException("id 是必填的");
         }
-        return permissionMapper.delete(new QueryWrapper<PermissionEntity>()
+        return lcPermissionMapper.delete(new QueryWrapper<PermissionEntity>()
                 .eq("tenant_code", require(tenantCode, "tenantCode"))
                 .eq("id", id));
     }
@@ -144,7 +151,7 @@ public class PermissionService {
         } else {
             q.and(w -> w.eq("entity_code", scope).or().isNull("entity_code"));
         }
-        Long count = permissionMapper.selectCount(q);
+        Long count = lcPermissionMapper.selectCount(q);
         return count != null && count > 0;
     }
 
