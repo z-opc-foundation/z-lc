@@ -2463,3 +2463,30 @@ P4/P6 是因为 **update 侧探针让创建闸失效的波及面变宽**（坏�
 `ColumnManagerDrawer.test.tsx` 与 `mutate_column_order_guards.py`；porcelain 仍是 51 行，
 因为这些新文件都落在本来就未跟踪的目录里。）
 
+
+---
+
+## 探针预算钉（卡 TASK-20261025-042，2026-10-25）
+
+```bash
+python3 _e2e/mutate_probe_timeout_budget_guard.py            # 全跑：版本自检 + 变异矩阵 + 现网清单核对
+python3 _e2e/mutate_probe_timeout_budget_guard.py --self-test # 只跑变异矩阵（量具灵敏度自证）
+python3 _e2e/mutate_probe_timeout_budget_guard.py --check     # 只跑现网清单核对（守缺陷）
+```
+
+钉的是 `deploy/k8s/02-deployment.yaml` 里 `z-lc-admin` 的**两处**探针
+（`readinessProbe` + `livenessProbe`）的 `timeoutSeconds` 必须 `>= 5`。
+现在两处**都没写**这个字段 ⇒ K8s 落到默认 1s；而被探端点 `/api/lc/health` 每次请求要串行真探
+2 个连接池（`DataSourceHealthProber.DEFAULT_TIMEOUT_MS = 2000ms` / 池，线上 `sources` 实读 2 个池）
+⇒ 端点最坏 ~4s ⇒ **探针预算(1s) < 端点最坏耗时(~4s)** ⇒ DB 一抖动即假 liveness 失败
+（线上 2026-10-25 06:01:44 CST 已发生 1 次 `Liveness probe failed: context deadline exceeded`）。
+
+⚠ **这个钉现在就是红的，而且这是对的**：清单修复（卡第 1 项）属"需人工确认后执行"，
+清单没补之前 `--check` 必然 rc=1。**故意不把它挂进 maven 测试套件** ——
+挂了就会让 z-lc 仓整体构建变红；接线条件 = 清单两处都补上 `timeoutSeconds: 5` 之后，
+再把它挂到 `mvn verify` 的前置闸。
+变异矩阵（阳性对照 1 支 + 变异体 8 支：两处都写回 1 / 只修 readiness / 只修 liveness /
+缺其中一处 / 低于下限 / 写成字符串）是绿的 ⇒ 量具本身抓得住，回绿与否只看清单。
+量具三条老规矩：① 不写仓库里的任何文件（变异体全在临时目录，跑完即清）；
+② 开跑先核「本地清单 blob == `origin/main` 同路径 blob」，不一致就 FATAL 退出（rc=3）；
+③ 按 YAML 字段名定位，不按行号、不用 grep。
