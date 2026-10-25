@@ -215,15 +215,23 @@ def set_probe_path(text, probe_key, value):
     http_get = _map_get(probe_node, "httpGet")
     if not isinstance(http_get, yaml.MappingNode):
         raise RuntimeError("%s 没有 httpGet 节点" % probe_key)
-    path_node = _map_get(http_get, "path")
-    if path_node is None or not isinstance(path_node, yaml.ScalarNode):
+    # ⚠ 要的是 **key 节点**（'path' 那个键）的列，不是**值节点**的列 ——
+    #   值节点的 start_mark.column 指向值本身（'path: ' 之后），
+    #   拿它当缩进 ⇒ 写回去的行少了两格缩进 ⇒ YAML 结构被写坏。
+    key_node = None
+    val_node = None
+    for k, v in http_get.value:
+        if isinstance(k, yaml.ScalarNode) and k.value == "path":
+            key_node, val_node = k, v
+            break
+    if key_node is None or not isinstance(val_node, yaml.ScalarNode):
         raise RuntimeError("%s.httpGet.path 不是单行标量，改不了" % probe_key)
 
     lines = text.splitlines(keepends=True)
-    idx = path_node.start_mark.line
-    if path_node.end_mark.line != path_node.start_mark.line:
+    idx = key_node.start_mark.line
+    if val_node.start_mark.line != key_node.start_mark.line:
         raise RuntimeError("%s.httpGet.path 跨行了，改不了" % probe_key)
-    indent = " " * path_node.start_mark.column
+    indent = " " * key_node.start_mark.column
     lines[idx] = "%spath: %s\n" % (indent, value)
     return "".join(lines)
 
