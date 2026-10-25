@@ -658,7 +658,7 @@ export function DesignerPage() {
                 rowKey={(row) => `${row.fieldCode}-${row.sortOrder}`}
                 columns={fieldColumns}
                 dataSource={draft.fields ?? []}
-                pagination={false}
+                pagination={false /* §2 规则 2 豁免：字段表是设计器草稿的子表，行数由草稿字段数决定 */}
                 scroll={{ x: 'max-content' }}
               />
             </Card>

@@ -257,7 +257,7 @@ export function PermissionsPage() {
         <>
           <Table
             size="small"
-            pagination={false}
+            pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `共 ${t} 条` }}
             style={{ marginBottom: 6 }}
             rowKey="role"
             dataSource={matrixRoles.map((role) => ({ role }))}

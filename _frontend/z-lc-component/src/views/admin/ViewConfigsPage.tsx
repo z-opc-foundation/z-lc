@@ -335,7 +335,7 @@ export function ViewConfigsPage() {
                   rowKey={(row) => row.fieldCode}
                   columns={metaColumns}
                   dataSource={draft.columnMeta}
-                  pagination={false}
+                  pagination={false /* §2 规则 2 豁免：列元数据是当前视图草稿的子表，行数由草稿列数决定 */}
                   locale={{ emptyText: '还没有列，回工作区调好列布局后用「保存为视图」，或直接切到 JSON 编辑' }}
                 />
                 <Space>

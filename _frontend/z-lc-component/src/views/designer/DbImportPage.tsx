@@ -266,7 +266,7 @@ export function DbImportPage() {
             size="small"
             rowKey={(row) => String(row.fieldCode)}
             dataSource={preview.fields ?? []}
-            pagination={false}
+            pagination={false /* §2 规则 2 豁免：导入预览的字段表是弹窗内的预览子表，行数由导入源字段数决定 */}
             columns={[
               { title: '字段', dataIndex: 'fieldCode', width: 200 },
               { title: '类型', dataIndex: 'fieldType', width: 110 },

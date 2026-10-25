@@ -362,7 +362,7 @@ export function ImportDialog({
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <Table
             size="small"
-            pagination={false}
+            pagination={false /* §2 规则 2 豁免：可导入字段表是导入向导第 1 步的子表，行数由解析结果决定 */}
             rowKey="fieldCode"
             dataSource={importable.map((resolved) => ({
               fieldCode: resolved.ctx.field.fieldCode,
@@ -406,7 +406,7 @@ export function ImportDialog({
               rowKey="__line"
               columns={previewColumns}
               dataSource={preview}
-              pagination={false}
+              pagination={false /* §2 规则 2 豁免：CSV 预览行表是导入向导的预览子表，行数由文件行数决定 */}
               scroll={{ x: 'max-content' }}
             />
           </div>

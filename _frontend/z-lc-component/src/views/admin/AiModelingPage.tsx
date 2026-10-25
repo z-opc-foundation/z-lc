@@ -256,7 +256,7 @@ export function AiModelingPage() {
                 rowKey={(row) => String(row.fieldCode)}
                 columns={columns}
                 dataSource={entity.fields ?? []}
-                pagination={false}
+                pagination={false /* §2 规则 2 豁免：实体字段明细是选中实体下的子表，行数由该实体字段数决定 */}
                 scroll={{ x: 'max-content' }}
               />
             </div>

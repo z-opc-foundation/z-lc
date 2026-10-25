@@ -130,7 +130,7 @@ export function AppOverviewPage() {
           rowKey="entityCode"
           columns={columns}
           dataSource={entities}
-          pagination={false}
+          pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `共 ${t} 条` }}
           locale={{
             emptyText: read?.entities ? (
               <EmptyBlock
