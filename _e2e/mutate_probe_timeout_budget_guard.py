@@ -12,6 +12,15 @@
 本钉钉的是这条因果链的**最后一环（配置面）**：两处探针的 `timeoutSeconds` 必须 >= 5
 （= 2000ms × 池数 2 + 余量；与同族已修的 `z-ops-admin` / `z-config-web` 同值）。
 
+**判据二（2026-10-25 补 · 同一张卡 TASK-20261025-042）**：
+卡面 §二 第 1 项有一条 ⛔ 硬约束 ——「不许只把 `timeoutSeconds` 调大、却保留 liveness 打
+DB 支撑端点的组合：DB 挂了不该重启容器」。
+⇒ 光钉 `timeoutSeconds` **钉不住**这一条：把 liveness 路径打回 `/api/lc/health`
+（DB 支撑端点，串行真探 2 个连接池）而 `timeoutSeconds` 仍是 5，判据一照样绿。
+⇒ 本钉另立一条判据：**liveness 的被探端点必须是不探 DB 的轻量端点**
+（约定值 `/actuator/health/liveness` = Spring Boot 2.3+ 的 liveness 组，只含 livenessState）。
+⇒ 变异矩阵为此加了 M9（打回 DB 支撑端点）、M10（换成未知端点）两支。
+
 三条硬规矩（照抄本仓 `_e2e/mutate_*_guard.py` 那一族的老规矩）：
 
   1. **只读**：本脚本**不写仓库里的任何文件**。注入的变异体全部写在系统临时目录里
@@ -60,6 +69,16 @@ TARGET_DEPLOYMENT = "z-lc-admin"
 TARGET_NAMESPACE = "z-lc"
 MANIFEST_REL = "deploy/k8s/02-deployment.yaml"
 PROBE_KEYS = ("readinessProbe", "livenessProbe")
+
+# ---- 判据二（2026-10-25 · 卡 TASK-20261025-042 补）：liveness 不得打 DB 支撑端点 ----
+# 卡面 §二 第 1 项的 ⛔ 硬约束：「不许只把 timeoutSeconds 调大、却保留 liveness 打 DB 支撑端点
+# 的组合 —— DB 挂了不该重启容器」。
+# ⇒ 光钉「两处 timeoutSeconds >= 5」**钉不住**这一条：把 liveness 路径改回 /api/lc/health
+#   而 timeoutSeconds 仍是 5，判据一照样绿 ⇒ 必须另立一条判据。
+# 判法：**liveness 的被探端点必须是不探 DB 的轻量端点**（= readiness 打的那一端就不算）。
+LIVENESS_MUST_BE_DB_FREE_PATH = "/actuator/health/liveness"
+# 已知会探 DB 的端点（本域）⇒ liveness 打它就判红。
+DB_BEARING_PATHS = ("/api/lc/health",)
 
 EXIT_OK = 0
 EXIT_CHECK_RED = 1
@@ -183,6 +202,32 @@ def set_probe_timeout(text, probe_key, value):
     return "".join(lines)
 
 
+def set_probe_path(text, probe_key, value):
+    """按字段名改某一处探针的 httpGet.path，返回新文本。
+
+    与 set_probe_timeout 同一套思路：**按字段名定位**（不按行号），
+    变异体是「把 liveness 打回 DB 支撑端点」这一支 ⇒ 钉必须能红在它上面。
+    """
+    root = yaml.compose(text)
+    if root is None:
+        raise RuntimeError("清单为空")
+    _container, probe_node = _find_probe_node(root, probe_key)
+    http_get = _map_get(probe_node, "httpGet")
+    if not isinstance(http_get, yaml.MappingNode):
+        raise RuntimeError("%s 没有 httpGet 节点" % probe_key)
+    path_node = _map_get(http_get, "path")
+    if path_node is None or not isinstance(path_node, yaml.ScalarNode):
+        raise RuntimeError("%s.httpGet.path 不是单行标量，改不了" % probe_key)
+
+    lines = text.splitlines(keepends=True)
+    idx = path_node.start_mark.line
+    if path_node.end_mark.line != path_node.start_mark.line:
+        raise RuntimeError("%s.httpGet.path 跨行了，改不了" % probe_key)
+    indent = " " * path_node.start_mark.column
+    lines[idx] = "%spath: %s\n" % (indent, value)
+    return "".join(lines)
+
+
 # ---------------------------------------------------------------- 判据本体
 def detect(text):
     """读清单正文，判「两处探针的 timeoutSeconds 是否都 >= 5」。
@@ -235,6 +280,26 @@ def detect(text):
             if v < MIN_TIMEOUT_SECONDS:
                 findings.append("容器 %s 的 %s.timeoutSeconds=%d < %d"
                                 % (name, pk, v, MIN_TIMEOUT_SECONDS))
+
+        # ---- 判据二：liveness 不得打 DB 支撑端点（卡面 §二 第 1 项的 ⛔）----
+        # 光钉 timeoutSeconds 钉不住这条：把 liveness 路径打回 /api/lc/health 而预算仍是 5，
+        # 判据一照样绿 ⇒ DB 一抖动仍会重启容器（重启修不好 DB）。
+        lp = c.get("livenessProbe")
+        if isinstance(lp, dict):
+            http_get = lp.get("httpGet")
+            if isinstance(http_get, dict):
+                path = http_get.get("path")
+                if path in DB_BEARING_PATHS:
+                    findings.append(
+                        "容器 %s 的 livenessProbe 打的是 **DB 支撑端点 %s** ⇒ DB 抖动会"
+                        "**重启容器**（重启修不好外部依赖，只会把流量打回雪崩）"
+                        "⇒ liveness 必须打不探 DB 的 %s，DB 健康由 readiness 承载"
+                        % (name, path, LIVENESS_MUST_BE_DB_FREE_PATH))
+                elif path != LIVENESS_MUST_BE_DB_FREE_PATH:
+                    findings.append(
+                        "容器 %s 的 livenessProbe.httpGet.path=%r，既不是 DB 支撑端点，"
+                        "也不是约定的免 DB 端点 %s ⇒ 无法证明它不探 DB"
+                        % (name, path, LIVENESS_MUST_BE_DB_FREE_PATH))
     return (not findings), findings
 
 
@@ -268,24 +333,45 @@ def version_self_check():
 
 # ---------------------------------------------------------------- 变异矩阵（量具自证）
 # 每支都是**相对原始清单文本**构造出来的 ⇒ 清单将来被修好了，这些支的期望**不变**。
+#
+# 每支 = (id, 描述, {探针键: timeoutSeconds 取值}, {探针键: httpGet.path 取值}, 期望)
+#   timeout 取值：<int> = 写入该值；None = 删掉该行；"KEEP" = 不动。
+#   path 取值：<str> = 写入该路径；"KEEP" = 不动；None = 不动（该支不涉及路径）。
 MUTANTS = [
-    ("CTRL-OK", "两处都补 timeoutSeconds: 5", {"readinessProbe": 5, "livenessProbe": 5}, True),
+    ("CTRL-OK", "两处都补 timeoutSeconds: 5（+ liveness 走免 DB 端点）",
+     {"readinessProbe": 5, "livenessProbe": 5},
+     {"readinessProbe": "KEEP", "livenessProbe": LIVENESS_MUST_BE_DB_FREE_PATH}, True),
     ("M1", "两处都写回 timeoutSeconds: 1（缺陷原形）",
-     {"readinessProbe": 1, "livenessProbe": 1}, False),
+     {"readinessProbe": 1, "livenessProbe": 1},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M2", "只修 readiness，liveness 仍是 1",
-     {"readinessProbe": 5, "livenessProbe": 1}, False),
+     {"readinessProbe": 5, "livenessProbe": 1},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M3", "只修 liveness，readiness 仍是 1",
-     {"readinessProbe": 1, "livenessProbe": 5}, False),
+     {"readinessProbe": 1, "livenessProbe": 5},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M4", "readiness 缺 timeoutSeconds（只补了 liveness）",
-     {"readinessProbe": None, "livenessProbe": 5}, False),
+     {"readinessProbe": None, "livenessProbe": 5},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M5", "liveness 缺 timeoutSeconds（只补了 readiness）",
-     {"readinessProbe": 5, "livenessProbe": None}, False),
+     {"readinessProbe": 5, "livenessProbe": None},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M6", "两处都缺 timeoutSeconds（清单原形）",
-     {"readinessProbe": None, "livenessProbe": None}, False),
+     {"readinessProbe": None, "livenessProbe": None},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M7", "两处 timeoutSeconds: 4（低于下限）",
-     {"readinessProbe": 4, "livenessProbe": 4}, False),
+     {"readinessProbe": 4, "livenessProbe": 4},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
     ("M8", "两处 timeoutSeconds: \"5\"（写成字符串，不是整数）",
-     {"readinessProbe": "5", "livenessProbe": "5"}, False),
+     {"readinessProbe": "5", "livenessProbe": "5"},
+     {"readinessProbe": "KEEP", "livenessProbe": "KEEP"}, False),
+    # ---- 判据二（liveness 不得打 DB 支撑端点）的变异体 ----
+    ("M9", "⚠ liveness 打回 DB 支撑端点 /api/lc/health（timeoutSeconds 仍是 5）",
+     {"readinessProbe": 5, "livenessProbe": 5},
+     {"readinessProbe": "KEEP", "livenessProbe": "/api/lc/health"}, False),
+    ("M10", "⚠ liveness 换成另一个未知端点（无法证明不探 DB）",
+     {"readinessProbe": 5, "livenessProbe": 5},
+     {"readinessProbe": "KEEP", "livenessProbe": "/doc.html"}, False),
 ]
 
 
@@ -294,11 +380,15 @@ def run_mutation_matrix(manifest_text):
     rows = []
     ok = True
     with tempfile.TemporaryDirectory(prefix="zlc-probe-budget-") as td:
-        for cid, desc, values, expect_pass in MUTANTS:
+        for cid, desc, values, paths, expect_pass in MUTANTS:
             try:
                 text = manifest_text
                 for pk in PROBE_KEYS:
                     text = set_probe_timeout(text, pk, values.get(pk))
+                for pk in PROBE_KEYS:
+                    pv = paths.get(pk)
+                    if pv not in (None, "KEEP"):
+                        text = set_probe_path(text, pk, pv)
                 fx = pathlib.Path(td) / ("%s.yaml" % cid)
                 fx.write_text(text, encoding="utf-8")
                 passed, findings = detect_file(fx)
@@ -354,8 +444,10 @@ def main(argv=None):
     manifest_path = repo_root() / MANIFEST_REL
     manifest_text = manifest_path.read_text(encoding="utf-8")
     lines.append("MANIFEST: %s (%d bytes)" % (MANIFEST_REL, len(manifest_text.encode("utf-8"))))
-    lines.append("JUDGE: 两处探针 timeoutSeconds 均须 >= %d（> 2000ms/池 × 2 池 + 余量）"
+    lines.append("JUDGE-1: 两处探针 timeoutSeconds 均须 >= %d（> 2000ms/池 × 2 池 + 余量）"
                  % MIN_TIMEOUT_SECONDS)
+    lines.append("JUDGE-2: liveness 端点须为免 DB 端点 %s（不得打 %s）"
+                 % (LIVENESS_MUST_BE_DB_FREE_PATH, " / ".join(DB_BEARING_PATHS)))
 
     self_ok = None
     rows = []
@@ -378,12 +470,13 @@ def main(argv=None):
         lines.append("")
         lines.append("--- 现网清单核对（守缺陷）---")
         if live_ok:
-            lines.append("  [PASS] %s 两处探针 timeoutSeconds 均 >= %d" % (MANIFEST_REL, MIN_TIMEOUT_SECONDS))
+            lines.append("  [PASS] %s 两处探针 timeoutSeconds 均 >= %d 且 liveness 打的是免 DB 端点 %s"
+                         % (MANIFEST_REL, MIN_TIMEOUT_SECONDS, LIVENESS_MUST_BE_DB_FREE_PATH))
         else:
             for f in findings:
                 lines.append("  [RED ] %s" % f)
-            lines.append("  => 该缺陷仍在仓内清单里（卡 TASK-20261025-042 第 1 项"
-                         "「往清单补 timeoutSeconds」待人工批准后落地）")
+            lines.append("  => 该缺陷仍在仓内清单里（卡 TASK-20261025-042 第 1 项："
+                         "两处补 timeoutSeconds 且 liveness 改打免 DB 端点）")
 
     lines.append("")
     lines.append("RESULT: local=%s  self-test=%s  live-check=%s  (%.1fs)"
@@ -397,7 +490,7 @@ def main(argv=None):
         lines.append("VERDICT: 量具自身失灵（变异矩阵红）⇒ 结论作废")
     elif live_ok is False:
         rc = EXIT_CHECK_RED
-        lines.append("VERDICT: 缺陷仍在（现网清单红）⇒ 需人工批准卡第 1 项后补 timeoutSeconds")
+        lines.append("VERDICT: 缺陷仍在（现网清单红）⇒ 需补 timeoutSeconds 且 liveness 改打免 DB 端点")
     else:
         rc = EXIT_OK
         lines.append("VERDICT: 全绿")

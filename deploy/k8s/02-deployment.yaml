@@ -18,6 +18,10 @@
 #   线上基线里的 readinessProbe 打的是 `httpGet /doc.html`（Swagger 文档页）——
 #   那个端点「能打开」只说明 Web 容器活着，不说明业务健康；本清单换成实测过的
 #   业务健康端点。两者都是 httpGet 语义上的替换，不改端口、不改行为面。
+#   ⚠ 2026-10-25（卡 TASK-20261025-042）：分工又细化了一步 ——
+#      **readiness 打 /api/lc/health（承载 DB 健康）· liveness 改打
+#      /actuator/health/liveness（不探 DB）**，两处都补 `timeoutSeconds: 5`
+#      ⇒ DB 抖动不再触发容器重启。完整理由见下方探针块的注释，别删。
 #
 # 【secret 从哪来】
 #   SPRING_DATASOURCE_PASSWORD → secretKeyRef: secret z-lc-db / 键 password。
@@ -78,21 +82,68 @@ spec:
             requests:
               cpu: 300m
               memory: 1536Mi
-          # 探针打 /api/lc/health：本域实测 200，是本域真实可用的业务健康端点。
+          # ===== 探针分工（2026-10-25 · 卡 TASK-20261025-042）=====
+          # 【为什么 readiness 打 /api/lc/health、liveness 打 /actuator/health/liveness】
+          #   两者的职责必须分开，否则外部依赖抖动会变成「容器重启」：
+          #     · readiness = 「本 Pod 现在能不能接流量」⇒ **要**看 DB（DB 挂了就该摘流量）
+          #     · liveness  = 「进程还活着吗」        ⇒ **不看** DB（DB 挂了重启也修不好，
+          #                     重启反而把流量打回雪崩）
+          #   2026-10-25 06:01:44 CST 线上实测过一次假 liveness 失败：
+          #     `Liveness probe failed: Get "http://…:8080/api/lc/health": context deadline
+          #      exceeded (Client.Timeout exceeded while awaiting headers)`
+          #   —— 根因不是端点返 5xx，而是**探针预算不够**：见下面的 timeoutSeconds 说明。
+          #   （改前 liveness 与 readiness 打的是**同一个** DB 支撑端点 ⇒ DB 一抖动，
+          #     6 次 × 30s = 3 分钟后 kubelet 直接杀容器重启。）
+          #
+          # 【为什么两处都是 timeoutSeconds: 5】
+          #   `/api/lc/health` 每次请求要**串行**真探 N 个连接池
+          #   （DataSourceHealthProber.DEFAULT_TIMEOUT_MS = 2000ms / 池；
+          #     线上 `sources` 实读 2 个池：dataSource + dataSourceLc）⇒ 端点最坏 ~4s。
+          #   清单不写 timeoutSeconds ⇒ K8s **默认 1 秒** ⇒ 预算(1s) < 端点最坏耗时(~4s)
+          #   ⇒ DB 一抖动就假失败（上面那条现场事件就是它）。
+          #   5s = 2000ms × 池数 2 + 余量，且与同族已修的 z-ops-admin / z-config-web **同值**
+          #   （卡 TASK-20261021-026 的口径）⇒ 别再把它删掉或调回 1。
+          #   仓内回归钉：_e2e/mutate_probe_timeout_budget_guard.py（改回 1 必须翻红）。
+          #
+          # 【为什么 liveness 的端点已实测存在】
+          #   `/actuator/health/liveness` = Spring Boot 2.3+ 的 liveness 组（只含 livenessState，
+          #   **不含 db 指示器**）⇒ 不探 DB。已在**现役镜像** zopc/z-lc:1.0.0-zboot112 上只读实测：
+          #   GET /actuator/health/liveness → 200 {"status":"UP"}（无 components）
+          #   ⇒ 改这个路径**不需要重建 jar / 不需要重建镜像**，是纯清单面改动。
+          #
+          # ⚠ 已知边界（**不在本卡范围**）：`/api/lc/health` 的 HTTP 契约是**恒 200**
+          #   （Result.success ⇒ success:true/code:200），DB 坏掉只体现在 body 的
+          #   `data.status=DOWN` ⇒ 探针失败机制是「**超时**」而不是「状态码」。
+          #   ⇒ 所以「DB 真挂但响应够快」时 readiness 仍可能判 Ready。
+          #   要让 readiness 严格反映 DB 状态，端点需在 DB DOWN 时返 503 ⇒ 那是**应用契约面**
+          #   （要改 jar ⇒ 重建镜像），不在本卡授权文件面 ⇒ 单列为待办，不在本卡改。
           readinessProbe:
             httpGet:
+              # DB 健康由 readiness 承载：DB 抖动 ⇒ 掉 Ready（摘流量），**不重启容器**。
               path: /api/lc/health
               port: http
               scheme: HTTP
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 6
+            # 见上面「为什么两处都是 timeoutSeconds: 5」：端点最坏 ~4s（2 池 × 2000ms 串行）。
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
-              path: /api/lc/health
+              # ⚠ 2026-10-25 (TASK-20261025-042)：改成 **/actuator/health/liveness**
+              #   （Spring Boot 2.3+ 的 liveness 组 = livenessState，**不含 db 指示器**）。
+              #   原口径 liveness 与 readiness 打同一个 DB 支撑端点 /api/lc/health
+              #   ⇒ DB 一抖动就可能**重启容器**（重启修不好 DB，只会把流量打回雪崩）。
+              #   改后：DB 健康由 readinessProbe 承载（掉 Ready、不重启），
+              #   liveness 只判进程存活 ⇒ DB 抖动不再触发重启。
+              #   该子路径已在现役镜像上实测存在：GET /actuator/health/liveness → 200 {"status":"UP"}
+              #   （无 components ⇒ 不含 db）⇒ 改路径不会导致新 Pod 起来就被自己 kill。
+              #   ⚠ 路径写在 **httpGet.path**（不是 livenessProbe.path）—— JSON Patch 拼路径同理。
+              path: /actuator/health/liveness
               port: http
               scheme: HTTP
             # 启动比就绪慢：JVM 起 + 连 RDS，放宽到 120s 再开始判活。
             initialDelaySeconds: 120
             periodSeconds: 30
             failureThreshold: 6
+            timeoutSeconds: 5
