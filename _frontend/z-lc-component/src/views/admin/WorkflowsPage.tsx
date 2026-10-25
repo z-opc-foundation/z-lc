@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Drawer, Input, Modal, Popconfirm, Select, Space, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -34,6 +34,17 @@ export function WorkflowsPage() {
     () => listWorkflowBindings(appCode),
     appCode || null,
   );
+
+  const [keyword, setKeyword] = useState('');
+  const filteredRows = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return rows;
+    return rows.filter((row) =>
+      `${row.entityCode || ''} ${row.processDefinitionKey || ''} ${row.triggerEvent || ''}`
+        .toLowerCase()
+        .includes(kw),
+    );
+  }, [rows, keyword]);
 
   const implemented = triggers.vocabulary.implemented;
   const rejectedReasons = new Map(triggers.vocabulary.rejected.map((item) => [item.event, item.reason]));
@@ -187,12 +198,20 @@ export function WorkflowsPage() {
           />
         </div>
       ) : null}
+      <Space style={{ marginBottom: 8 }}>
+        <Input.Search
+          allowClear
+          placeholder="按实体编码 / 流程定义 Key 过滤"
+          style={{ width: 240 }}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </Space>
       <Table<WorkflowBindingEntity>
         size="small"
         rowKey={(row) => String(row.id ?? `${row.entityCode}-${row.triggerEvent}`)}
         loading={loading}
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={{ pageSize: 20 }}
         locale={{ emptyText: listEmptyState(state, '流程绑定') }}
       />

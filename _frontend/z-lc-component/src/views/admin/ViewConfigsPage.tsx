@@ -73,6 +73,16 @@ export function ViewConfigsPage() {
     appCode || null,
   );
 
+  const [keyword, setKeyword] = useState('');
+  const filteredRows = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return rows;
+    return rows.filter((row) => {
+      const parsed = parseViewConfig<{ name?: string }>(row.config, {});
+      return `${row.entityCode || ''} ${row.viewType || ''} ${parsed.name || ''}`.toLowerCase().includes(kw);
+    });
+  }, [rows, keyword]);
+
   const save = useCallback(async () => {
     if (!draft) return;
     if (!draft.entityCode) {
@@ -283,12 +293,20 @@ export function ViewConfigsPage() {
       }
     >
       <ListBanner state={state} error={error} onRetry={reload} label="视图配置" />
+      <Space style={{ marginBottom: 8 }}>
+        <Input.Search
+          allowClear
+          placeholder="按实体编码 / 视图类型过滤"
+          style={{ width: 240 }}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </Space>
       <Table<ViewConfigDTO>
         size="small"
         rowKey={(row) => String(row.id ?? `${row.entityCode}-${row.viewType}`)}
         loading={loading}
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={{ pageSize: 20 }}
         locale={{ emptyText: listEmptyState(state, '视图') }}
       />

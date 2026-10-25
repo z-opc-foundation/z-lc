@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Button, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -28,6 +28,17 @@ export function RelationsPage() {
     appCode || null,
   );
   const [editing, setEditing] = useState<RelationDTO | null>(null);
+  const [keyword, setKeyword] = useState('');
+
+  const filteredRows = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return rows;
+    return rows.filter((row) =>
+      `${row.relationCode || ''} ${row.relationName || ''} ${row.sourceEntityCode || ''} ${row.targetEntityCode || ''}`
+        .toLowerCase()
+        .includes(kw),
+    );
+  }, [rows, keyword]);
 
   const save = useCallback(async () => {
     if (!editing) return;
@@ -138,12 +149,20 @@ export function RelationsPage() {
       }
     >
       <ListBanner state={state} error={error} onRetry={reload} label="实体关系" />
+      <Space style={{ marginBottom: 8 }}>
+        <Input.Search
+          allowClear
+          placeholder="按关系编码 / 名称过滤"
+          style={{ width: 240 }}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </Space>
       <Table<RelationDTO>
         size="small"
         rowKey={(row) => String(row.id ?? row.relationCode)}
         loading={loading}
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={{ pageSize: 20 }}
         locale={{ emptyText: listEmptyState(state, '关系定义') }}
       />

@@ -57,6 +57,17 @@ export function DeploymentsPage() {
     appCode || null,
   );
 
+  const [keyword, setKeyword] = useState('');
+  const filteredRows = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return rows;
+    return rows.filter((row) =>
+      `${row.id || ''} ${row.deployType || ''} ${row.status || ''} ${row.version || ''}`
+        .toLowerCase()
+        .includes(kw),
+    );
+  }, [rows, keyword]);
+
   const create = useCallback(async () => {
     try {
       // 返回的就是执行后的那一行：这一句必须按结局分叉，不能不看状态就报成功（缺陷 #70）。
@@ -159,12 +170,20 @@ export function DeploymentsPage() {
           <ListBanner state="error" error={kinds.error} onRetry={kinds.reload} label="部署方式词表" />
         </div>
       ) : null}
+      <Space style={{ marginBottom: 8 }}>
+        <Input.Search
+          allowClear
+          placeholder="按 ID / 部署方式 / 状态过滤"
+          style={{ width: 260 }}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </Space>
       <Table<DeploymentDTO>
         size="small"
         rowKey={(row) => String(row.id ?? `${row.deployType}-${row.createTime}`)}
         loading={loading}
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={{ pageSize: 20 }}
         locale={{ emptyText: listEmptyState(state, '部署记录') }}
       />

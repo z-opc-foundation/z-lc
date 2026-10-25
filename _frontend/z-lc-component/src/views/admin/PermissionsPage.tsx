@@ -68,6 +68,16 @@ export function PermissionsPage() {
     );
   }, [allRows, entityCode, roleCode]);
 
+  /** 查询框：客户端按角色 / 权限 / 作用范围再筛一遍（与上面两个筛选叠加，不改它们的语义）。 */
+  const [keyword, setKeyword] = useState('');
+  const filteredVisible = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return visible;
+    return visible.filter((row) =>
+      `${row.roleCode || ''} ${row.permission || ''} ${row.entityCode || ''}`.toLowerCase().includes(kw),
+    );
+  }, [visible, keyword]);
+
   const grant = useCallback(
     async (targetRole: string, permission: string) => {
       const scope = entityCode.trim();
@@ -312,12 +322,20 @@ export function PermissionsPage() {
       ) : null}
 
       <ListBanner state={state} error={error} onRetry={reload} label="权限" />
+      <Space style={{ marginBottom: 8 }}>
+        <Input.Search
+          allowClear
+          placeholder="按角色 / 权限 / 作用范围过滤"
+          style={{ width: 260 }}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </Space>
       <Table<PermissionEntity>
         size="small"
         rowKey={(row) => String(row.id ?? `${row.roleCode}-${row.permission}`)}
         loading={loading}
         columns={columns}
-        dataSource={visible}
+        dataSource={filteredVisible}
         pagination={{ pageSize: 20 }}
         locale={{
           emptyText:

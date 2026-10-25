@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -62,6 +62,14 @@ export function DictsPage() {
     setRows: setItems,
   } = itemList;
   const items = itemList.rows;
+  const [keyword, setKeyword] = useState('');
+  const filteredItems = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return items;
+    return items.filter((item) =>
+      `${item.itemCode || ''} ${item.itemLabel || ''} ${item.itemValue || ''}`.toLowerCase().includes(kw),
+    );
+  }, [items, keyword]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [draft, setDraft] = useState<DictDTO>({ dictCode: '', dictName: '', status: 'ENABLED' });
   const [isNew, setIsNew] = useState(true);
@@ -350,9 +358,17 @@ export function DictsPage() {
           style={{ flex: 1, minWidth: 0 }}
           title={active ? `字典项 · ${active.dictName || active.dictCode}` : '字典项'}
           extra={
-            <Button size="small" icon={<PlusOutlined />} disabled={!active} onClick={addItem}>
-              添加一项
-            </Button>
+            <Space>
+              <Input.Search
+                allowClear
+                placeholder="按字典项编码 / 显示标签过滤"
+                style={{ width: 240 }}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+              <Button size="small" icon={<PlusOutlined />} disabled={!active} onClick={addItem}>
+                添加一项
+              </Button>
+            </Space>
           }
         >
           <ListBanner state={itemState} error={itemError} onRetry={reloadItems} label="字典项" />
@@ -361,7 +377,7 @@ export function DictsPage() {
             rowKey={(row, index) => String(row.id ?? `new-${index}`)}
             loading={itemsLoading}
             columns={itemColumns}
-            dataSource={items}
+            dataSource={filteredItems}
             pagination={{ pageSize: 20, showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'], showTotal: (t) => `共 ${t} 条` }}
             scroll={{ x: 'max-content' }}
             locale={{

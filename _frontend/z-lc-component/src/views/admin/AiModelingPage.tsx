@@ -52,8 +52,19 @@ export function AiModelingPage() {
   const [proposed, setProposed] = useState<EntityDefDTO[]>([]);
   const [suggestion, setSuggestion] = useState<JsonMap | null>(null);
   const [report, setReport] = useState<string | null>(null);
+  /** 草案字段的客户端查询：按字段编码 / 字段名过滤当前实体的字段表。 */
+  const [keyword, setKeyword] = useState('');
   /** Which proposed entity the edit table below is bound to. */
   const [entityIndex, setEntityIndex] = useState(0);
+
+  /** 查询框：按字段编码 / 字段名过滤草案里的字段行（客户端过滤，不改草案本身）。 */
+  const keywordFilter = useCallback((fields: FieldDefDTO[]) => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return fields;
+    return fields.filter((field) =>
+      `${field.fieldCode || ''} ${field.fieldName || ''} ${field.fieldType || ''}`.toLowerCase().includes(kw),
+    );
+  }, [keyword]);
 
   const run = useCallback(
     async (label: string, fn: () => Promise<unknown>) => {
@@ -224,6 +235,12 @@ export function AiModelingPage() {
           title="待确认的模型草案"
           extra={
             <Space size={8}>
+              <Input.Search
+                allowClear
+                placeholder="按字段编码 / 字段名过滤"
+                style={{ width: 220 }}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
               {proposed.length > 1 ? (
                 <Select
                   size="small"
@@ -255,7 +272,7 @@ export function AiModelingPage() {
                 size="small"
                 rowKey={(row) => String(row.fieldCode)}
                 columns={columns}
-                dataSource={entity.fields ?? []}
+                dataSource={keywordFilter(entity.fields ?? [])}
                 pagination={false /* §2 规则 2 豁免：实体字段明细是选中实体下的子表，行数由该实体字段数决定 */}
                 scroll={{ x: 'max-content' }}
               />

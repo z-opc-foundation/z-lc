@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Button,
   Card,
+  Input,
   Modal,
   Popconfirm,
   Select,
@@ -48,6 +49,15 @@ export function PipelinesPage() {
     () => listPipelineConfigs(appCode),
     appCode || null,
   );
+
+  const [keyword, setKeyword] = useState('');
+  const filteredRows = useMemo(() => {
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return rows;
+    return rows.filter((row) =>
+      `${row.entityCode || ''} ${row.triggerEvent || ''}`.toLowerCase().includes(kw),
+    );
+  }, [rows, keyword]);
 
   const openEditor = useCallback((record: PipelineConfigEntity) => {
     setEditing({ ...record });
@@ -194,12 +204,20 @@ export function PipelinesPage() {
       }
     >
       <ListBanner state={state} error={error} onRetry={reload} label="流水线" />
+      <Space style={{ marginBottom: 8 }}>
+        <Input.Search
+          allowClear
+          placeholder="按实体编码 / 触发时机过滤"
+          style={{ width: 240 }}
+          onChange={(e) => setKeyword(e.target.value)}
+        />
+      </Space>
       <Table<PipelineConfigEntity>
         size="small"
         rowKey={(row) => String(row.id ?? `${row.entityCode}-${row.triggerEvent}`)}
         loading={loading}
         columns={columns}
-        dataSource={rows}
+        dataSource={filteredRows}
         pagination={{ pageSize: 20 }}
         locale={{ emptyText: listEmptyState(state, '流水线') }}
       />
