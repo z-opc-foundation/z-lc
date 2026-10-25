@@ -98,7 +98,7 @@ URL 带 `?bookId=` 时额外显示「整体发布」按钮，发布成功后给�
 
 ### 4.7 登录
 
-**mock 登录**：硬编码 `admin / 123456`，成功后写 `localStorage.token`（值形如 `mock-admin`）与
+**mock 登录**：账号由构建期注入 `VITE_MOCK_USER / VITE_MOCK_PASSWORD`（未注入时登录页提示未配置），成功后写 `localStorage.token`（值形如 `mock-admin`）与
 `localStorage.userInfo`，再整页跳 `/z-lc/home`。 CTC/SSO 接入后应换共享 `LoginPage` 的 `loginApi`。
 
 ### 4.8 组件文档
@@ -119,7 +119,7 @@ URL 带 `?bookId=` 时额外显示「整体发布」按钮，发布成功后给�
 
 ## 六、已知限制
 
-- **登录是硬编码 mock**（`admin / 123456`），没有真实鉴权；`App.jsx` 的 `ProtectedShell` 只判断 `localStorage.token` 是否存在。
+- **登录是 mock（账号由环境变量注入）**，没有真实鉴权；`App.jsx` 的 `ProtectedShell` 只判断 `localStorage.token` 是否存在。
 - **`src/report/api.js` 的 `request` 不带任何鉴权头**（只发 `Content-Type`），也没有统一解包；
   后端异常响应 `{status, error, message}` 里取 `message`/`error` 作为提示，缺省回落成 `HTTP {status}`。
 - `renderWidget`（单图表渲染）与 `bookTree`（书节点树）**已实现但没有任何页面调用**。
