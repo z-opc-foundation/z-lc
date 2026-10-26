@@ -27,6 +27,14 @@
             <version>${project.version}</version>
         </dependency>
 
+        <!-- 报表域外部目录桥：ExternalReportDataSourceResolver SPI 在 report-datasource，
+             本模块实现 DmsExternalReportDataSourceResolver（2026-10-26 报表域收口） -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-datasource</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- z-dms 底座：DataSourceService / DataSourceDef / DataSourcePool。
              孵化期从本地 ~/.m2 解析（CEO 拍板"z-dms 组件拿过来用，先在 z-lc 内孵化"）；
              z-dms 建 remote + 发 Central 后本坐标转正。 -->

@@ -26,7 +26,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  *   <li>/api/lc/health — 健康检查</li>
  * </ul>
  */
-@SpringBootApplication
+// 2026-10-26 报表域收口: 扫描面从 bootstrap 单包扩到 com.zifang.z.lc —— z-lc-admin 本就
+// 依赖 z-lc-report-web, 但只扫 bootstrap 包时报表控制器从未真正挂上 demo 宿主 (v3/api-docs
+// 93 条路径无一条 report, 实测)。spring.factories 注册的自动装配类有 AutoConfigurationExcludeFilter
+// 兜底, 不会被扫描重复注册。
+@SpringBootApplication(scanBasePackages = "com.zifang.z.lc")
 public class ZLcBootstrapApplication {
 
     public static void main(String[] args) {

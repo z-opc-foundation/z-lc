@@ -72,6 +72,27 @@ public class JdbcReportDataSource implements ReportDataSource, AutoCloseable {
                 .maxRows(Integer.parseInt(p.getOrDefault(PROP_MAX_ROWS, String.valueOf(DEFAULT_MAX_ROWS))));
     }
 
+    /**
+     * 外部池构造器：连接池由外部目录（z-dms 桥接）建好递进来，本类只做报表侧适配。
+     * <p>
+     * 与自建池构造器的差异：不注册 z-util-jdbc 池、不碰任何连接参数（properties 里
+     * 只允许 {@code max-rows} 这类调参，凭据永不经过）；{@link #close()} 不关外部池
+     * （生命周期归目录侧）。方言首次使用时从连接元数据识别（DynamicQuery 语义）。
+     */
+    public JdbcReportDataSource(DataSourceDef def, javax.sql.DataSource externalPool) {
+        Objects.requireNonNull(def, "def");
+        Objects.requireNonNull(externalPool, "externalPool");
+        if (def.getType() != DataSourceType.JDBC) {
+            throw new IllegalArgumentException("JdbcReportDataSource requires type=JDBC, got: " + def.getType());
+        }
+        Map<String, String> p = def.getProperties() == null
+                ? Collections.<String, String>emptyMap() : def.getProperties();
+        this.def = def;
+        this.sources = null;
+        this.query = new DynamicQuery(externalPool)
+                .maxRows(Integer.parseInt(p.getOrDefault(PROP_MAX_ROWS, String.valueOf(DEFAULT_MAX_ROWS))));
+    }
+
     /** 报表侧属性 → z-util-jdbc 数据源定义 */
     private DataSourceDTO toDefinition(String code, Map<String, String> p) {
         DataSourceDTO dto = new DataSourceDTO();
@@ -129,7 +150,10 @@ public class JdbcReportDataSource implements ReportDataSource, AutoCloseable {
 
     @Override
     public void close() {
-        sources.close();
+        // 外部池模式（sources == null）不关池：生命周期归目录侧（z-dms 换绑/关闭语义）
+        if (sources != null) {
+            sources.close();
+        }
     }
 
     /** 标识符非法仍抛 IllegalArgumentException (由调用方映射为 400)，库侧失败补上数据源上下文 */

@@ -25,9 +25,14 @@ import java.util.Map;
 public class DataSourceController {
 
     private final DataSourceRegistry registry;
+    private final org.springframework.beans.factory.ObjectProvider<
+            com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver> externalResolverProvider;
 
-    public DataSourceController(DataSourceRegistry registry) {
+    public DataSourceController(DataSourceRegistry registry,
+                                org.springframework.beans.factory.ObjectProvider<
+                                        com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver> externalResolverProvider) {
         this.registry = registry;
+        this.externalResolverProvider = externalResolverProvider;
     }
 
     /** 内存源注册请求体 */
@@ -141,6 +146,53 @@ public class DataSourceController {
         registry.register(new InMemoryReportDataSource(def, req.getBaseTables(), req.getSqls(),
                 req.getColTypes(), registry));
         return ok(def.getId());
+    }
+
+    /** 外部目录源注册请求体 */
+    public static class ExternalSourceRequest {
+        private String id;
+        /** 非敏感调参（如 max-rows），凭据永不经过这里 */
+        private Map<String, String> options;
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public Map<String, String> getOptions() {
+            return options;
+        }
+
+        public void setOptions(Map<String, String> options) {
+            this.options = options;
+        }
+    }
+
+    /**
+     * 外部目录源注册: 按目录 id 取宿主挂进来的已建池源（z-dms 桥接，2026-10-26 收口）。
+     * 目录桥缺席/目录未装配 → 503 语义；id 不存在/类型不支持 → 400（resolver 抛出）。
+     */
+    @PostMapping("/external")
+    public org.springframework.http.ResponseEntity<Map<String, Object>> registerExternal(
+            @RequestBody ExternalSourceRequest req) {
+        com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver resolver =
+                externalResolverProvider.getIfAvailable();
+        if (resolver == null || !resolver.available()) {
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("ok", false);
+            body.put("error", "外部数据源目录未装配（目录桥不在位或 z-dms 服务缺席）");
+            return org.springframework.http.ResponseEntity.status(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE).body(body);
+        }
+        if (req.getId() == null || req.getId().trim().isEmpty()) {
+            throw new IllegalArgumentException("id required");
+        }
+        String id = req.getId().trim();
+        registry.register(resolver.resolve(id, req.getOptions()));
+        return org.springframework.http.ResponseEntity.ok(ok(id));
     }
 
     /** 已注册源清单 (前端 AI 页/源管理下拉用) */

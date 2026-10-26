@@ -36,6 +36,26 @@ public class DmsDataSourceAutoConfiguration {
         }
     }
 
+    /**
+     * 报表域外部目录桥（2026-10-26 收口）：report-datasource 的
+     * {@code ExternalReportDataSourceResolver} SPI 落到 z-dms。
+     * 条件与目录桥一致（classpath 有 z-dms）；报表 REST 面向 SPI，
+     * 宿主想换目录底座时提供自己的实现即可覆盖。
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass({DataSourceService.class,
+            com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver.class})
+    @ConditionalOnMissingBean(
+            com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver.class)
+    public static class DmsReportBridgeConfiguration {
+
+        @Bean
+        public com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver
+        dmsExternalReportDataSourceResolver(ObjectProvider<DataSourceService> serviceProvider) {
+            return new com.zifang.z.lc.datasource.DmsExternalReportDataSourceResolver(serviceProvider);
+        }
+    }
+
     /** 开发自检种子：往 z-dms 目录注册一个与 dev 主库同实例的 H2 源（dev-h2）。 */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnProperty(prefix = "z.lc.dms", name = "seed", havingValue = "true")
