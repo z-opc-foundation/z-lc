@@ -34,6 +34,19 @@ z:
         driver-class-name: org.h2.Driver
         username: sa
         password: ""
+  # z-dms 数据源管控（V1 数据源管理域孵化，2026-10-26，lead 009/013 §六）
+  # store-enabled=false：定义只驻内存（元数据表 z_dms_datasource_def 需要 MySQL，dev 自检不建）；
+  # 凭据走 Environment 解析器（JSON 形态，生产口径应换 z-mist；H2 mem 库的 sa/空口令无秘密可言）。
+  dms:
+    enabled: true
+    store-enabled: false
+    credential:
+      dev:
+        h2: '{"username":"sa","password":""}'
+  lc:
+    dms:
+      # dev 种子：往 z-dms 目录注册 dev-h2（与上面主库同实例），供"按数据源 id 扫表"端到端自检
+      seed: true
 
 server:
   port: ${SERVER_PORT:18090}
@@ -47,19 +60,3 @@ z-lc:
       base-url: http://localhost:18090
     script:
       base-url: http://localhost:18090
-
-# z-dms 数据源管控（V1 数据源管理域孵化，2026-10-26，lead 009/013 §六）
-# store-enabled=false：定义只驻内存（元数据表 z_dms_datasource_def 需要 MySQL，dev 自检不建）；
-# 凭据走 Environment 解析器（JSON 形态，生产口径应换 z-mist，不在 dev 落明文纪律破例——
-# H2 mem 库的 sa/空口令本就无秘密可言）。
-z:
-  dms:
-    enabled: true
-    store-enabled: false
-    credential:
-      dev:
-        h2: '{"username":"sa","password":""}'
-  lc:
-    dms:
-      # dev 种子：往 z-dms 目录注册 dev-h2（与上面主库同实例），供"按数据源 id 扫表"端到端自检
-      seed: true

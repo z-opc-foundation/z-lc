@@ -1,4 +1,4 @@
-import type { ResolvedField } from '@yuku123/render/fields';
+import type { ResolvedField } from '@yuku123/z-frontend-render/fields';
 import { UNFILLED_GROUP_LABEL } from './chartModel';
 
 /**

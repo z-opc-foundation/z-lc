@@ -2,8 +2,8 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { fetchWorkspaceMeta } from '@/api/meta';
 import { getApp } from '@/api/app';
 import { listRecords } from '@/api/runtime';
-import { createWorkspaceContext } from '@yuku123/render/fields';
-import type { FieldServices } from '@yuku123/render/fields';
+import { createWorkspaceContext } from '@yuku123/z-frontend-render/fields';
+import type { FieldServices } from '@yuku123/z-frontend-render/fields';
 import { DEFAULT_TENANT_CODE } from '@/api/client';
 
 /**

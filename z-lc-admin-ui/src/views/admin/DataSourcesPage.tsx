@@ -46,8 +46,9 @@ export function DataSourcesPage() {
         const cat = await listDataSources();
         setAvailable(cat.available);
         setCatalog(cat.items);
-        if (cat.items.length > 0) {
-          setSourceId(cat.items[0].id);
+        const first = cat.items[0];
+        if (first) {
+          setSourceId(first.id);
         }
       } catch {
         setAvailable(false);

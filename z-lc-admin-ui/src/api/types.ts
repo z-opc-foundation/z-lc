@@ -7,7 +7,7 @@
  */
 
 /* ------------------------------------------------------------------ */
-/* 字段契约 —— 权威定义在 @yuku123/render/fields（共享渲染引擎）          */
+/* 字段契约 —— 权威定义在 @yuku123/z-frontend-render/fields（共享渲染引擎）          */
 /*                                                                    */
 /* 字段类型注册表搬进引擎后，DTO 与算子词表跟着走，避免两边各留一份长歪。   */
 /* 本文件只做再导出，其余 z-lc 专属 DTO 仍然留在这里。                    */
@@ -19,7 +19,7 @@ export {
   NULL_OPERATORS,
   STRUCTURED_OPERATORS,
   normalizeOperator,
-} from '@yuku123/render/fields';
+} from '@yuku123/z-frontend-render/fields';
 export type {
   CellValueType,
   Conjunction,
@@ -34,7 +34,7 @@ export type {
   QueryCondition,
   QuerySort,
   ViewConfigDTO,
-} from '@yuku123/render/fields';
+} from '@yuku123/z-frontend-render/fields';
 
 // 本文件下方的 z-lc 专属 DTO 仍要引用这几个形状；`export ... from` 不产生本地绑定，得单独 import。
 import type {
@@ -45,7 +45,7 @@ import type {
   QueryCondition,
   QuerySort,
   ViewConfigDTO,
-} from '@yuku123/render/fields';
+} from '@yuku123/z-frontend-render/fields';
 
 /* ------------------------------------------------------------------ */
 /* Envelope                                                            */
@@ -123,7 +123,7 @@ export type AppStatus = (typeof APP_STATUSES)[number];
 /**
  * 字段类型集合、算子词表（legacy `filters` 与 structured `conditions` 两种方言）、
  * 别名归一与 `LcRow` / `QueryCondition` / `QuerySort` 的权威定义都在
- * `@yuku123/render/fields` —— 前端能用哪些算子由字段注册表决定，两处各留一份必然漂移。
+ * `@yuku123/z-frontend-render/fields` —— 前端能用哪些算子由字段注册表决定，两处各留一份必然漂移。
  */
 
 /* ------------------------------------------------------------------ */
