@@ -2,9 +2,11 @@ package com.zifang.z.lc.core.mapper;
 
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
+import com.zifang.z.lc.core.datasource.LcDataSourceResolver;
 import com.zifang.z.lc.core.schema.SchemaAdminBizService;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -44,9 +46,63 @@ public class DbTableMapperService {
 
     private static final Logger log = LogManager.getLogger(DbTableMapperService.class);
     private final JdbcTemplate jdbcTemplate;
+    /**
+     * 数据源目录（V1 孵化，2026-10-26）：可选 bean —— 未装配 z-dms 时为 absent，
+     * 所有 dataSourceId==null 的老路径行为不变。
+     */
+    private final ObjectProvider<LcDataSourceResolver> resolverProvider;
 
-    public DbTableMapperService(DataSource dataSource) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public DbTableMapperService(DataSource dataSource, ObjectProvider<LcDataSourceResolver> resolverProvider) {
         this.jdbcTemplate = new JdbcTemplate(dataSource);
+        this.resolverProvider = resolverProvider;
+    }
+
+    /**
+     * 兼容构造（目录能力视同未装配）—— 老调用方/老测试不受多源化影响。
+     */
+    public DbTableMapperService(DataSource dataSource) {
+        this(dataSource, new EmptyResolverProvider());
+    }
+
+    /** 恒缺席的 provider（免依赖 Spring 上下文的空实现）。 */
+    private static final class EmptyResolverProvider implements ObjectProvider<LcDataSourceResolver> {
+        @Override
+        public LcDataSourceResolver getObject() {
+            throw new UnsupportedOperationException("数据源目录未装配");
+        }
+
+        @Override
+        public LcDataSourceResolver getObject(Object... args) {
+            throw new UnsupportedOperationException("数据源目录未装配");
+        }
+
+        @Override
+        public LcDataSourceResolver getIfAvailable() {
+            return null;
+        }
+
+        @Override
+        public LcDataSourceResolver getIfUnique() {
+            return null;
+        }
+    }
+
+    /**
+     * 按目录 id 取连接；id 为 null（或空白）= 主库。
+     *
+     * @throws IllegalArgumentException id 在目录里不存在
+     * @throws IllegalStateException    目录能力未装配（z-dms 未接入）
+     */
+    private Connection openConnection(String dataSourceId) throws Exception {
+        if (dataSourceId == null || dataSourceId.trim().isEmpty()) {
+            return jdbcTemplate.getDataSource().getConnection();
+        }
+        LcDataSourceResolver resolver = resolverProvider.getIfAvailable();
+        if (resolver == null || !resolver.available()) {
+            throw new IllegalStateException("数据源目录未装配（z-dms 未接入），无法按 id 取连接: " + dataSourceId);
+        }
+        return resolver.resolve(dataSourceId).getConnection();
     }
 
     /**
@@ -139,11 +195,21 @@ public class DbTableMapperService {
     }
 
     /**
-     * 扫描数据库下所有表（支持前缀过滤）
+     * 扫描数据库下所有表（支持前缀过滤）。等价 {@code scanTables(null, prefix, schema)}（主库）。
      */
     public List<EntityDefDTO> scanTables(String tableNamePrefix, String schema) {
+        return scanTables(null, tableNamePrefix, schema);
+    }
+
+    /**
+     * 按数据源目录 id 扫描（V1 数据源管理域）。{@code dataSourceId=null} = 主库（历史行为）。
+     *
+     * @throws IllegalStateException    目录未装配
+     * @throws IllegalArgumentException 目录里不存在该 id
+     */
+    public List<EntityDefDTO> scanTables(String dataSourceId, String tableNamePrefix, String schema) {
         List<EntityDefDTO> result = new ArrayList<>();
-        try (Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+        try (Connection conn = openConnection(dataSourceId)) {
             DatabaseMetaData meta = conn.getMetaData();
             String catalog = schema;
             String searchPattern = tableNamePrefix == null ? "%" : tableNamePrefix + "%";
@@ -162,6 +228,8 @@ public class DbTableMapperService {
                     }
                 }
             }
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             log.error("scanTables failed", e);
         }
@@ -169,11 +237,23 @@ public class DbTableMapperService {
     }
 
     /**
-     * 映射单张表为 EntityDefDTO
+     * 映射单张表为 EntityDefDTO（主库）。等价 {@code mapTable(null, tableName, schema)}。
      */
     public EntityDefDTO mapTable(String tableName, String schema) {
-        try (Connection conn = jdbcTemplate.getDataSource().getConnection()) {
+        return mapTable((String) null, tableName, schema);
+    }
+
+    /**
+     * 按数据源目录 id 映射单张表（V1 数据源管理域）。{@code dataSourceId=null} = 主库（历史行为）。
+     *
+     * @throws IllegalStateException    目录未装配
+     * @throws IllegalArgumentException 目录里不存在该 id
+     */
+    public EntityDefDTO mapTable(String dataSourceId, String tableName, String schema) {
+        try (Connection conn = openConnection(dataSourceId)) {
             return mapTable(conn.getMetaData(), tableName, null);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to map table: " + tableName, e);
         }

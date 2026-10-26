@@ -3,16 +3,21 @@ package com.zifang.z.lc.web.controller;
 import com.zifang.util.core.meta.Result;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.ProvisionReport;
+import com.zifang.z.lc.core.datasource.LcDataSourceResolver;
 import com.zifang.z.lc.core.mapper.DbTableMapperService;
 import com.zifang.z.lc.core.schema.SchemaAdminService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * DB 表逆向映射控制器: 扫描已有 DB 表 → 低代码模型
@@ -50,6 +55,31 @@ public class DbTableController {
     @Autowired
     private SchemaAdminService schemaAdminService;
 
+    /** 数据源目录（V1 孵化）：未装配 z-dms 时为 absent，按 id 取源的端点会降级报 400。 */
+    @Autowired
+    private ObjectProvider<LcDataSourceResolver> dataSourceResolver;
+
+    /**
+     * 数据源目录列表（V1 数据源管理域，2026-10-26）。
+     * <p>
+     * 只透出非敏感元信息（id / name / type / credentialRef 引用），连接参数永不返回。
+     * z-dms 未装配时返回 {@code available=false} + 空目录，前端据此降级。
+     */
+    @Operation(summary = "数据源目录列表 (z-dms 桥接, 未装配时 available=false)")
+    @GetMapping("/datasources")
+    public Result<Map<String, Object>> listDataSources() {
+        LcDataSourceResolver resolver = dataSourceResolver.getIfAvailable();
+        Map<String, Object> body = new HashMap<>();
+        if (resolver == null || !resolver.available()) {
+            body.put("available", false);
+            body.put("items", Collections.emptyList());
+        } else {
+            body.put("available", true);
+            body.put("items", resolver.list());
+        }
+        return Result.success(body);
+    }
+
     /**
      * 扫描数据库表 (前缀过滤), 即将表结构逆向映射为低代码模型预览.
      *
@@ -57,12 +87,18 @@ public class DbTableController {
      * @param schema schema 名, 可空
      * @return 命中的表对应的 {@link EntityDefDTO} 列表
      */
-    @Operation(summary = "扫描数据库表 (前缀过滤)")
+    @Operation(summary = "扫描数据库表 (前缀过滤; 可选 dataSourceId 指向 z-dms 目录源)")
     @GetMapping("/tables")
     public Result<List<EntityDefDTO>> scanTables(
             @RequestParam(required = false, defaultValue = "") String prefix,
-            @RequestParam(required = false) String schema) {
-        List<EntityDefDTO> entities = tableMapper.scanTables(prefix, schema);
+            @RequestParam(required = false) String schema,
+            @RequestParam(required = false) String dataSourceId) {
+        List<EntityDefDTO> entities;
+        try {
+            entities = tableMapper.scanTables(dataSourceId, prefix, schema);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.<List<EntityDefDTO>>fail(e.getMessage()).code(400);
+        }
         return Result.success(entities);
     }
 
@@ -76,12 +112,15 @@ public class DbTableController {
     @Operation(summary = "单表映射预览 (不落库)")
     @GetMapping("/table")
     public Result<EntityDefDTO> previewTable(@RequestParam String tableName,
-                                             @RequestParam(required = false) String schema) {
+                                             @RequestParam(required = false) String schema,
+                                             @RequestParam(required = false) String dataSourceId) {
         try {
-            EntityDefDTO entity = tableMapper.mapTable(tableName, schema);
+            EntityDefDTO entity = tableMapper.mapTable(dataSourceId, tableName, schema);
             return entity == null
                     ? Result.<EntityDefDTO>fail("Table not found: " + tableName).code(404)
                     : Result.success(entity);
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            return Result.<EntityDefDTO>fail(e.getMessage()).code(400);
         } catch (Exception e) {
             return Result.<EntityDefDTO>fail("Map table failed: " + e.getMessage()).code(500);
         }

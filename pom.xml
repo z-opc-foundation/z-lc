@@ -105,6 +105,11 @@
         <module>z-lc-report-book</module>
         <module>z-lc-report-ai</module>
         <module>z-lc-report-web</module>
+        <!-- z-lc-datasource: 数据源管理域 V1 孵化（2026-10-26, lead 009/013 §六 CEO 拍板 D14）——
+             桥接 z-dms（目录/建池/凭据全归 z-dms），z-lc 只长低代码特有交互。
+             ⚠ 依赖的 z-dms-core:1.0.0 尚未发布 Central（repo1 404 实测），故本模块
+             与 z-lc-admin 一同排除在 central 发布面之外；z-dms 上架后随坐标转正。 -->
+        <module>z-lc-datasource</module>
         <!-- z-lc-admin: standalone 启动入口, 端到端验证用 (dev profile 走 H2, 零外部依赖).
              生产集成仍走 main-starter, 此处恢复 build 以便独立跑通全链路. -->
         <module>z-lc-admin</module>
@@ -531,6 +536,8 @@
                                   -->
                             <excludeArtifacts>
                                 <excludeArtifact>z-lc-admin</excludeArtifact>
+                                <!-- 孵化模块：上游 z-dms 未上 Central，发布会被依赖解析卡死 -->
+                                <excludeArtifact>z-lc-datasource</excludeArtifact>
                             </excludeArtifacts>
                             <waitUntil>uploaded</waitUntil>
                             <waitMaxTime>1800</waitMaxTime>

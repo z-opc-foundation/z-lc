@@ -82,6 +82,20 @@
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-lc-report-web</artifactId>
         </dependency>
+
+        <!-- z-lc-datasource (数据源管理域 V1 孵化, 2026-10-26, lead 009/013 §六):
+             桥接 z-dms — 目录/建池/凭据全归 z-dms, 本模块只出解析器与 dev 种子。
+             z-dms-core:1.0.0 从本地 ~/.m2 解析 (Central 404 实测); 孵化期仅 admin 宿主装配。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-datasource</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-dms-spring-boot-starter</artifactId>
+            <version>1.0.0</version>
+        </dependency>
         <!-- z-lc-design (含 PageTemplateController + LowCodeModelService 收集器) -->
         <dependency>
             <groupId>io.github.yuku123</groupId>

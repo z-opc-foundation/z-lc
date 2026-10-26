@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.1</version>
+    </parent>
+
+    <artifactId>z-lc-datasource</artifactId>
+
+    <name>z-lc-datasource</name>
+    <description>低代码数据源管理域（V1 孵化模块，2026-10-26，009/013 号方案 + CEO 拍板 D14）。
+        把 z-dms（数据源管控底座）桥接进 z-lc：目录来自 z-dms 登记、连接来自 z-dms 建池，
+        z-lc 只长"表结构浏览器 + 建模向导"这些低代码特有交互。
+        ⚠ 孵化定位：z-dms 尚未发布 Central（1.0.0 三坐标 repo1 404 实测），本模块因此
+        与 z-lc-admin 一同被排除在 Central 发布面之外；z-dms 上架后本模块随坐标转正
+        或能力归位 z-dms 形态 B（毕业判据见 lead 009/013 §六）。</description>
+
+    <dependencies>
+        <!-- 目录 SPI 接口在 core（LcDataSourceResolver / LcDataSourceCatalogItem） -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- z-dms 底座：DataSourceService / DataSourceDef / DataSourcePool。
+             孵化期从本地 ~/.m2 解析（CEO 拍板"z-dms 组件拿过来用，先在 z-lc 内孵化"）；
+             z-dms 建 remote + 发 Central 后本坐标转正。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-dms-core</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+    </dependencies>
+</project>

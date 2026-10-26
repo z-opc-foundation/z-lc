@@ -7,6 +7,7 @@ import { WorkspaceViewPage } from '@/views/workspace/WorkspaceViewPage';
 import { DashboardPage } from '@/views/workspace/DashboardPage';
 import { DesignerIndexPage, DesignerPage } from '@/views/designer/DesignerPage';
 import { DbImportPage } from '@/views/designer/DbImportPage';
+import { DataSourcesPage } from '@/views/admin/DataSourcesPage';
 import { DictsPage } from '@/views/admin/DictsPage';
 import { RelationsPage } from '@/views/admin/RelationsPage';
 import { ViewConfigsPage } from '@/views/admin/ViewConfigsPage';
@@ -33,6 +34,7 @@ export function AppRoutes() {
         <Route path="/designer" element={<DesignerIndexPage />} />
         <Route path="/designer/:appCode" element={<DesignerPage />} />
         <Route path="/db-import" element={<DbImportPage />} />
+        <Route path="/admin/datasources" element={<DataSourcesPage />} />
 
         <Route path="/admin/dicts" element={<DictsPage />} />
         <Route path="/admin/relations" element={<RelationsPage />} />

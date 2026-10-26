@@ -28,6 +28,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: '建模',
     items: [
+      { key: '/admin/datasources', label: '数据源管理', icon: <DatabaseOutlined /> },
       { key: '/designer', label: 'Schema 设计器', icon: <TableOutlined /> },
       { key: '/db-import', label: '从数据库导入', icon: <DatabaseOutlined /> },
       { key: '/admin/ai', label: 'AI 建模', icon: <RobotOutlined /> },
