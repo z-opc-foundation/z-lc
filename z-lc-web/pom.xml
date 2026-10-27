@@ -72,6 +72,25 @@
             <artifactId>z-lc-design</artifactId>
         </dependency>
 
+        <!-- V2 页面域渲染链 (lead 013 §四): PageController 渲染端点消费报表执行链。
+             接口面只要 dataset(执行) + render(部件产出) + common(schema 类型, 传递);
+             宿主没装配报表 bean 时页面 CRUD 仍可用, render 走 503 语义 (ObjectProvider 降级)。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-dataset</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-render</artifactId>
+        </dependency>
+
+        <!-- V2 页面域测试: 渲染链测试装配用内存源 (ReportChainTestConfig) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-report-datasource</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- z-util-core (PageResult) -->
         <dependency>
             <groupId>io.github.yuku123</groupId>

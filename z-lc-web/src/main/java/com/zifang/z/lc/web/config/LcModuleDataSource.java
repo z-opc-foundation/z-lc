@@ -32,6 +32,7 @@ import javax.sql.DataSource;
                 "com.zifang.z.lc.mapper.executor",
                 "com.zifang.z.lc.mapper.dict",
                 "com.zifang.z.lc.mapper.viewconfig",
+                "com.zifang.z.lc.mapper.page",
                 "com.zifang.z.lc.mapper.relation",
                 "com.zifang.z.lc.mapper.deployment",
                 "com.zifang.z.lc.mapper.permission",

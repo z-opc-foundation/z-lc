@@ -185,3 +185,11 @@ CREATE TABLE IF NOT EXISTS z_lc_workflow_fire (
   `instance_id` VARCHAR(128), `detail` VARCHAR(512), `create_time` DATETIME, `update_time` DATETIME,
   `deleted` TINYINT DEFAULT 0, PRIMARY KEY (`id`)
 );
+
+-- V2 页面域 (lead 013 §四)
+CREATE TABLE IF NOT EXISTS z_lc_page (
+  `id` BIGINT NOT NULL AUTO_INCREMENT, `tenant_code` VARCHAR(64) NOT NULL, `app_code` VARCHAR(64) NOT NULL,
+  `page_code` VARCHAR(64) NOT NULL, `page_name` VARCHAR(128), `schema_json` TEXT,
+  `deleted` TINYINT DEFAULT 0, `create_time` DATETIME, `update_time` DATETIME,
+  PRIMARY KEY (`id`), CONSTRAINT uk_page_tenant_app_code UNIQUE (`tenant_code`, `app_code`, `page_code`)
+);

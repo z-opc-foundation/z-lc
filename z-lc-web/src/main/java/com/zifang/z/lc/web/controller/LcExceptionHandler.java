@@ -45,6 +45,13 @@ public class LcExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Result.fail(ex.getMessage()).code(400));
     }
 
+    // 请求体本身不可读 (JSON 解析失败/类型不匹配): 请求的错, 不该落 500
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<Object>> handleUnreadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        log.warn("Unreadable body: {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Result.fail(ex.getMessage()).code(400));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Result<Object>> handleBadArg(IllegalArgumentException ex) {
         log.warn("BadArg: {}", ex.getMessage());

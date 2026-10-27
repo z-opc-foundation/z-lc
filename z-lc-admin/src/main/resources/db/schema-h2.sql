@@ -266,3 +266,19 @@ CREATE TABLE IF NOT EXISTS z_lc_workflow_fire (
   `deleted`                TINYINT     DEFAULT 0,
   PRIMARY KEY (`id`)
 );
+
+-- V2 页面域 (lead 013 §四): 页面一等公民, schema 即 z-frontend-render 组件树 JSON。
+-- 列名 schema_json: "schema" 是各库关键字, 回避。
+CREATE TABLE IF NOT EXISTS z_lc_page (
+  `id`          BIGINT       NOT NULL AUTO_INCREMENT,
+  `tenant_code` VARCHAR(64)  NOT NULL,
+  `app_code`    VARCHAR(64)  NOT NULL,
+  `page_code`   VARCHAR(64)  NOT NULL,
+  `page_name`   VARCHAR(128),
+  `schema_json` TEXT,
+  `deleted`     TINYINT      DEFAULT 0,
+  `create_time` DATETIME,
+  `update_time` DATETIME,
+  PRIMARY KEY (`id`),
+  CONSTRAINT uk_page_tenant_app_code UNIQUE (`tenant_code`, `app_code`, `page_code`)
+);

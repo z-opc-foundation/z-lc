@@ -49,12 +49,27 @@ public class ZReportBeanConfig {
     }
 
     @Bean
-    public DatasetExecutor datasetExecutor(DataSourceRegistry registry, Environment env) {
+    public DatasetExecutor datasetExecutor(DataSourceRegistry registry, Environment env,
+            org.springframework.beans.factory.ObjectProvider<
+                    com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver> externalProvider) {
         // 依赖倒置: dataset 模块不感知 datasource, 源解析在此注入。
         // M2: 包装 TTL 结果缓存 (同 schema 定义窗口内复用, 避免每次渲染全量执行)
         long ttl = env.getProperty("z.report.cache.ttl-ms", Long.class, 60_000L);
-        return new com.zifang.z.lc.report.dataset.CachingDatasetExecutor(
-                (sourceId, table) -> registry.require(sourceId).read(table), ttl, 128);
+        final com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver external =
+                externalProvider.getIfAvailable();
+        return new com.zifang.z.lc.report.dataset.CachingDatasetExecutor((sourceId, table) -> {
+            try {
+                return registry.require(sourceId).read(table);
+            } catch (RuntimeException miss) {
+                // 本地注册表没有 → 按目录 id 懒接外部目录源 (z-dms, 2026-10-27):
+                // 页面/数据集引用 "dev-h2" 这类目录源时无需先走 /datasource/external 手工注册
+                if (external == null || !external.available()) {
+                    throw miss;
+                }
+                registry.register(external.resolve(sourceId, null));
+                return registry.require(sourceId).read(table);
+            }
+        }, ttl, 128);
     }
 
     @Bean
