@@ -1,83 +1,104 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Button, Card, Col, Row, Space, Typography } from 'antd'
+import { RobotOutlined } from '@ant-design/icons'
+import { EmptyState, ErrorState, LoadingState } from '@yuku123/z-frontend-common/ui'
 import { listTemplates, applyTemplate } from './api.js'
 
+const { Paragraph, Text } = Typography
+
 /**
- * 首页: 内置模板画廊 (M2)。apply 成功 → 跳转视图页。
- * AI 一句话生成入口 (M3) 挂在 AI 生成页 (未配置 LLM 时后端返回配置指引错误, 前端透出)。
+ * 报表模板画廊。apply 成功 → 跳转视图页。
+ * 菜单 label「报表模板」已经是页面名，按 lead 008 §13 不再写页内标题。
  */
 export default function Home() {
   const [templates, setTemplates] = useState([])
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [busy, setBusy] = useState('')
   const navigate = useNavigate()
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true)
+    setError(null)
     listTemplates()
-      .then(setTemplates)
-      .catch((e) => setError(String(e.message || e)))
-  }, [])
+      .then((list) => setTemplates(list || []))
+      .catch(setError)
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(load, [])
 
   const onApply = async (tplId) => {
     setBusy(tplId)
-    setError('')
+    setError(null)
     try {
       const r = await applyTemplate(tplId)
       navigate(`/z-lc/report/view/${r.viewId}?bookId=${encodeURIComponent(r.bookId)}`)
     } catch (e) {
-      setError(String(e.message || e))
+      setError(e)
     } finally {
       setBusy('')
     }
   }
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-      <h1 style={{ fontSize: 22 }}>z-lc 报表平台</h1>
-      <p style={{ color: '#666' }}>
-        从模板创建示例报表书, 或用 AI 一句话生成 (需后端配置 z.report.llm.*)。
-      </p>
+    <div>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Paragraph type="secondary" style={{ margin: 0 }}>
+          从模板创建示例报表书，或交给 AI 一句话生成（需后端配置 z.report.llm.*）。
+        </Paragraph>
+        <Button type="primary" icon={<RobotOutlined />} onClick={() => navigate('/z-lc/report/ai')}>
+          AI 一句话生成
+        </Button>
+      </Space>
+
       {error ? (
-        <div style={{ color: '#cf1322', background: '#fff1f0', padding: 12, borderRadius: 8 }}>
-          {error}
-        </div>
+        <ErrorState
+          error={error}
+          title="报表模板没有读到"
+          description="接口没有返回模板清单，下方空态不代表真的没有模板。"
+          onRetry={load}
+          style={{ marginBottom: 16 }}
+        />
       ) : null}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginTop: 16 }}>
-        {templates.map((t) => (
-          <div
-            key={t.id}
-            style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, background: '#fff' }}
-          >
-            <div style={{ fontWeight: 700, fontSize: 16 }}>{t.title}</div>
-            <div style={{ color: '#666', fontSize: 13, margin: '8px 0 16px' }}>{t.description}</div>
-            <button
-              type="button"
-              disabled={busy === t.id}
-              onClick={() => onApply(t.id)}
-              style={{
-                padding: '6px 16px',
-                borderRadius: 6,
-                border: '1px solid #1677ff',
-                background: '#1677ff',
-                color: '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              {busy === t.id ? '创建中...' : '使用模板创建'}
-            </button>
-          </div>
-        ))}
-        {templates.length === 0 && !error ? <div style={{ color: '#999' }}>加载中...</div> : null}
-      </div>
-      <div style={{ marginTop: 24 }}>
-        <a
-          href="/z-lc/report/ai"
-          onClick={(e) => { e.preventDefault(); navigate('/z-lc/report/ai') }}
-          style={{ color: '#1677ff' }}
-        >
-          AI 一句话生成 →
-        </a>
-      </div>
+
+      {loading ? (
+        <LoadingState variant="cards" rows={3} />
+      ) : templates.length === 0 ? (
+        !error && (
+          <EmptyState
+            title="暂无报表模板"
+            description="后端还没有注册内置模板；也可以先用 AI 一句话生成一张报表。"
+            actionText="去 AI 生成"
+            onAction={() => navigate('/z-lc/report/ai')}
+          />
+        )
+      ) : (
+        <Row gutter={[16, 16]}>
+          {templates.map((t) => (
+            <Col key={t.id} xs={24} sm={12} xl={8}>
+              <Card
+                hoverable
+                title={t.title}
+                styles={{ body: { minHeight: 88 } }}
+                extra={
+                  <Button
+                    type="primary"
+                    size="small"
+                    loading={busy === t.id}
+                    onClick={() => onApply(t.id)}
+                  >
+                    使用模板创建
+                  </Button>
+                }
+              >
+                <Text type="secondary">{t.description || '暂无描述'}</Text>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      )}
     </div>
   )
 }
