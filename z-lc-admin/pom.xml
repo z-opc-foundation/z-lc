@@ -91,6 +91,15 @@
             <artifactId>z-lc-datasource</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!-- z-lc-vapi (接口/脚本域 V3 孵化, 2026-10-27, lead 013 §四):
+             vApi 分发经 z-script ScriptEngine (EL/GROOVY/LUA/SQL/MOCK, 沙箱内建);
+             z-script-engine:1.0.2 从本地 ~/.m2 解析, 孵化期仅 admin 宿主装配。 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-vapi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.github.yuku123</groupId>
             <artifactId>z-dms-spring-boot-starter</artifactId>

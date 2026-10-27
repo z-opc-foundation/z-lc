@@ -8,6 +8,7 @@ import { DashboardPage } from '@/views/workspace/DashboardPage';
 import { DesignerIndexPage, DesignerPage } from '@/views/designer/DesignerPage';
 import { DbImportPage } from '@/views/designer/DbImportPage';
 import { DataSourcesPage } from '@/views/admin/DataSourcesPage';
+import { VapisPage } from '@/views/vapis/VapisPage';
 import { PagesPage } from '@/views/pages/PagesPage';
 import { DictsPage } from '@/views/admin/DictsPage';
 import { RelationsPage } from '@/views/admin/RelationsPage';
@@ -38,6 +39,7 @@ export function AppRoutes() {
         <Route path="/pages/:appCode" element={<PagesPage />} />
         <Route path="/pages" element={<PagesPage />} />
         <Route path="/admin/datasources" element={<DataSourcesPage />} />
+        <Route path="/vapis" element={<VapisPage />} />
 
         <Route path="/admin/dicts" element={<DictsPage />} />
         <Route path="/admin/relations" element={<RelationsPage />} />

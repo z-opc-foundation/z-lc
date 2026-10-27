@@ -110,6 +110,10 @@
              ⚠ 依赖的 z-dms-core:1.0.0 尚未发布 Central（repo1 404 实测），故本模块
              与 z-lc-admin 一同排除在 central 发布面之外；z-dms 上架后随坐标转正。 -->
         <module>z-lc-datasource</module>
+        <!-- z-lc-vapi: 接口/脚本域 V3 孵化 (2026-10-27, lead 013 §四)——vApi 注册表直桥
+             z-script ScriptEngine。孵化期脚本内嵌注册表; 依赖 z-script-engine:1.0.2
+             未确认 Central 上架, 本模块与 z-lc-admin 一同排除发布面。 -->
+        <module>z-lc-vapi</module>
         <!-- z-lc-admin: standalone 启动入口, 端到端验证用 (dev profile 走 H2, 零外部依赖).
              生产集成仍走 main-starter, 此处恢复 build 以便独立跑通全链路. -->
         <module>z-lc-admin</module>
@@ -193,6 +197,12 @@
             <dependency>
                 <groupId>io.github.yuku123</groupId>
                 <artifactId>z-lc-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- z-lc-vapi (接口/脚本域 V3 孵化): 依赖Management 补一格, web 测试/宿主引用免版本 -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-lc-vapi</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <!-- z-lc-report-* 家族（2026-10-11 自 z-report 收编, 7 模块同 ${project.version}） -->
@@ -538,6 +548,8 @@
                                 <excludeArtifact>z-lc-admin</excludeArtifact>
                                 <!-- 孵化模块：上游 z-dms 未上 Central，发布会被依赖解析卡死 -->
                                 <excludeArtifact>z-lc-datasource</excludeArtifact>
+                                <!-- 孵化模块：上游 z-script-engine Central 上架状态未确认 -->
+                                <excludeArtifact>z-lc-vapi</excludeArtifact>
                             </excludeArtifacts>
                             <waitUntil>uploaded</waitUntil>
                             <waitMaxTime>1800</waitMaxTime>

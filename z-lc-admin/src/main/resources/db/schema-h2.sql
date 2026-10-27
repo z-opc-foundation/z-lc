@@ -282,3 +282,23 @@ CREATE TABLE IF NOT EXISTS z_lc_page (
   PRIMARY KEY (`id`),
   CONSTRAINT uk_page_tenant_app_code UNIQUE (`tenant_code`, `app_code`, `page_code`)
 );
+
+-- V3 接口/脚本域 (lead 013 §四): vApi 注册表——app+method+path 唯一, 实现即脚本。
+CREATE TABLE IF NOT EXISTS z_lc_vapi (
+  `id`           BIGINT       NOT NULL AUTO_INCREMENT,
+  `tenant_code`  VARCHAR(64)  NOT NULL,
+  `app_code`     VARCHAR(64)  NOT NULL,
+  `vapi_code`    VARCHAR(64),
+  `method`       VARCHAR(8)   NOT NULL,
+  `path`         VARCHAR(128) NOT NULL,
+  `dsl_type`     VARCHAR(16)  NOT NULL,
+  `source_code`  TEXT,
+  `param_schema` TEXT,
+  `status`       TINYINT      DEFAULT 1,
+  `description`  VARCHAR(255),
+  `deleted`      TINYINT      DEFAULT 0,
+  `create_time`  DATETIME,
+  `update_time`  DATETIME,
+  PRIMARY KEY (`id`),
+  CONSTRAINT uk_vapi_tenant_app_m_path UNIQUE (`tenant_code`, `app_code`, `method`, `path`)
+);

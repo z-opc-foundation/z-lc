@@ -84,6 +84,13 @@
             <artifactId>z-lc-report-render</artifactId>
         </dependency>
 
+        <!-- V3 vApi 测试: z-script 引擎桥 (孵化模块, spring.factories 自动装配执行器) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-vapi</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- V2 页面域测试: 渲染链测试装配用内存源 (ReportChainTestConfig) -->
         <dependency>
             <groupId>io.github.yuku123</groupId>

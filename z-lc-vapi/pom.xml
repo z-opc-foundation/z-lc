@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.1</version>
+    </parent>
+
+    <artifactId>z-lc-vapi</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc-vapi</name>
+    <description>z-lc vApi 脚本执行孵化模块——直桥 z-script ScriptEngine (EL/GROOVY/LUA/SQL/MOCK)</description>
+
+    <dependencies>
+        <!-- SPI 接口 (VapiScriptExecutor) 在 core, 零新增依赖原则下 core 保持纯净 -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- z-script 执行引擎 (Script/ExecutionResult/ScriptEngine; 传递 z-util-expr-*, 沙箱) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-script-engine</artifactId>
+            <version>1.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+        </dependency>
+    </dependencies>
+</project>

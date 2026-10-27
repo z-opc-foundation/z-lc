@@ -17,6 +17,11 @@ export interface PageWidgetEncode {
 
 export type PageWidgetType = 'LINE' | 'BAR' | 'PIE' | 'TABLE' | 'KPI' | 'RAW' | 'FORM';
 
+/** 部件事件绑定 (V3): onClick 指向 vApi 注册表里的路径, 分发由 /vapi/invoke 承接 */
+export interface PageWidgetEvents {
+  onClick?: { vapi?: string; method?: string };
+}
+
 /** 部件规格: 非 FORM 绑 dataset(datasetId 指向 schema.datasets), FORM 绑实体 */
 export interface PageWidgetSpec {
   id: string;
@@ -27,6 +32,8 @@ export interface PageWidgetSpec {
   encode?: PageWidgetEncode;
   /** 度量聚合方式, 缺省 SUM */
   agg?: 'SUM' | 'COUNT' | 'AVG' | 'MIN' | 'MAX';
+  /** 事件绑定 (V3 接口/脚本域): 预留多事件, 现只消费 onClick */
+  events?: PageWidgetEvents;
 }
 
 export interface PageLayoutCell {

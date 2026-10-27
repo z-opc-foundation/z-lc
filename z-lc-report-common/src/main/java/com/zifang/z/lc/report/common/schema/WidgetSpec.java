@@ -1,11 +1,17 @@
 package com.zifang.z.lc.report.common.schema;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
 /**
  * 图表组件规格: 绑定数据集 + 视觉编码 + 过滤。
  * 渲染链路: WidgetSpec + DatasetSchema → 引擎取数/聚合 → echarts option。
+ * <p>
+ * ignoreUnknown: 页面域 (V2/V3) 的部件 schema 是本类的超集 (如 events.onClick 绑 vApi),
+ * 渲染链只消费本类认识的字段——扩展字段不卡渲染。
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class WidgetSpec {
 
     private String id;

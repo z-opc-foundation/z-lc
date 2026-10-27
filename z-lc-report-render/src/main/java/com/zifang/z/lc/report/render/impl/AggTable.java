@@ -25,6 +25,11 @@ final class AggTable {
     }
 
     static AggTable of(WidgetSpec widget, Table data) {
+        // 缺 encode (页面域自由拼装部件时常见) 给明确语义, 不落 NPE
+        if (widget.getEncode() == null) {
+            throw new IllegalArgumentException(
+                    "widget encode required (x/category 与 y/value 至少配 y/value): " + widget.getId());
+        }
         String dim = widget.getEncode().getX() != null
                 ? widget.getEncode().getX() : widget.getEncode().getCategory();
         String measure = widget.getEncode().getY() != null

@@ -14,11 +14,13 @@ import {
   Table,
   message,
 } from 'antd';
-import { DeleteOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import UniversalRenderer from '@yuku123/z-frontend-render';
 import type { RenderData } from '@yuku123/z-frontend-render';
 import { listApps } from '@/api/app';
 import { createRecord } from '@/api/runtime';
+import { invokeVapi, listVapis } from '@/api/vapi';
+import type { VapiDTO } from '@/api/vapi';
 import {
   createPage,
   deletePage,
@@ -64,6 +66,8 @@ interface WidgetDraft {
   encodeY: string;
   agg: string;
   entityCode: string;
+  /** V3: onClick 绑定的 vApi 路径 (注册表内相对路径) */
+  onClickVapi: string;
   x: number;
   y: number;
   w: number;
@@ -74,7 +78,7 @@ let widgetSeq = 1;
 
 function emptyWidget(): WidgetDraft {
   const id = `w${widgetSeq++}`;
-  return { id, type: 'TABLE', title: '', sourceId: '', baseTable: '', encodeX: '', encodeY: '', agg: 'SUM', entityCode: '', x: 0, y: 0, w: 6, h: 4 };
+  return { id, type: 'TABLE', title: '', sourceId: '', baseTable: '', encodeX: '', encodeY: '', agg: 'SUM', entityCode: '', onClickVapi: '', x: 0, y: 0, w: 6, h: 4 };
 }
 
 /** PageDTO.schema(JSON 字符串) → 编辑草稿; 坏结构降级为空页 (保存时会被后端校验拦下) */
@@ -101,6 +105,7 @@ function parseDraft(dto: PageDTO): { pageName: string; widgets: WidgetDraft[] } 
         encodeY: w.encode?.y ?? '',
         agg: w.agg ?? 'SUM',
         entityCode: w.entityCode ?? '',
+        onClickVapi: w.events?.onClick?.vapi ?? '',
         x: cell?.x ?? 0,
         y: cell?.y ?? 0,
         w: cell?.w ?? 6,
@@ -134,6 +139,10 @@ function draftToSchema(widgets: WidgetDraft[]): PageSchema {
       if (w.title.trim()) spec.title = w.title.trim();
       specs.push(spec);
     }
+    if (w.onClickVapi.trim()) {
+      const pushed = specs[specs.length - 1];
+      if (pushed) pushed.events = { onClick: { vapi: w.onClickVapi.trim() } };
+    }
     layout.push({ widgetId: w.id, x: w.x, y: w.y, w: w.w, h: w.h });
   });
   return { version: 1, datasets, layout, widgets: specs };
@@ -148,6 +157,17 @@ export function PagesPage() {
   const [widgets, setWidgets] = useState<WidgetDraft[]>([]);
   const [preview, setPreview] = useState<PageRenderData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [vapis, setVapis] = useState<VapiDTO[]>([]);
+
+  useEffect(() => {
+    if (!appCode) {
+      setVapis([]);
+      return;
+    }
+    listVapis(appCode)
+      .then(setVapis)
+      .catch(() => setVapis([]));
+  }, [appCode]);
 
   useEffect(() => {
     listApps()
@@ -318,6 +338,15 @@ export function PagesPage() {
       ),
     },
     {
+      title: 'onClick 接口', dataIndex: 'onClickVapi', width: 160,
+      render: (_: unknown, w: WidgetDraft) => (
+        <Select size="small" allowClear value={w.onClickVapi || undefined} style={{ width: 150 }}
+          placeholder="绑 vApi"
+          onChange={(v) => updateWidget(w.id, { onClickVapi: v ?? '' })}
+          options={vapis.filter((x) => x.status === 1).map((x) => ({ value: x.path, label: `${x.method} /${x.path}` }))} />
+      ),
+    },
+    {
       title: '', width: 50,
       render: (_: unknown, w: WidgetDraft) => (
         <Button size="small" type="text" danger icon={<DeleteOutlined />}
@@ -384,6 +413,21 @@ export function PagesPage() {
               {preview && (
                 <Card title={`预览: ${preview.pageName || selected.pageCode}`}>
                   <UniversalRenderer renderData={previewData} />
+                  {widgets.filter((w) => w.onClickVapi.trim()).length > 0 && (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ color: '#888', marginBottom: 6, fontSize: 12 }}>
+                        onClick 绑定 (V3): 点击后按注册表分发到 z-script 执行, 返回 JSON 弹窗
+                      </div>
+                      <Space wrap>
+                        {widgets
+                          .filter((w) => w.onClickVapi.trim())
+                          .map((w) => (
+                            <VapiRunButton key={w.id} appCode={appCode} widgetLabel={w.title || w.id}
+                              vapiPath={w.onClickVapi.trim()} vapis={vapis} />
+                          ))}
+                      </Space>
+                    </div>
+                  )}
                   {Object.entries(preview.forms ?? {}).map(([widgetId, form]) => (
                     <FormPageCard key={widgetId} appCode={appCode} widgetId={widgetId} form={form} />
                   ))}
@@ -437,5 +481,38 @@ function FormPageCard({ appCode, widgetId, form }: {
         </Form>
       )}
     </Card>
+  );
+}
+
+/** onClick 绑定运行按钮: 按注册表分发 (method 取注册表定义), 结果 JSON 弹窗 */
+function VapiRunButton({ appCode, widgetLabel, vapiPath, vapis }: {
+  appCode: string;
+  widgetLabel: string;
+  vapiPath: string;
+  vapis: VapiDTO[];
+}) {
+  const [running, setRunning] = useState(false);
+  const def = vapis.find((v) => v.path === vapiPath);
+
+  const run = async () => {
+    setRunning(true);
+    try {
+      const result = await invokeVapi(appCode, vapiPath, (def?.method ?? 'POST') as 'POST', {});
+      Modal.info({
+        title: `${widgetLabel} → ${def?.vapiCode ?? vapiPath} 执行结果`,
+        width: 620,
+        content: <pre style={{ maxHeight: 360, overflow: 'auto', fontSize: 12 }}>{JSON.stringify(result, null, 2)}</pre>,
+      });
+    } catch {
+      // 分发错误 (404/500/503) 由全局错误总线吐司
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Button size="small" icon={<CaretRightOutlined />} loading={running} onClick={run}>
+      {widgetLabel} → {vapiPath}
+    </Button>
   );
 }
