@@ -12,10 +12,11 @@
 
     <artifactId>z-lc-report-render</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-render (WidgetSpec → echarts option 服务端组装)</name>
+    <name>z-lc :: report-render</name>
     <description>
         图表元数据 → echarts option: LINE/BAR 原生 echarts 结构;
         TABLE/KPI 为渲染器约定结构 (由前端 UniversalRenderer 解释)。
+        WidgetSpec → echarts option 服务端组装
     </description>
 
     <dependencies>

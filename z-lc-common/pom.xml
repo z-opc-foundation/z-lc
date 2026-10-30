@@ -11,7 +11,7 @@
 
     <artifactId>z-lc-common</artifactId>
 
-    <name>z-lc-common</name>
+    <name>z-lc :: common</name>
     <description>低代码平台公共层：DTO/枚举/工具与业务域模型（应用、菜单、印章、数据资产等），不含引擎与 Web 接口</description>
 
     <!-- 迁移删掉了这一块 <properties>（maven.compiler.source/target=8、

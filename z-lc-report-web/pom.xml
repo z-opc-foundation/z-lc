@@ -12,10 +12,11 @@
 
     <artifactId>z-lc-report-web</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-web (REST API: 数据源/数据集/渲染/Book)</name>
+    <name>z-lc :: report-web</name>
     <description>
         端到端链路: 注册数据源 → 注册数据集 → 预览/渲染 → Book 编排与发布。
         M1 内存态存储; 接口契约与 M2 落库后保持一致。
+        REST API: 数据源/数据集/渲染/Book
     </description>
 
     <dependencies>

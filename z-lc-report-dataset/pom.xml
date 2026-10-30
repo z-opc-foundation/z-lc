@@ -12,12 +12,13 @@
 
     <artifactId>z-lc-report-dataset</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-dataset (★核心: 内存 typed 列式引擎: 多键 join/groupby/表达式/过滤)</name>
+    <name>z-lc :: report-dataset</name>
     <description>
         类型化列式 Table 引擎 (STRING/INT/DOUBLE/BOOL/DATE + 空值语义),
         API 形态对齐 pandas (join/groupby/filter/assign/sort);
         表达式求值为 M1 内置最小实现, 预留 z-util-expr 切换缝;
         转换 DAG 编排后续接 z-util-wf-kernel。
+        ★核心: 内存 typed 列式引擎: 多键 join/groupby/表达式/过滤
     </description>
 
     <dependencies>

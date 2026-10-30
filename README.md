@@ -99,7 +99,7 @@ z-lc/
 ├── z-lc-report-book/      # ReportBook 树状组织 / 整体发布快照（3 + 0）
 ├── z-lc-report-ai/        # LlmClient SPI + OpenAI 兼容实现，NL2Report（5 + 1）
 ├── z-lc-report-web/       # 报表 HTTP 层：7 个 Controller（/api/lc/report/*）（11 + 1）
-├── z-lc-admin/            # 独立启动入口（pom 的 <name> 仍叫 z-lc-bootstrap）：3 个类、2 个测试类、
+├── z-lc-admin/            # 独立启动入口（pom 的 <name> = `z-lc :: admin`；历史上叫 z-lc-bootstrap）：3 个类、2 个测试类、
 │                          #   spring-boot repackage 出胖 jar，不进 Maven Central
 ├── z-lc-admin-ui/         # React 18 + antd 5.29.3 + Vite 的管理台（独立 npm 工程，不在 reactor）
 ├── _e2e/                  # 端到端与注入自证脚本 + 250 部署演练，见 _e2e/README.md

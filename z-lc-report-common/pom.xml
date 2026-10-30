@@ -12,8 +12,8 @@
 
     <artifactId>z-lc-report-common</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-common (领域模型 / JSON Schema 契约: ViewSchema/DatasetSchema/WidgetSpec)</name>
-    <description>schema 驱动通用渲染器的单一事实源: 数据源/数据集/视图/Book 契约定义</description>
+    <name>z-lc :: report-common</name>
+    <description>schema 驱动通用渲染器的单一事实源: 数据源/数据集/视图/Book 契约定义 / 领域模型 / JSON Schema 契约: ViewSchema/DatasetSchema/WidgetSpec</description>
 
     <dependencies>
         <dependency>

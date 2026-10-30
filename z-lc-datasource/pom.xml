@@ -11,7 +11,7 @@
 
     <artifactId>z-lc-datasource</artifactId>
 
-    <name>z-lc-datasource</name>
+    <name>z-lc :: datasource</name>
     <description>低代码数据源管理域（V1 孵化模块，2026-10-26，009/013 号方案 + CEO 拍板 D14）。
         把 z-dms（数据源管控底座）桥接进 z-lc：目录来自 z-dms 登记、连接来自 z-dms 建池，
         z-lc 只长"表结构浏览器 + 建模向导"这些低代码特有交互。

@@ -11,7 +11,7 @@
     </parent>
 
     <artifactId>z-lc-admin</artifactId>
-    <name>z-lc-bootstrap</name>
+    <name>z-lc :: admin</name>
     <description>z-lc 独立启动入口 (端到端验证用) — 跑 z-lc-web 全部 Controller + z-lc-design 全部 SPI, 不依赖
         main-starter / z-ctc / z-config.
     </description>

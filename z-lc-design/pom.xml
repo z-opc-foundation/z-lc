@@ -20,7 +20,7 @@
          · z-util-core 的 ${util.version} 删了：fleet 同坐标直钉 1.0.13，同值。
          · 本模块自己排掉 spring-boot-starter-logging / logback-classic 的三条 exclusion 是建仓就有的
            写法（floor 的 *:* 通配 exclusion 对本模块是惰性的，运行期实现仍是 log4j2）。 -->
-    <name>z-lc-design</name>
+    <name>z-lc :: design</name>
     <description>z-lc Design Framework — @LowCodeModel / @LowCodeModelService / PageTemplate / Collector. Framework
         core, no business implementation.
     </description>

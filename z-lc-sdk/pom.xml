@@ -19,7 +19,7 @@
          · io.github.yuku123:z-util-core 的 <version>${util.version}</version> 删了：
            z-boot-fleet:1.0.0 按同一坐标直钉 1.0.13，与基线树 z-util-core:jar:1.0.13 逐字相同。
          · junit:junit 那条不写版本是对的：floor import 的 Boot BOM 供 4.13.2，基线树同值。 -->
-    <name>z-lc-sdk</name>
+    <name>z-lc :: sdk</name>
     <description>z-lc SPI Framework — 25 SPI interfaces, annotations and abstract base. Pure API, no business
         implementation.
     </description>

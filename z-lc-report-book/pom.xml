@@ -12,10 +12,11 @@
 
     <artifactId>z-lc-report-book</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-book (ReportBook 树状组织 / 整体发布快照)</name>
+    <name>z-lc :: report-book</name>
     <description>
         Book 内树状组织 (章节/页面, 类"应用"), 整体发布为不可变快照供他人只读查看。
         M1 内存态; M2 落库 (MyBatis-Plus) + 分享 token / SSO。
+        ReportBook 树状组织 / 整体发布快照
     </description>
 
     <dependencies>

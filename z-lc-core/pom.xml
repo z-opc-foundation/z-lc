@@ -11,7 +11,7 @@
 
     <artifactId>z-lc-core</artifactId>
 
-    <name>z-lc-core</name>
+    <name>z-lc :: core</name>
     <description>低代码引擎核心：字段类型处理器、DB 驱动的通用 CRUD、适配器注册与流水线/事件处理，
         含可选的 z-llm AI 建模建议</description>
 

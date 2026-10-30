@@ -12,10 +12,11 @@
 
     <artifactId>z-lc-report-datasource</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-datasource (多数据源 SPI: 接入/注册/读取)</name>
+    <name>z-lc :: report-datasource</name>
     <description>
         数据源板块接入层: ReportDataSource SPI (MEMORY 已实现,
         JDBC/CSV/HTTP 随 M1.5 接入, 底座 z-util-jdbc / z-util-parser / z-util-http)。
+        多数据源 SPI: 接入/注册/读取
     </description>
 
     <dependencies>

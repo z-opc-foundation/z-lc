@@ -53,7 +53,7 @@
          这种把 parent 链拼进路径的假地址。旧 parent 只供 name/description/licenses（无 url/scm），
          所以这一层以前不会被读到。url/scm 取本仓真实 remote（实测 `git remote -v`
          = git@github.com:z-opc-foundation/z-lc.git）。 -->
-    <name>z-lc</name>
+    <name>z-lc :: root</name>
     <description>z-lc Low-Code Platform — Phase 1: DB-driven Generic CRUD Engine</description>
     <url>https://github.com/z-opc-foundation/z-lc</url>
 

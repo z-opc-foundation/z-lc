@@ -11,7 +11,7 @@
 
     <artifactId>z-lc-vapi</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc-vapi</name>
+    <name>z-lc :: vapi</name>
     <description>z-lc vApi 脚本执行孵化模块——直桥 z-script ScriptEngine (EL/GROOVY/LUA/SQL/MOCK)</description>
 
     <dependencies>

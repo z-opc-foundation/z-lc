@@ -12,10 +12,11 @@
 
     <artifactId>z-lc-report-ai</artifactId>
     <packaging>jar</packaging>
-    <name>z-lc :: report-ai (LlmClient SPI + OpenAI 兼容实现, M3: NL2Report)</name>
+    <name>z-lc :: report-ai</name>
     <description>
         决策②: 内聚自研轻量 LLM 调用 (OpenAI 兼容协议, 配置即可接 Qwen/GLM/DeepSeek);
         所有 AI 能力只依赖 LlmClient 接口, llm-gateway 剥离后经 adapter 无感切换。
+        LlmClient SPI + OpenAI 兼容实现, M3: NL2Report
     </description>
 
     <dependencies>
