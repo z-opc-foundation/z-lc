@@ -346,8 +346,10 @@ _Maintained by the z-opc-foundation organization._
     读它当历史，别当现状；现状以本 README 与根 POM 为准。
     规范里常见的 `02-api.md` / `03-db-schema.md` / `05-frontend.md` / `07-roadmap.md`
     在本仓 **都不存在**，没有对应实现或文档就不写链接。
-- `002_deploy` / `003_script` / `004_skill` — **槽位不建**：部署 SQL 实际在
-  `z-lc-admin/src/main/resources/db/`，脚本实际在 `_e2e/`，本仓没有真 SKILL 定义。
+- [`_doc/003_script/`](_doc/003_script/) — 构建与发布脚本（GPG passphrase 注入器）；
+  `_e2e/` 下的端到端测试件仍留在仓根（被测试与部署流程直接引用）。
+- `002_deploy` / `004_skill` — **槽位不建**：部署 SQL 实际在
+  `z-lc-admin/src/main/resources/db/`，本仓没有真 SKILL 定义。
 - [`_doc/007_backlog/`](_doc/007_backlog/) — 待办与缺陷覆盖面，如实登记：
   - [`_doc/007_backlog/README.md`](_doc/007_backlog/README.md) — 待办索引与取数命令
   - [`feature001_workflow_binding_fires/TASK.md`](_doc/007_backlog/feature001_workflow_binding_fires/TASK.md) — 缺陷 #61：流程绑定这条链其余四层覆盖面
