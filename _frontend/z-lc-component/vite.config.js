@@ -1,6 +1,7 @@
 import {defineConfig} from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import {safeEmptyOutDir} from '../../build-tools/safe-vite-plugin.mjs'
 
 /**
  * z-lc 组件层构建（lead 005 §8.2 组件层 / §8.6 #3 双入口）。
@@ -21,7 +22,7 @@ import path from 'path'
 const srcDir = path.resolve(__dirname, './src')
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [safeEmptyOutDir(), react()],
     resolve: {
         alias: {
             '@/lc': srcDir,
@@ -39,7 +40,7 @@ export default defineConfig({
             formats: ['es'],
         },
         outDir: 'dist',
-        emptyOutDir: true,
+        emptyOutDir: false,
         sourcemap: false,
         rollupOptions: {
             // 宿主（主壳 @yuku123/z-opc-frontend）统一提供 react / antd / 基座，

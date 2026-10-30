@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import {safeEmptyOutDir} from '../build-tools/safe-vite-plugin.ts'
 
 /**
  * Backend target for the z-lc admin API.
@@ -12,7 +13,7 @@ import { fileURLToPath, URL } from 'node:url';
 const LC_API_TARGET = process.env.VITE_LC_API_TARGET ?? 'http://localhost:18090';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [safeEmptyOutDir(), react()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

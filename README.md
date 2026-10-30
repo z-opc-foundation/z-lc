@@ -24,7 +24,7 @@
 | **Maven Central（ranged GET 实测）** | 已发布：`z-lc:1.0.0`（pom）与 `z-lc-common` / `z-lc-sdk` / `z-lc-core` / `z-lc-design` / `z-lc-web` 的 `1.0.0` jar 全部 `200`；`z-lc-admin:1.0.0` = `404`（`central` profile 的 `excludeArtifacts` 把它排除，胖 jar 只作本地/部署演练用）。**7 支 `z-lc-report-*` 在 repo1 上全 404**（pom+jar 都是）—— 它们 2026-10-11 才进 reactor，而 `1.0.0` 是 2026-09-30 发的，还没另发版本号 |
 | **默认端口** | 默认 profile **不设** `server.port`（[`z-lc-admin/src/main/resources/application.yml`](z-lc-admin/src/main/resources/application.yml) 第一行就写了这一格已移除）；`dev` profile 用 `SERVER_PORT`，缺省 **18090** |
 | **context-path** | 无。全部路由是绝对路径 `/api/lc/...`（`application.yml` 里那句 `--server.servlet.context-path=/meta` 是从 z-meta 抄来的残留注释，本仓没有 `/meta` 前缀） |
-| **运行口径** | Java 8（`maven.compiler.source/target=8` 由 parent 下发）· Spring Boot 2.7.18（地板面值；本仓 `pluginManagement` 刻意把 `spring-boot-maven-plugin` 留在字面 `2.7.12`） |
+| **运行口径** | Java 17（`maven.compiler.source/target=17` 由 parent 下发）· Spring Boot 3.3.13（地板面值；本仓 `pluginManagement` 刻意把 `spring-boot-maven-plugin` 留在字面 `2.7.12`） |
 | **最近更新** | 2026-09-30 |
 
 ### ⚠ 关于"本仓必须用 JDK 17 编译"这一条：实测**不成立**
@@ -162,7 +162,7 @@ Maven reactor 里是 **13 个模块**（根 POM `<modules>` 实测：`z-lc-commo
 
 | 层级 | 技术 |
 |------|------|
-| 语言 / 编译 | Java 8（`source/target 8`，非 `--release`），UTF-8，`-parameters` |
+| 语言 / 编译 | Java 17（`source/target 8`，非 `--release`），UTF-8，`-parameters` |
 | 框架 | Spring Boot 2.7.18（`z-boot-parent:1.2.0` import 的 `spring-boot-dependencies:${spring-boot.version}`，其 `spring-boot.version` = 2.7.18） |
 | 打包插件 | `spring-boot-maven-plugin` 本仓 `pluginManagement` 字面留 **2.7.12**（刻意分歧，动它等于换 fat jar loader） |
 | 兄弟仓版本权威 | 由 `z-boot-parent:1.2.0` 的 `<properties>` 下发（**不再是 fleet**）：`z-util.version` **1.0.19**（本仓根 DM 另把 `z-util-core` / `-parser-json` / `-dsl-kernel` 直钉 **1.2.4**，就近优先）、`z-llm.version` **0.1.7**（`z-llm-gateway-core`）、`z-script.version` **1.0.2**（`z-script-engine`） |
