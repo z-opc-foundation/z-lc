@@ -3,7 +3,7 @@ package com.zifang.z.lc.core.adapter;
 import org.junit.After;
 import org.junit.Test;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;

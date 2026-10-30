@@ -12,7 +12,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.util.ClassUtils;
 
-import javax.annotation.Resource;
+import jakarta.annotation.Resource;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;

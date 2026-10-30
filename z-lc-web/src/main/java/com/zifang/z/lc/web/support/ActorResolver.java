@@ -3,7 +3,7 @@ package com.zifang.z.lc.web.support;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 解析"这次改动是谁做的", 只用于**变更归属**（谁能撤销自己的改动、历史里显示谁改的），

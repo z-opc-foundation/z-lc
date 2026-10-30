@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.github.yuku123</groupId>
         <artifactId>z-lc</artifactId>
-        <version>1.0.1</version>
+        <version>1.0.3</version>
     </parent>
 
     <artifactId>z-lc-design</artifactId>
@@ -71,7 +71,7 @@
         <!-- Swagger 3.x 注解 (@Tag / @Operation) — 走 z-boot 管理的 knife4j-openapi3, 不显式 version -->
         <dependency>
             <groupId>com.github.xiaoymin</groupId>
-            <artifactId>knife4j-openapi3-spring-boot-starter</artifactId>
+            <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
         </dependency>
 
         <dependency>

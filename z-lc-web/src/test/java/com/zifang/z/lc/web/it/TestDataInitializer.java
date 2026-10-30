@@ -6,7 +6,7 @@ import org.springframework.core.io.support.EncodedResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;

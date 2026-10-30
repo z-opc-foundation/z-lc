@@ -26,7 +26,7 @@ class EndToEndFlowTest {
     // classpath 上有 druid+mysql 时不应激活任何容器级数据源
     @SpringBootApplication(scanBasePackages = "com.zifang.z.lc.report",
             exclude = {org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration.class,
-                    com.alibaba.druid.spring.boot.autoconfigure.DruidDataSourceAutoConfigure.class})
+                    com.alibaba.druid.spring.boot3.autoconfigure.DruidDataSourceAutoConfigure.class})
     static class TestApp {
     }
 
@@ -120,12 +120,13 @@ class EndToEndFlowTest {
                                 + "\"baseTable\":\"by_region\"}"))
                 .andExpect(status().isOk());
 
-        // expr-sql 的 SUM 产出 BigDecimal, 推断类型必须落到 DOUBLE 而不是 INT
+        // 2026-10-30 起 z-util 1.2.11 的内存 SQL 引擎对整数 SUM 返回 Long（不再是 scale>0 的
+        // BigDecimal）—— 推断随之落 INT。聚合值语义仍是数值，渲染端对 INT/DOUBLE 同型处理。
         mvc.perform(post("/api/lc/report/dataset/ds-region/preview"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(2))
                 .andExpect(jsonPath("$.columns[1].name").value("total"))
-                .andExpect(jsonPath("$.columns[1].type").value("DOUBLE"));
+                .andExpect(jsonPath("$.columns[1].type").value("INT"));
 
         // 跨源结果照常进渲染链路
         mvc.perform(post("/api/lc/report/render/widget").contentType("application/json")

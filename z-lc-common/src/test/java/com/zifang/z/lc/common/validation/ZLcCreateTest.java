@@ -2,7 +2,7 @@ package com.zifang.z.lc.common.validation;
 
 import org.junit.jupiter.api.Test;
 
-import javax.validation.groups.Default;
+import jakarta.validation.groups.Default;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

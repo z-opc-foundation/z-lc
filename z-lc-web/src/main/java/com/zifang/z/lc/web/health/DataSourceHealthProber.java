@@ -3,7 +3,7 @@ package com.zifang.z.lc.web.health;
 import com.zifang.z.lc.web.config.DataSourceConfigGuard;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PreDestroy;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;

@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.yuku123</groupId>
         <artifactId>z-lc</artifactId>
-        <version>1.0.1</version>
+        <version>1.0.3</version>
     </parent>
 
     <artifactId>z-lc-common</artifactId>
@@ -44,8 +44,8 @@
         </dependency>
         <!-- Bean Validation 分组接口 (ZLcCreate/ZLcUpdate 需要继承 javax.validation.groups.Default) -->
         <dependency>
-            <groupId>javax.validation</groupId>
-            <artifactId>validation-api</artifactId>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
         </dependency>
         <!-- z-util-core (StatusCode 接口 — ZLcEngineStatusCode 实现该接口)
              这里的 exclusion 与本仓 z-lc-core/pom.xml:50-96 那一段是同一件事（完整实测理由写在那里）：

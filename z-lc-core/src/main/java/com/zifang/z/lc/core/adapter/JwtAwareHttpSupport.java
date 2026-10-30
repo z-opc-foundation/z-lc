@@ -25,7 +25,7 @@ public final class JwtAwareHttpSupport {
      * 若当前线程未绑定 servlet 请求 (例如后台任务 / 定时任务), 返回空 Map.
      */
     public static Map<String, String> currentAuthHeaders() {
-        javax.servlet.http.HttpServletRequest src = JwtRelayInterceptor.currentRequest();
+        jakarta.servlet.http.HttpServletRequest src = JwtRelayInterceptor.currentRequest();
         if (src == null) {
             return Collections.emptyMap();
         }

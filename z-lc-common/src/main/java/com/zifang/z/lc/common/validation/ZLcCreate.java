@@ -1,6 +1,6 @@
 package com.zifang.z.lc.common.validation;
 
-import javax.validation.groups.Default;
+import jakarta.validation.groups.Default;
 
 /**
  * Bean Validation 分组 — Create 场景（新增操作）.

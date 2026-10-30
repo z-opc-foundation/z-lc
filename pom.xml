@@ -28,7 +28,7 @@
              并统一了 common tags（app/instance/env）与暴露面基线（health/info/metrics/prometheus）。
              本仓 z-lc-report-web 引 z-boot-web-starter ⇒ 1.1.0 那一版不带 actuator，
              /actuator/prometheus 此前在本仓任何宿主上都不存在。 -->
-        <version>1.1.2</version>
+        <version>1.2.0</version>
         <relativePath/>
     </parent>
 
@@ -44,7 +44,7 @@
          全组织 pom grep 实测除 z-opc 那份单体副本外没有别的仓引用这几个构件 ⇒ 对已发布件零影响。 -->
     <groupId>io.github.yuku123</groupId>
     <artifactId>z-lc</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.3</version>
     <packaging>pom</packaging>
 
     <!-- 身份元数据自报（写法照 z-ext/pom.xml:30-55、z-meta/pom.xml:42-75）：加了 <parent> 之后常开
@@ -515,11 +515,19 @@
                         <version>3.2.7</version>
                         <configuration>
                             <skip>${central.gpg.skip}</skip>
-                            <gpgArguments>
-                                <arg>--pinentry-mode</arg>
-                                <arg>loopback</arg>
-                                <arg>--no-tty</arg>
-                            </gpgArguments>
+                            <!-- 2026-10-30 对齐 z-util / z-boot 的实发口径（实测踩坑后统一）：
+                                 ① 原来的 gpgArguments 里写 pinentry-mode=loopback 是**无效的**：
+                                    maven-gpg-plugin 3.2.8 自己会传 pinentry-mode=error，
+                                    gpg 对同一选项取最后一次出现的值 ⇒ 调用方那个 error 盖掉 loopback
+                                    ⇒ gpg 拒绝走 loopback 取口令 ⇒ 报 No pinentry / Exit code: 2。
+                                    真正的解法是走仓内 wrapper：它先剔除调用方传来的 pinentry-mode
+                                    参数，再以 loopback + passphrase 交给系统 gpg。
+                                 ② keyname 显式钉真实 key id —— 插件默认用 local-user=default，
+                                    而本机密钥环里没有名为 "default" 的密钥
+                                    ⇒ gpg 报 skipped "default": No secret key。
+                                 ③ 口令走环境变量名（gpg.passphraseEnvName），绝不进 argv。 -->
+                            <keyname>A403FCCFD7EF5DA6</keyname>
+                            <executable>${maven.multiModuleProjectDirectory}/_doc/003_script/gpg-with-passphrase.sh</executable>
                         </configuration>
                         <executions>
                             <execution>

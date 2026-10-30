@@ -139,7 +139,7 @@ public class AppAdminBizServiceTest {
                 (com.zifang.z.lc.core.event.EventService) Proxy.newProxyInstance(cl,
                         new Class<?>[]{com.zifang.z.lc.core.event.EventService.class}, noopHandler);
 
-        setField("appMapper", appMapper);
+        setField("lcAppEntityMapper", appMapper);
         setField("entityMapper", entityMapper);
         setField("fieldMapper", fieldMapper);
         setField("eventService", eventService);

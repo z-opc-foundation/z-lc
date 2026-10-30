@@ -1,6 +1,6 @@
 package com.zifang.z.lc.core.adapter;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 当前 servlet 请求绑定器 (z-lc JWT 透传基础设施).

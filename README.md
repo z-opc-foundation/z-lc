@@ -19,8 +19,8 @@
 |------|-----|
 | **仓库** | `z-lc`（`git@github.com:z-opc-foundation/z-lc.git`，分支 `main`） |
 | **Maven 坐标** | `io.github.yuku123:z-lc:1.0.0`（根 POM `<packaging>pom</packaging>`） |
-| **当前版本** | `1.0.0` —— 根 POM 写的是**字面 `<version>1.0.0</version>`，不是 `${revision}`**；`de33a9e`（2026-09-30）把 `com.zifang:z-opc:1.0.0-SNAPSHOT` 幻影父链与 `1.0.0-SNAPSHOT` 一起换掉的 |
-| **父项目** | `io.github.yuku123:z-boot-parent:1.1.0`（`<relativePath/>` 留空，parent 在 repo1 不在磁盘）；它的父是 `io.github.yuku123:z-boot:1.0.19`，**`z-boot-parent:1.1.0` 自身不再 import `z-boot-fleet`**（现读 repo1 上那份 pom：地板由 `netty-bom` / `junit-bom` / `jackson-bom` / `spring-framework-bom` / `spring-boot-dependencies` 五条 BOM import 供给，兄弟仓版本改由它自己的 `<properties>` 下发） |
+| **当前版本** | `1.0.3` —— 根 POM 写的是**字面 `<version>1.0.3</version>`，不是 `${revision}`**；`de33a9e`（2026-09-30）把 `com.zifang:z-opc:1.0.0-SNAPSHOT` 幻影父链与 `1.0.0-SNAPSHOT` 一起换掉的 |
+| **父项目** | `io.github.yuku123:z-boot-parent:1.2.0`（`<relativePath/>` 留空，parent 在 repo1 不在磁盘）；它的父是 `io.github.yuku123:z-boot:1.0.19`，**`z-boot-parent:1.2.0` 自身不再 import `z-boot-fleet`**（现读 repo1 上那份 pom：地板由 `netty-bom` / `junit-bom` / `jackson-bom` / `spring-framework-bom` / `spring-boot-dependencies` 五条 BOM import 供给，兄弟仓版本改由它自己的 `<properties>` 下发） |
 | **Maven Central（ranged GET 实测）** | 已发布：`z-lc:1.0.0`（pom）与 `z-lc-common` / `z-lc-sdk` / `z-lc-core` / `z-lc-design` / `z-lc-web` 的 `1.0.0` jar 全部 `200`；`z-lc-admin:1.0.0` = `404`（`central` profile 的 `excludeArtifacts` 把它排除，胖 jar 只作本地/部署演练用）。**7 支 `z-lc-report-*` 在 repo1 上全 404**（pom+jar 都是）—— 它们 2026-10-11 才进 reactor，而 `1.0.0` 是 2026-09-30 发的，还没另发版本号 |
 | **默认端口** | 默认 profile **不设** `server.port`（[`z-lc-admin/src/main/resources/application.yml`](z-lc-admin/src/main/resources/application.yml) 第一行就写了这一格已移除）；`dev` profile 用 `SERVER_PORT`，缺省 **18090** |
 | **context-path** | 无。全部路由是绝对路径 `/api/lc/...`（`application.yml` 里那句 `--server.servlet.context-path=/meta` 是从 z-meta 抄来的残留注释，本仓没有 `/meta` 前缀） |
@@ -85,7 +85,7 @@
 
 ```
 z-lc/
-├── pom.xml                # 根聚合 POM：挂 z-boot-parent:1.1.0，版本字面 1.0.0，常开 flatten(oss) 1.5.0
+├── pom.xml                # 根聚合 POM：挂 z-boot-parent:1.2.0，版本字面 1.0.0，常开 flatten(oss) 1.5.0
 ├── z-lc-common/           # 公共层：DTO / 枚举 / 38 支 utils / 域模型（258 main + 261 test java）
 ├── z-lc-sdk/              # SPI 框架：27 支接口 + 注解 + 抽象基类，纯 API 无业务实现（62 + 55）
 ├── z-lc-core/             # 引擎：CRUD / fieldtype / adapter / pipeline / event / materialize /
@@ -163,9 +163,9 @@ Maven reactor 里是 **13 个模块**（根 POM `<modules>` 实测：`z-lc-commo
 | 层级 | 技术 |
 |------|------|
 | 语言 / 编译 | Java 8（`source/target 8`，非 `--release`），UTF-8，`-parameters` |
-| 框架 | Spring Boot 2.7.18（`z-boot-parent:1.1.0` import 的 `spring-boot-dependencies:${spring-boot.version}`，其 `spring-boot.version` = 2.7.18） |
+| 框架 | Spring Boot 2.7.18（`z-boot-parent:1.2.0` import 的 `spring-boot-dependencies:${spring-boot.version}`，其 `spring-boot.version` = 2.7.18） |
 | 打包插件 | `spring-boot-maven-plugin` 本仓 `pluginManagement` 字面留 **2.7.12**（刻意分歧，动它等于换 fat jar loader） |
-| 兄弟仓版本权威 | 由 `z-boot-parent:1.1.0` 的 `<properties>` 下发（**不再是 fleet**）：`z-util.version` **1.0.19**（本仓根 DM 另把 `z-util-core` / `-parser-json` / `-dsl-kernel` 直钉 **1.2.4**，就近优先）、`z-llm.version` **0.1.7**（`z-llm-gateway-core`）、`z-script.version` **1.0.2**（`z-script-engine`） |
+| 兄弟仓版本权威 | 由 `z-boot-parent:1.2.0` 的 `<properties>` 下发（**不再是 fleet**）：`z-util.version` **1.0.19**（本仓根 DM 另把 `z-util-core` / `-parser-json` / `-dsl-kernel` 直钉 **1.2.4**，就近优先）、`z-llm.version` **0.1.7**（`z-llm-gateway-core`）、`z-script.version` **1.0.2**（`z-script-engine`） |
 | 数据源 | `z-boot-datasource-starter:1.1.0`（含 Druid；吃 parent 的 `${z-boot.version}` = 1.1.0。本仓不再直引 mybatis-plus）+ `spring-jdbc` |
 | 驱动 | MySQL 驱动 `com.mysql:mysql-connector-j:8.0.33`（根 DM 顶住地板的 8.4.0，并整条抄回 `protobuf-java` exclusion）；`dev`/测试用 H2 内存库 |
 | 其它受管 | `org.yaml:snakeyaml:2.0`（地板不供这一坐标，直钉顶住 CVE-2022-1471 那格）、`caffeine:2.9.3`、`okhttp`（地板 4.12.0） |
@@ -185,9 +185,9 @@ Maven reactor 里是 **13 个模块**（根 POM `<modules>` 实测：`z-lc-commo
 mvn clean install -DskipTests
 ```
 
-第三方与兄弟仓版本全由 `z-boot-parent:1.1.0` 供给（地板是它 import 的五条 BOM，兄弟仓版本是它的
+第三方与兄弟仓版本全由 `z-boot-parent:1.2.0` 供给（地板是它 import 的五条 BOM，兄弟仓版本是它的
 `<properties>`），模块 POM 里不该再有字面版本钉；构建报找不到 parent 时，
-先确认能解析到 `io.github.yuku123:z-boot-parent:1.1.0`（在 repo1，不在磁盘相对路径上）。
+先确认能解析到 `io.github.yuku123:z-boot-parent:1.2.0`（在 repo1，不在磁盘相对路径上）。
 
 ### 本地跑起来（不需要 MySQL、不需要 Docker）
 
@@ -286,7 +286,7 @@ cd z-lc-admin-ui && npm run check # tsc --noEmit + eslint --max-warnings 0 + vit
 
 如实说明跑不过/要注意的：
 
-- `mvn` 全量要能解析到 repo1 上的 `z-boot-parent:1.1.0` 与 fleet 点名的兄弟仓构件，离线且
+- `mvn` 全量要能解析到 repo1 上的 `z-boot-parent:1.2.0` 与 fleet 点名的兄弟仓构件，离线且
   `~/.m2` 不全时会红在建 pom 阶段而不是在建逻辑。
 - `_e2e/README.md` 里的分母读数（Java 4790 / 浏览器 285 / 接口 555 等）出自 **2026-09-27 那一窗**，
   本 README 没有重跑，只按 `_e2e` 自己的规矩当"上一窗账"读，别当当前绿灯。
