@@ -23,6 +23,11 @@ export function LcHome() {
 
 export const appMeta = { title: 'z-lc 控制台', short: 'z-lc' }
 
+// 菜单清单（按 routes 派生；页面实体仍在 suit 侧，见上方占位说明）
+export const menuItems = [
+  { key: '/z-lc/home', label: '首页' },
+]
+
 export const routes = [
   { path: '/z-lc/home', title: '首页', order: 1, Component: LcHome },
 ]
