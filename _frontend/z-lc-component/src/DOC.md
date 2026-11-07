@@ -129,6 +129,12 @@ import { useUiStore } from '@yuku123/z-lc-component/store';
 | GET | `/health`、`/health/adapters` | 健康探针 / 适配器清单 |
 | POST | `/health/meta-ping`、`/health/ctc-ping` | meta / ctc 连通性探测 |
 
+> **`/ai/apply-suggestion` 返回契约**：复用 schema / relation 服务真落库到
+> `z_lc_entity` / `z_lc_field` / `z_lc_relation`（**不** provision 物理表，建表由设计器单独触发）。
+> `success` 仅在全部真实落库（或幂等跳过）且无异常时为 `true`；`createdXxx` 只含真正创建成功的项，
+> `skippedXxx` 为幂等跳过的项；失败时 `success=false` + `reason` / `failedItem`，
+> **不返回任何 `createdXxx`**。`tenantCode` 取请求体，缺省 `default`。
+
 ## 四、页面说明
 
 ### 4.1 应用列表 / 应用总览

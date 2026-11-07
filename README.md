@@ -71,13 +71,27 @@
 | 流程绑定与触发 | `WorkflowBindingController` `/api/lc/workflow-binding`、`WorkflowTriggerDispatcher`、`CamudaAdapter` | 绑定关系 + 触发派发；远端 z-camuda 的审批中心路径由 `z-lc.adapter.camuda.base-url` 指 |
 | 权限 | `PermissionController` `/api/lc/permission` | 授权/回收（`PermissionService`） |
 | 元数据与探活 | `MetaController` `/api/lc/meta`、`HealthController` `/api/lc/health` | `/health` 的 `data.status` 由每个连接池真探一次推出来（`DataSourceHealthProber`），配置不成串就拒起 |
-| AI 建模建议 | `AiModelingController` `/api/lc/ai`、`core/ai/AiModelingService` | 走 `io.github.yuku123:z-llm-core` 的 `ChatGatewayService.chat(UnifiedRequest)`；`optional` 依赖，容器里没有该 bean 时退回模板建议 |
+| AI 建模建议 | `AiModelingController` `/api/lc/ai`、`core/ai/AiModelingService` | 走 `io.github.yuku123:z-llm-core` 的 `ChatGatewayService.chat(UnifiedRequest)`；`optional` 依赖，容器里没有该 bean 时退回模板建议；`apply-suggestion` 复用 schema / relation 服务**真落库**（口径见下） |
 | 模型/页面设计框架 | `z-lc-design`：`@LowCodeModel`、`@LowCodeModelService`、`LowCodeModelServiceCollector`、`PageTemplateController` `/api/lc/design` | 注解 + 收集器把类注册成平台模型；knife4j OpenAPI 也在这层开 |
 | SPI 扩展点 | `z-lc-sdk` 的 `spi/{form,approve,model,task,sign,workflow}` | `rg 'public interface' z-lc-sdk/src/main/java/com/zifang/z/lc/sdk/spi` 现数 **27** 支接口 + 抽象基类与 RPC 适配器 |
 | 外部系统适配 | `z-lc-core/adapter`（12 个类：`CtcAdapter` / `MetaAdapter` / `ScriptAdapter` / `MistAdapter` / `OssAdapter` / `MqAdapter` / `CamudaAdapter` / `AdapterRegistry` / `JwtRelayInterceptor` …） | 每个 adapter 的地址走 `z-lc.adapter.<name>.base-url`，缺省 `http://localhost:8888`；`MetaAdapter`/`CtcAdapter` 用 Caffeine 2.9.3 做本地缓存 |
 
 `z-lc-web` 的 `META-INF/spring.factories` 注册 `LcAutoConfiguration` 与 `LcModuleDataSource`，
 所以宿主只需 embed `z-lc-web` 就能拿到全部 Controller；`z-lc-admin` 只是把这条链真的跑起来的入口。
+
+### AI 建模建议接口契约（`/api/lc/ai`）
+
+- `POST /model-suggestion`：LLM 生成实体 / 字段**草案**（`optional` 依赖缺失时退回模板建议），只出建议、不写库。
+- `POST /apply-suggestion`：**真正落库**。复用 `SchemaAdminService.createEntity` 与
+  `RelationService.createRelation`，把请求体的 `entities`（或 `suggestedEntities`）与
+  `suggestedRelations` 写进 `z_lc_entity` / `z_lc_field` / `z_lc_relation`；`tenantCode` 取请求体，
+  缺省 `default`。**不** provision 物理表 —— 建表由模型设计器单独触发。
+- **返回契约**：`success` 仅在所有项真实落库（或幂等跳过）且无异常时为 `true`；
+  `createdEntities` / `createdFields` / `createdRelations` 只含真正创建成功的项；
+  `skippedEntities` / `skippedRelations` 为幂等跳过的项；失败时 `success=false` +
+  `reason` / `failedItem`，且**不返回任何 createdXxx**。
+- 已存在的实体 / 关系按编码幂等跳过；非法建议（缺编码、非法字段编码、结构错误）或落库异常一律如实失败，
+  **绝不出现「解析了名字就报成功」**。每个实体 / 关系由落库服务自身事务独立提交，不保证跨项原子性。
 
 ---
 

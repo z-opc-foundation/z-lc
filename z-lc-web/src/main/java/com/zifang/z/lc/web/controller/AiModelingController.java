@@ -29,7 +29,12 @@ public class AiModelingController {
         return Result.success(aiModelingService.generateModelSuggestion(appCode, description));
     }
 
-    @Operation(summary = "应用AI建模建议 - 将建议实际创建到系统")
+    @Operation(summary = "应用AI建模建议 - 将建议实际创建到系统",
+            description = "把 entities / suggestedEntities 与 suggestedRelations 真正落库到 "
+                    + "z_lc_entity / z_lc_field / z_lc_relation（不 provision 物理表）。"
+                    + "tenantCode 取请求体，缺省 default。success 仅在全部真实落库（或幂等跳过）时为 true；"
+                    + "createdXxx 只含真正创建成功的项，skippedXxx 为幂等跳过的项；"
+                    + "失败返回 success=false + reason / failedItem，且不返回任何 createdXxx。")
     @PostMapping("/apply-suggestion")
     public Result<Map<String, Object>> applyModelSuggestion(@RequestBody Map<String, Object> suggestion) {
         String appCode = (String) suggestion.get("appCode");

@@ -104,10 +104,18 @@ export function AiModelingPage() {
 
   const apply = useCallback(async () => {
     if (!suggestion) return;
-    const result = await run('apply', () =>
+    const result = (await run('apply', () =>
       applyModelSuggestion({ ...suggestion, appCode, tenantCode: DEFAULT_TENANT_CODE, entities: proposed }),
-    );
-    if (result) message.success('建议已落库，去模型设计器确认字段与 provision');
+    )) as JsonMap | null;
+    if (!result) return; // run 已在异常分支报过错，别再补一句「成功」
+    // 后端 applyModelSuggestion 现在如实返回 success=false（非法建议 / 落库失败）。
+    // 旧版只看「有响应就报成功」，会把失败显示成落库完成 —— 必须按契约分支。
+    if (result.success === false) {
+      const item = result.failedItem ? `（${String(result.failedItem)}）` : '';
+      message.error(`建议未落库：${String(result.reason ?? '未知原因')}${item}`);
+      return;
+    }
+    message.success('建议已落库，去模型设计器确认字段与 provision');
   }, [suggestion, run, appCode, proposed]);
 
   const columns: TableColumnsType<FieldDefDTO> = [
