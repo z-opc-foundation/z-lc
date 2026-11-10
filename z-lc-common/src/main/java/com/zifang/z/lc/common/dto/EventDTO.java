@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 事件记录 (z_lc_event 表对应 DTO)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class EventDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

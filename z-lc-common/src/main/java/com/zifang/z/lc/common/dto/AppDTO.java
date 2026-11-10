@@ -6,6 +6,7 @@ import java.util.Date;
 /**
  * 低代码应用定义 DTO (F035 T1: App Admin Center)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class AppDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

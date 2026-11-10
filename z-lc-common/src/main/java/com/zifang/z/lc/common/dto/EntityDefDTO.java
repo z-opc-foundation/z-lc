@@ -6,6 +6,7 @@ import java.util.List;
 /**
  * 实体定义 (z-lc 中: 一个 entity = 一张可被通用 CRUD 引擎驱动的逻辑表)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class EntityDefDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

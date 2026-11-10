@@ -10,6 +10,7 @@ import java.io.Serializable;
  * scriptRef 桥接, 形态不变）。分发由 z-lc-web 通用分发 Controller
  * {@code /api/lc/vapi/{appCode}/**} 按注册表路由执行。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class VapiDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

@@ -8,6 +8,7 @@ import java.util.Map;
  * 运行时 CRUD create/update body
  * fieldValues: 字段编码 -> 值
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class RuntimeCrudDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

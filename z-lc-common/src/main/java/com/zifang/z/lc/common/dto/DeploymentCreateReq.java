@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 部署触发请求 DTO (F035 T7: Deployment)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class DeploymentCreateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

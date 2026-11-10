@@ -6,6 +6,7 @@ import java.util.Date;
 /**
  * 视图配置 DTO (F035 T5: View Config)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ViewConfigDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

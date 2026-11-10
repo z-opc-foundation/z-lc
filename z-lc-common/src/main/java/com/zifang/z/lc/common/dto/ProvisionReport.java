@@ -11,6 +11,7 @@ import java.util.List;
  * 返回 Map 就等于宣布"建好了"，而它声明的列可能一列都没有 (两个实体抢同一张物理表时正是这样)。
  * 所以这里逐项带状态，并在建表之后回读物理列核对，缺列就判失败。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ProvisionReport {
 
     /** 表原来不存在，这次按这份 DDL 建出来了。 */
@@ -29,6 +30,7 @@ public class ProvisionReport {
     public static final String FAILED = "FAILED";
 
     /** 一个实体的结果。 */
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class Item {
         private String entityCode;
         private String tableName;

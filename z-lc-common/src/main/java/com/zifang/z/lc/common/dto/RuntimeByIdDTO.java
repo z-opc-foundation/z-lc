@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 运行时 get/delete by id 请求
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class RuntimeByIdDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

@@ -9,6 +9,7 @@ import java.util.Date;
  * schema 即 z-frontend-render 组件树 JSON: {version, datasets, layout, widgets}，
  * 渲染产物契约与报表域 RenderData 逐字段对齐（见 z-frontend-render contract/view.ts）。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class PageDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

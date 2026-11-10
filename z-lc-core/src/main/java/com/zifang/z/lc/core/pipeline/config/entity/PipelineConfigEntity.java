@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 @TableName("z_lc_pipeline_config")
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class PipelineConfigEntity implements Serializable {
 
     private static final long serialVersionUID = 1L;

@@ -6,6 +6,7 @@ import java.util.List;
 /**
  * JWT 鉴权上下文 (从 z-ctc 拉取)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class AuthContextDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

@@ -8,6 +8,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 @TableName("z_lc_workflow_binding")
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class WorkflowBindingEntity implements Serializable {
 
     private static final long serialVersionUID = 1L;

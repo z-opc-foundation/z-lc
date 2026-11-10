@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 写入事件请求 (POST /api/lc/app/{appCode}/event body)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class EventAppendRequest implements Serializable {
 
     private static final long serialVersionUID = 1L;

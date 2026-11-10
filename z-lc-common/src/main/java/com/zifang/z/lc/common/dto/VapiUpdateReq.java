@@ -3,6 +3,7 @@ package com.zifang.z.lc.common.dto;
 import java.io.Serializable;
 
 /** vApi 更新请求 (V3): id 定位, 其余字段可部分更新。 */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class VapiUpdateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

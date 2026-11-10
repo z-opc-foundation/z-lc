@@ -6,6 +6,7 @@ import java.util.Date;
 /**
  * 实体关系 DTO (F035 T2: Entity Relation)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class RelationDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

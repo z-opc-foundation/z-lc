@@ -8,6 +8,7 @@ import java.io.Serializable;
  * operator 取值 ∈ eq, ne, like, notLike, gt, gte, lt, lte, in, notIn, isNull, isNotNull.
  * fieldCode 必须命中实体已声明字段白名单, 否则整体查询被拒绝 (不拼任何 SQL).
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class QueryConditionDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

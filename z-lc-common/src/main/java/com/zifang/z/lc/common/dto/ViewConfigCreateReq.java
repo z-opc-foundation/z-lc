@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 视图配置创建请求 DTO (F035 T5: View Config)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ViewConfigCreateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

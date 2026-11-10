@@ -9,6 +9,7 @@ package com.zifang.z.lc.common.dto;
  * {@code shape} 刻意声明成 Object 而不是某个结构体 —— 对象整形语言 (z-util-expr-obj) 的程序
  * 就是一段普通 JSON (步骤数组或对象), 前端/低代码配置/AI 生成的都是它, 后端不解释只交给引擎.
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ShapeQueryDTO extends AggregateQueryDTO {
 
     private static final long serialVersionUID = 1L;

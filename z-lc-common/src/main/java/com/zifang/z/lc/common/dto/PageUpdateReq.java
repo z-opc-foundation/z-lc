@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 页面更新请求 DTO (V2 页面域)。id 必填；pageCode/appCode 不可改（页面身份键）。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class PageUpdateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

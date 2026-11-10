@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 字段定义
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class FieldDefDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

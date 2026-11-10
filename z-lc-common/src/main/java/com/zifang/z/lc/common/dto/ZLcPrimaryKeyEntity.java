@@ -13,6 +13,7 @@ import java.io.Serializable;
  *
  * @author zifang
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ZLcPrimaryKeyEntity implements Serializable {
 
     private static final long serialVersionUID = 6166625648639800775L;

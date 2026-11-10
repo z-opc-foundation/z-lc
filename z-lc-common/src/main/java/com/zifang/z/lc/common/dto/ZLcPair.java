@@ -13,6 +13,7 @@ import java.util.Objects;
  * @param <B> 第二个元素类型
  * @author zifang
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ZLcPair<A, B> extends ZLcUnit<A> {
 
     private static final long serialVersionUID = 1L;

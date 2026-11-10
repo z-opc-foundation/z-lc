@@ -14,6 +14,7 @@ import java.util.Objects;
  * @param <C> 第三个元素类型
  * @author zifang
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class ZLcTriplet<A, B, C> extends ZLcPair<A, B> {
 
     private static final long serialVersionUID = 1L;

@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 应用更新请求 DTO (F035 T1)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class AppUpdateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

@@ -12,6 +12,7 @@ import java.util.Map;
  * 筛选部分刻意与 {@link RuntimeQueryDTO} 同构 (filters / conditions / conjunction),
  * 这样"当前视图的筛选条件"可以直接原样发给聚合接口, 前端不用维护两套口径.
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class AggregateQueryDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

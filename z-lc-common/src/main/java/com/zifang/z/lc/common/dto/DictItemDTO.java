@@ -7,6 +7,7 @@ import java.io.Serializable;
  * <p>
  * 扩展自原有 DictItemDTO, 增加 id/tenantCode/dictCode/description 字段
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class DictItemDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

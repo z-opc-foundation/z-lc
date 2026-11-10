@@ -12,6 +12,7 @@ import java.util.List;
  * 就留下"删了一半"的现场，而且没人回滚；③ 前端只能拿"发出去几个请求"当"删掉了几个"报给用户。
  * 这里给的是删除版的 all-or-nothing：先整批预检，有一行不能删就整批不动。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public final class BatchDeleteDto {
 
     /** 单请求 id 上限，和批量导入同一量级。 */
@@ -23,6 +24,7 @@ public final class BatchDeleteDto {
     private BatchDeleteDto() {
     }
 
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class Request implements Serializable {
         private static final long serialVersionUID = 1L;
 
@@ -65,6 +67,7 @@ public final class BatchDeleteDto {
     }
 
     /** 单条错误。index 是去重后 ids 的下标，id 冗余带回，前端不用再对一次下标。 */
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class RowError implements Serializable {
         private static final long serialVersionUID = 1L;
 
@@ -106,6 +109,7 @@ public final class BatchDeleteDto {
         }
     }
 
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class Result implements Serializable {
         private static final long serialVersionUID = 1L;
 

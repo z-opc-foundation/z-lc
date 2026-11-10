@@ -7,6 +7,7 @@ import java.util.List;
 /**
  * 字典 DTO (F035 T6: Dict Management)
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class DictDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

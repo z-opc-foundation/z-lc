@@ -17,6 +17,7 @@ package com.zifang.z.lc.common.dto;
  *
  * @author zifang
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public final class ZLcNullNode {
 
     /** 单例实例. */

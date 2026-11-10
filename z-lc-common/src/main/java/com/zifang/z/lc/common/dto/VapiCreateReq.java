@@ -3,6 +3,7 @@ package com.zifang.z.lc.common.dto;
 import java.io.Serializable;
 
 /** vApi 创建请求 (V3)。 */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class VapiCreateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

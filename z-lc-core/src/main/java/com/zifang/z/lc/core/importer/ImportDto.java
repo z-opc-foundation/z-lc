@@ -11,6 +11,7 @@ import java.util.Map;
  * 为什么要服务端做：导入向导早期是"浏览器解析 CSV + 逐行 POST /runtime/create"，
  * N 行 = N 个 HTTP 往返，几千行慢到不可用，中途关页面就留下半截数据。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public final class ImportDto {
 
     /** 单请求行数上限，避免一次把库打挂。 */
@@ -23,6 +24,7 @@ public final class ImportDto {
     }
 
     /** records 是已经映射成 fieldCode -&gt; 值 的记录列表（映射本身仍在前端做）。 */
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class Request implements Serializable {
         private static final long serialVersionUID = 1L;
 
@@ -65,6 +67,7 @@ public final class ImportDto {
     }
 
     /** 单行错误，index 是请求 records 的下标（从 0 开始，前端能直接对回 CSV 行号）。 */
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class RowError implements Serializable {
         private static final long serialVersionUID = 1L;
 
@@ -97,6 +100,7 @@ public final class ImportDto {
     }
 
     /** preview / commit 都可能出现的数据质量提示，不阻断写入。 */
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class RowWarning implements Serializable {
         private static final long serialVersionUID = 1L;
 
@@ -139,6 +143,7 @@ public final class ImportDto {
     }
 
     /** preview 与 commit 共用一个结果形状，省得前端分叉处理。 */
+    @com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
     public static class Result implements Serializable {
         private static final long serialVersionUID = 1L;
 

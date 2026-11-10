@@ -5,6 +5,7 @@ import java.io.Serializable;
 /**
  * 页面创建请求 DTO (V2 页面域)。
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class PageCreateReq implements Serializable {
 
     private static final long serialVersionUID = 1L;

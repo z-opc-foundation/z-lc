@@ -17,6 +17,7 @@ import java.util.Map;
  *   <li>{@link #sorts} — 多字段结构化排序 (与 legacy orderBy 可共存, sorts 优先)</li>
  * </ul>
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class RuntimeQueryDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;

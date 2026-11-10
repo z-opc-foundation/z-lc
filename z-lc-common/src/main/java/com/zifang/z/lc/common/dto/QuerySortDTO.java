@@ -7,6 +7,7 @@ import java.io.Serializable;
  * <p>
  * fieldCode 必须命中实体已声明字段白名单, 否则整体查询被拒绝 (不拼任何 SQL).
  */
+@com.fasterxml.jackson.databind.annotation.JsonNaming(com.fasterxml.jackson.databind.PropertyNamingStrategies.LowerCamelCaseStrategy.class)
 public class QuerySortDTO implements Serializable {
 
     private static final long serialVersionUID = 1L;
