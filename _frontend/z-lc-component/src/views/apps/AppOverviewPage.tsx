@@ -72,10 +72,10 @@ export function AppOverviewPage() {
       render: (_value, entity) => (
         <Space size={6}>
           <Link to={`/lc/${appCode}/${entity.entityCode}/LIST`}>
-            <Button size="small">表格</Button>
+            <Button type="link" size="small">表格</Button>
           </Link>
           <Link to={`/lc/${appCode}/${entity.entityCode}/FORM`}>
-            <Button size="small">新增</Button>
+            <Button type="link" size="small">新增</Button>
           </Link>
         </Space>
       ),
