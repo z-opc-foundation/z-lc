@@ -2,7 +2,7 @@
 # z-lc —— Deployment（工作负载）
 #
 # 【镜像 tag 为什么这样写】
-#   image: zopc/z-lc:20261111-jdk17-b42749d
+#   image: zopc/z-lc:20261112-994ebdb
 #   —— 裸 tag，**不带 Nexus 仓库前缀**。铁律：本集群 imagePullPolicy=Never，
 #      镜像只存在于两个节点的 containerd，不在任何 registry。k3s 不会去拉，
 #      它按 `image:` 字段的**字面引用**去节点本地 content store 里找。
@@ -50,7 +50,7 @@ spec:
     spec:
       containers:
         - name: z-lc
-          image: zopc/z-lc:20261111-jdk17-b42749d
+          image: zopc/z-lc:20261112-994ebdb
           imagePullPolicy: Never
           ports:
             - name: http
