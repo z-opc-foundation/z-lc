@@ -68,7 +68,7 @@
 | 部署 | `DeploymentController` `/api/lc/deployment` | 定义版本落库与部署态对账 |
 | 撤销 | `UndoController` `/api/lc/undo` | 快照式 undo |
 | 处理流水线 | `PipelineConfigController` `/api/lc/pipeline-config` | `core/pipeline` 的 processor 链真的执行 |
-| 流程绑定与触发 | `WorkflowBindingController` `/api/lc/workflow-binding`、`WorkflowTriggerDispatcher`、`CamudaAdapter` | 绑定关系 + 触发派发；远端 z-camuda 的审批中心路径由 `z-lc.adapter.camuda.base-url` 指 |
+| 流程绑定与触发 | `WorkflowBindingController` `/api/lc/workflow-binding`、`WorkflowTriggerDispatcher`、`CamudaAdapter` | 绑定关系 + 触发派发；远端流程引擎（z-camuda 退役后为 z-wf-admin 兼容层）的审批中心路径由 `z-lc.adapter.camuda.base-url` 指 |
 | 权限 | `PermissionController` `/api/lc/permission` | 授权/回收（`PermissionService`） |
 | 元数据与探活 | `MetaController` `/api/lc/meta`、`HealthController` `/api/lc/health` | `/health` 的 `data.status` 由每个连接池真探一次推出来（`DataSourceHealthProber`），配置不成串就拒起 |
 | AI 建模建议 | `AiModelingController` `/api/lc/ai`、`core/ai/AiModelingService` | 走 `io.github.yuku123:z-llm-core` 的 `ChatGatewayService.chat(UnifiedRequest)`；`optional` 依赖，容器里没有该 bean 时退回模板建议；`apply-suggestion` 复用 schema / relation 服务**真落库**（口径见下） |
@@ -277,7 +277,7 @@ java -jar z-lc-admin/target/z-lc-admin-1.0.0.jar --spring.profiles.active=dev
 计数口径：`find . -name '*Controller.java' -path '*/src/main/*'` = **25** 支 ——
 `z-lc-web` 17、`z-lc-report-web` 7、`z-lc-design` 1。
 
-`/api/approval-center` **不是**本仓的端点，它是 `CamudaAdapter` 调用远端 z-camuda 的路径（只出现在注释里）。
+`/api/approval-center` **不是**本仓的端点，它是 `CamudaAdapter` 调用远端流程引擎（z-camuda 退役后为 z-wf-admin 兼容层）的路径（只出现在注释里）。
 
 ---
 

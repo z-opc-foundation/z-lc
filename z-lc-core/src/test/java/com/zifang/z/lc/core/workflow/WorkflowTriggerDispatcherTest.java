@@ -2,9 +2,11 @@ package com.zifang.z.lc.core.workflow;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.zifang.z.lc.core.adapter.CamudaAdapter;
+import com.zifang.z.lc.core.adapter.JwtRelayInterceptor;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowFireMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -96,6 +98,44 @@ public class WorkflowTriggerDispatcherTest {
         assertEquals("这个挂接点上没有启用的绑定 ⇒ 一次都不该发", 0, dispatch());
         assertEquals(0, adapter.calls.get());
         assertTrue(fires.rows.isEmpty());
+    }
+
+    /**
+     * 异步发单必须把**请求线程**里的身份带过去。
+     * <p>
+     * 2026-11-17 在 136 集群实测踩到的：base-url 指对了、网络也通，但每一条发单都是 401，
+     * 引擎侧记 {@code reason=no_credential} —— 因为发单跑在线程池线程上，那里没有 servlet
+     * 上下文，取不到用户的 Authorization 头，出站成了裸请求。
+     */
+    @Test
+    public void theAsyncFireCarriesTheCallersAuthHeaders() {
+        bindings.add(binding(1L, PROCESS));
+        JwtRelayInterceptor.bindCurrentRequest(requestWithAuthHeader("Bearer caller-token"));
+        try {
+            assertEquals(1, dispatch());
+        } finally {
+            JwtRelayInterceptor.clear();
+        }
+        assertNotNull("派发侧必须把 header 交给异步任务（不交就是裸请求）: ", adapter.lastAuthHeaders);
+        assertEquals("用户票据要原样透传给引擎: ", "Bearer caller-token",
+                adapter.lastAuthHeaders.get("Authorization"));
+    }
+
+    /** 只回 Authorization 头的 servlet 桩（本模块测试不引 mockito，与本文件其余替身同风格）。 */
+    private static HttpServletRequest requestWithAuthHeader(final String authorization) {
+        return (HttpServletRequest) Proxy.newProxyInstance(
+                WorkflowTriggerDispatcherTest.class.getClassLoader(),
+                new Class<?>[]{HttpServletRequest.class},
+                new InvocationHandler() {
+                    @Override
+                    public Object invoke(Object proxy, Method method, Object[] args) {
+                        if ("getHeader".equals(method.getName()) && args != null && args.length == 1
+                                && "Authorization".equals(args[0])) {
+                            return authorization;
+                        }
+                        return null;
+                    }
+                });
     }
 
     @Test
@@ -418,11 +458,21 @@ public class WorkflowTriggerDispatcherTest {
         long delayMs;
         final AtomicInteger calls = new AtomicInteger();
         volatile Ask lastAsk;
+        /** 最近一次发单带过来的出站 header（派发侧在请求线程里抓的那份）。 */
+        volatile Map<String, String> lastAuthHeaders;
 
         @Override
         public CamudaAdapter.ProcessStart startProcess(String processKey, String businessKey,
                                                    String initiator, String title,
                                                    Map<String, Object> variables) {
+            return startProcess(processKey, businessKey, initiator, title, variables, null);
+        }
+
+        @Override
+        public CamudaAdapter.ProcessStart startProcess(String processKey, String businessKey,
+                                                   String initiator, String title,
+                                                   Map<String, Object> variables,
+                                                   Map<String, String> authHeaders) {
             calls.incrementAndGet();
             Ask ask = new Ask();
             ask.processKey = processKey;
@@ -431,6 +481,7 @@ public class WorkflowTriggerDispatcherTest {
             ask.title = title;
             ask.variables = variables;
             lastAsk = ask;
+            lastAuthHeaders = authHeaders;
             if (delayMs > 0) {
                 try {
                     Thread.sleep(delayMs);

@@ -17,7 +17,9 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Workflow 适配器: 调用 z-camuda 的流程引擎, 在数据写后触发审批流.
+ * Workflow 适配器: 调用流程引擎（原 z-camuda；2026-11-17 退役归档后由
+ * z-wf-admin 兼容层以同路径同语义承接，base-url 由 {@code z-lc.adapter.camuda.base-url} 配置）,
+ * 在数据写后触发审批流.
  * <p>
  * 契约取自 z-camuda 的源码而不是记忆（缺陷 #61 修的就是这三处对不上）：
  * <ul>
@@ -65,6 +67,20 @@ public class CamudaAdapter implements Adapter {
 
     @Value("${z-lc.adapter.camuda.base-url:http://localhost:8888}")
     private String baseUrl;
+
+    /**
+     * 出站服务令牌（可选）：机器对机器调用流程引擎时用它兜底。
+     * <p>
+     * 为什么需要兜底：{@link JwtAwareHttpSupport#currentAuthHeaders()} 只能从
+     * **当前 servlet 请求**取用户票据，而派发侧在**线程池**里发单（线程名 {@code lc-wf-fire-N}），
+     * 那条线程上没有 servlet 上下文 ⇒ 取不到票据 ⇒ 出站请求裸奔 ⇒
+     * z-wf 的入站鉴权判 {@code no_credential} → 401（2026-11-17 集群实测）。
+     * <p>
+     * 口径：值是**令牌本体**（不是 {@code name:secret}），出站时送
+     * {@code Authorization: Bearer <值>}；z-wf 侧把它配进 {@code Z_WF_AUTH_TOKENS}。
+     */
+    @Value("${z-lc.adapter.camuda.service-token:}")
+    private String serviceToken;
 
     private volatile long timeoutMs = DEFAULT_TIMEOUT_MS;
 
@@ -131,6 +147,32 @@ public class CamudaAdapter implements Adapter {
     }
 
     /**
+     * 出站 header 的三级回退：调用方传入的 → 当前请求的 → 服务令牌。
+     * <p>
+     * 顺序不能换：调用方传入的那份是在**请求线程**里抓的（票据最新、代表真实发起人）；
+     * 当前请求那份只有在本线程还挂着 servlet 上下文时才有值；
+     * 服务令牌是最后的机器对机器兜底（后台任务/定时任务没有用户票据时用）。
+     */
+    private Map<String, String> resolveAuthHeaders(Map<String, String> provided) {
+        Map<String, String> out = new HashMap<>();
+        if (provided != null) {
+            out.putAll(provided);
+        }
+        if (!hasAuthorization(out)) {
+            out.putAll(JwtAwareHttpSupport.currentAuthHeaders());
+        }
+        if (!hasAuthorization(out) && serviceToken != null && !serviceToken.trim().isEmpty()) {
+            out.put("Authorization", "Bearer " + serviceToken.trim());
+        }
+        return out;
+    }
+
+    private static boolean hasAuthorization(Map<String, String> headers) {
+        String auth = headers.get("Authorization");
+        return auth != null && !auth.trim().isEmpty();
+    }
+
+    /**
      * 启动一个流程实例。任何失败都不抛：调用方是业务写路径，外部引擎不可用不能把用户的写入带走。
      *
      * @param processKey  流程定义 KEY（z-camuda 的 {@code StartProcessRequestDTO.processKey}）
@@ -141,10 +183,30 @@ public class CamudaAdapter implements Adapter {
      */
     public ProcessStart startProcess(String processKey, String businessKey, String initiator,
                                      String title, Map<String, Object> variables) {
+        return startProcess(processKey, businessKey, initiator, title, variables, null);
+    }
+
+    /**
+     * 带出站凭据的发单入口（线程池派发用这个）。
+     * <p>
+     * 为什么要多这一层：{@link JwtAwareHttpSupport#currentAuthHeaders()} 依赖
+     * **当前 servlet 请求**（{@code JwtRelayInterceptor} 的 ThreadLocal），而派发侧
+     * （{@code WorkflowTriggerDispatcher}）在线程池里发单 ⇒ 那条线程上取不到用户票据 ⇒
+     * 出站请求不带 Authorization ⇒ z-wf 的入站鉴权判 {@code no_credential} → 401
+     * （2026-11-17 136 集群实测）。
+     * <p>
+     * 改法：调用方在**自己的线程**（= 请求线程）里把 header 抓下来传进来，异步线程照用；
+     * 抓不到时依次回退 ① 这里的当前请求 ② {@code z-lc.adapter.camuda.service-token} 服务令牌。
+     *
+     * @param authHeaders 调用方在请求线程里抓到的出站 header（可为 null）
+     */
+    public ProcessStart startProcess(String processKey, String businessKey, String initiator,
+                                     String title, Map<String, Object> variables,
+                                     Map<String, String> authHeaders) {
         if (processKey == null || processKey.trim().isEmpty()) {
             return ProcessStart.failed("流程定义 KEY 为空，没有发起任何流程");
         }
-        Map<String, String> headers = new HashMap<>(JwtAwareHttpSupport.currentAuthHeaders());
+        Map<String, String> headers = resolveAuthHeaders(authHeaders);
         Map<String, Object> body = new HashMap<>();
         body.put("processKey", processKey);
         body.put("businessKey", businessKey);
@@ -159,8 +221,7 @@ public class CamudaAdapter implements Adapter {
         }
 
         HttpExecutionResult res = CtcAdapter.doPostJson(transport, startUrl(), headers,
-                JsonUtil.toJson(body));
-        if (!CtcAdapter.httpAccepted(res)) {
+                JsonUtil.toJson(body));        if (!CtcAdapter.httpAccepted(res)) {
             return ProcessStart.failed("POST " + START_PATH + " http=" + res.getStatus()
                     + " err=" + (res.getError() == null ? "unknown" : res.getError()));
         }
@@ -173,30 +234,30 @@ public class CamudaAdapter implements Adapter {
         try {
             envelope = JsonUtil.parseObject(res.getBody());
         } catch (Exception ex) {
-            return ProcessStart.failed("z-camuda 的应答不是可解析的 JSON 对象: " + ex.getMessage());
+            return ProcessStart.failed("流程引擎的应答不是可解析的 JSON 对象: " + ex.getMessage());
         }
         Boolean success = envelope.getBoolean("success");
         if (success == null) {
-            return ProcessStart.failed("z-camuda 的应答里没有布尔型的 success 这一格，不能当成发起成功: "
+            return ProcessStart.failed("流程引擎的应答里没有布尔型的 success 这一格，不能当成发起成功: "
                     + abbreviate(res.getBody()));
         }
         if (!success.booleanValue()) {
-            return ProcessStart.failed("z-camuda 拒绝发起: " + envelope.getString("message"));
+            return ProcessStart.failed("流程引擎拒绝发起: " + envelope.getString("message"));
         }
         if (!envelope.containsKey("data")) {
-            return ProcessStart.failed("z-camuda 说成功但 data 整格都不在");
+            return ProcessStart.failed("流程引擎说成功但 data 整格都不在");
         }
         JsonObject data;
         try {
             data = envelope.getJsonObject("data");
         } catch (JsonTypeException ex) {
             // data 是 null / 字符串之类时引擎抛这个，消息里得带上实际形状，否则排查只能猜。
-            return ProcessStart.failed("z-camuda 的 data 不是一个对象（实际值="
+            return ProcessStart.failed("流程引擎的 data 不是一个对象（实际值="
                     + abbreviate(String.valueOf(envelope.get("data"))) + "），拿不到 processInstanceId");
         }
         String instanceId = data.getString("processInstanceId");
         if (instanceId == null || instanceId.trim().isEmpty()) {
-            return ProcessStart.failed("z-camuda 的 data 里没有 processInstanceId（data 里有 "
+            return ProcessStart.failed("流程引擎的 data 里没有 processInstanceId（data 里有 "
                     + data.size() + " 格）");
         }
         return ProcessStart.started(instanceId.trim());

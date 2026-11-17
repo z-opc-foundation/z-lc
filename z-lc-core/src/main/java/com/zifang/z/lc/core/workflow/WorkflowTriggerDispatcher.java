@@ -1,6 +1,7 @@
 package com.zifang.z.lc.core.workflow;
 
 import com.zifang.z.lc.core.adapter.CamudaAdapter;
+import com.zifang.z.lc.core.adapter.JwtAwareHttpSupport;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowFireMapper;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.Resource;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -189,10 +191,19 @@ public class WorkflowTriggerDispatcher {
             final String processKey = binding.getProcessDefinitionKey().trim();
             final String title = entityCode + "#" + recordId;
 
+            // ⚠ 必须**在提交前**（= 还在请求线程里）把出站 header 抓下来：
+            // 下面那次 workers.submit 跑在 lc-wf-fire-N 线程上，那条线程没有 servlet 上下文
+            // ⇒ JwtAwareHttpSupport.currentAuthHeaders() 在那里恒为空
+            // ⇒ 出站请求不带 Authorization ⇒ 引擎侧入站鉴权判 no_credential → 401
+            // （2026-11-17 136 集群实测：base-url 通了但每一条发单都 401）。
+            final Map<String, String> authHeaders =
+                    new HashMap<String, String>(JwtAwareHttpSupport.currentAuthHeaders());
+
             Future<CamudaAdapter.ProcessStart> future = workers.submit(new Callable<CamudaAdapter.ProcessStart>() {
                 @Override
                 public CamudaAdapter.ProcessStart call() {
-                    return camudaAdapter.startProcess(processKey, businessKey, initiator, title, variables);
+                    return camudaAdapter.startProcess(processKey, businessKey, initiator, title, variables,
+                            authHeaders);
                 }
             });
             try {

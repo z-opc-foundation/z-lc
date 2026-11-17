@@ -2,7 +2,7 @@
 # z-lc —— Deployment（工作负载）
 #
 # 【镜像 tag 为什么这样写】
-#   image: zopc/z-lc:20261112-994ebdb
+#   image: zopc/z-lc:20261117-wfauth
 #   —— 裸 tag，**不带 Nexus 仓库前缀**。铁律：本集群 imagePullPolicy=Never，
 #      镜像只存在于两个节点的 containerd，不在任何 registry。k3s 不会去拉，
 #      它按 `image:` 字段的**字面引用**去节点本地 content store 里找。
@@ -50,7 +50,9 @@ spec:
     spec:
       containers:
         - name: z-lc
-          image: zopc/z-lc:20261112-994ebdb
+          # 2026-11-17：含「异步发单带上出站凭据」的修复（JwtAwareHttpSupport 的
+          #   ThreadLocal 跨不过线程池 ⇒ 发单裸奔 ⇒ z-wf 判 no_credential → 401）
+          image: zopc/z-lc:20261117-wfauth
           imagePullPolicy: Never
           ports:
             - name: http
@@ -75,6 +77,29 @@ spec:
                 secretKeyRef:
                   name: z-lc-db
                   key: password
+            # ===== 流程引擎（z-wf-admin 兼容层）=====
+            # 2026-11-17：z-camuda 退役归档，流程引擎功能由 z-wf-admin 兼容层承接，
+            #   路径与语义不变（POST /api/approval-center/processes/start）。
+            # ⚠ **必须走 env，不能走 args**：
+            #   本镜像的 ENTRYPOINT 是 `sh -c "exec java $JAVA_OPTS -jar /app/app.jar"`
+            #   （**不转发 "$@"**）⇒ 命令行参数会被静默丢弃，base-url 会退回
+            #   默认值 http://localhost:8888（2026-11-17 集群实测：发单全 FAILED，
+            #   失败原因写着 "Failed to connect to localhost/127.0.0.1:8888"）。
+            #   两份都写：relaxed binding 那份给工具读，SPRING_APPLICATION_JSON 那份精确匹配。
+            - name: ZLC_ADAPTER_CAMUDA_BASEURL
+              value: "http://z-wf-admin.z-wf.svc.cluster.local:8080"
+            - name: SPRING_APPLICATION_JSON
+              value: '{"z-lc":{"adapter":{"camuda":{"base-url":"http://z-wf-admin.z-wf.svc.cluster.local:8080"}}}}'
+            # 服务令牌（机器对机器调用流程引擎时的兜底凭据）：
+            #   用户票据在**线程池线程**里取不到（JwtRelayInterceptor 是 ThreadLocal），
+            #   后台任务/定时任务这类没有用户上下文的场景靠它。
+            #   令牌本体在 secret z-lc-wf-auth / 键 service-token；
+            #   z-wf 侧把它配进 z-wf-auth 的 auth-tokens（name:secret，name 只进审计日志）。
+            - name: ZLC_ADAPTER_CAMUDA_SERVICETOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: z-lc-wf-auth
+                  key: service-token
           resources:
             limits:
               cpu: "2"
