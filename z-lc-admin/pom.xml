@@ -23,7 +23,7 @@
             NoSuchMethodError org.apache.logging.slf4j.Log4jLoggerFactory.<init>().
             (slf4j-api 2.x 与 log4j-slf4j-impl 2.20+ 配套; 2.17.x 是 slf4j-api 1.7 时代的产物, 不能混用.)
         -->
-        <log4j2.version>2.20.0</log4j2.version>
+        <log4j2.version>2.26.1</log4j2.version>
         <slf4j.version>2.0.7</slf4j.version>
     </properties>
 

@@ -28,7 +28,7 @@
              并统一了 common tags（app/instance/env）与暴露面基线（health/info/metrics/prometheus）。
              本仓 z-lc-report-web 引 z-boot-web-starter ⇒ 1.1.0 那一版不带 actuator，
              /actuator/prometheus 此前在本仓任何宿主上都不存在。 -->
-        <version>1.2.2</version>
+        <version>1.2.3</version>
         <relativePath/>
     </parent>
 
@@ -280,7 +280,7 @@
             <dependency>
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
-                <version>8.0.33</version>
+                <version>8.4.0</version>
                 <exclusions>
                     <exclusion>
                         <groupId>com.google.protobuf</groupId>

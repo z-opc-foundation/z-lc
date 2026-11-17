@@ -54,5 +54,23 @@
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
     "vitest": "^2.1.9"
+  },
+  "overrides": {
+    "source-map-js": "^1.2.2",
+    "path-to-regexp": "^8.4.0",
+    "esbuild": "^0.25.0",
+    "minimatch": "^11.0.1",
+    "@eslint/eslintrc": {
+      "minimatch": "3.1.5"
+    },
+    "@humanwhocodes/config-array": {
+      "minimatch": "3.1.5"
+    },
+    "eslint": {
+      "minimatch": "3.1.5"
+    },
+    "glob": {
+      "minimatch": "3.1.5"
+    }
   }
 }
