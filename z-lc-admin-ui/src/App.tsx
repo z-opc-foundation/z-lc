@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { ConsoleLayout } from '@/layouts/ConsoleLayout';
 import { WorkspaceLayout } from '@/layouts/WorkspaceLayout';
 import { AppListPage } from '@/views/apps/AppListPage';
@@ -6,6 +6,7 @@ import { AppOverviewPage } from '@/views/apps/AppOverviewPage';
 import { WorkspaceViewPage } from '@/views/workspace/WorkspaceViewPage';
 import { DashboardPage } from '@/views/workspace/DashboardPage';
 import { DesignerIndexPage, DesignerPage } from '@/views/designer/DesignerPage';
+import { DesignerPage as VisualDesignerPage } from '@/views/designer2';
 import { DbImportPage } from '@/views/designer/DbImportPage';
 import { DataSourcesPage } from '@/views/admin/DataSourcesPage';
 import { VapisPage } from '@/views/vapis/VapisPage';
@@ -26,9 +27,17 @@ import { AiModelingPage } from '@/views/admin/AiModelingPage';
  * workspace paths in v6 route ranking, so `/:appCode/:entityCode/:viewType`
  * can stay at the top level and remain shareable/bookmarkable.
  */
+/** 设计器路由：路径参数 → 组件 props（设计器来自共享包，不认识宿主路由） */
+function VisualDesignerRoute() {
+  const { appCode = 'demo' } = useParams<{ appCode: string }>();
+  return <VisualDesignerPage appCode={appCode} />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
+      {/* 可视化设计器是全屏工作台，不套 ConsoleLayout 的导航外壳 */}
+      <Route path="/designer2/:appCode" element={<VisualDesignerRoute />} />
       <Route element={<ConsoleLayout />}>
         <Route path="/" element={<Navigate to="/apps" replace />} />
         <Route path="/apps" element={<AppListPage />} />

@@ -42,7 +42,9 @@
                  取 1.0.14 与本仓其它 z-util-* 一致(同一条 floor 下发)。地板那条死条目该由 z-boot 那边清,
                  清掉之后这一格就可以改回"不写版本"。 -->
             <artifactId>z-util-pattern-cache</artifactId>
-            <version>1.0.14</version>
+            <!-- 2026-11-17: 1.0.14 在任何已配置仓库都取不到（本地 m2 只有 .lastUpdated），
+                 构建直接卡死。取本地已有的 1.0.18（同一条 z-util 线，API 一致）。 -->
+            <version>1.0.18</version>
             <!-- z-util-core 经此传递引入 log4j-slf4j2-impl (SLF4J 2.x 桥),
                  与 spring-boot-starter-log4j2 提供的 log4j-slf4j-impl:2.17.2 (SLF4J 1.x 桥)
                  在 slf4j-api:1.7.36 共存时导致 StaticLoggerBinder 反射初始化失败。

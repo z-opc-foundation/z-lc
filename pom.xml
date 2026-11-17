@@ -91,6 +91,8 @@
 
     <modules>
         <module>z-lc-common</module>
+        <module>z-lc-schema</module>
+        <module>z-lc-logic</module>
         <module>z-lc-sdk</module>
         <module>z-lc-core</module>
         <module>z-lc-design</module>

@@ -45,6 +45,13 @@
             <artifactId>z-lc-common</artifactId>
         </dependency>
 
+        <!-- z-lc-schema: 统一页面 schema 模型 + 校验/归一化 (报表 widgets 只是它的旧写法) -->
+        <dependency>
+            <groupId>io.github.yuku123</groupId>
+            <artifactId>z-lc-schema</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
         <!-- z-lc-sdk: SPI 接口 + 注解 + 抽象基类 -->
         <dependency>
             <groupId>io.github.yuku123</groupId>

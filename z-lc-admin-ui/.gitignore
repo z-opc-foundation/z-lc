@@ -32,3 +32,6 @@ coverage/
 
 # 真浏览器 E2E 的截图产物
 e2e/shots/
+e2e/shots-designer/
+e2e/shots-smoke/
+e2e/shots-lc-system/

@@ -1,7 +1,12 @@
 package com.zifang.z.lc.core.page;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.zifang.util.json.JsonCursor;
 import com.zifang.util.json.JsonUtil;
+import com.zifang.z.lc.schema.model.PageSchema;
+import com.zifang.z.lc.schema.util.SchemaCodec;
+import com.zifang.z.lc.schema.util.SchemaValidator;
+import com.zifang.z.lc.schema.util.WidgetSchemaAdapter;
 
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -38,18 +43,75 @@ public final class PageSchemaValidator {
             "SUM", "COUNT", "AVG", "MIN", "MAX"));
 
     /** 解析并校验, 返回解析后的根游标 (调用方无需再 parse) */
+    /**
+     * 统一校验入口。
+     *
+     * <p>页面 schema 只有一种模型（elements + layout.structure）。这里只判一件事：
+     * 入参是标准形态还是旧的报表扁平淡法（widgets + layout 数组），后者先按
+     * {@link WidgetSchemaAdapter} 归一化，再走<b>同一套</b>结构校验 —— 不再维护
+     * 「报表校验器 / 组件树校验器」两套规则。</p>
+     *
+     * @return 入参 JSON 的根游标（保持原有返回契约，调用方不感知归一化）
+     * @throws IllegalArgumentException 结构非法或格式不可识别
+     */
     public static JsonCursor validate(String schemaJson) {
+        JsonNode tree = parse(schemaJson);
+        if (WidgetSchemaAdapter.isCanonical(tree)) {
+            assertCanonical(tree);
+            return JsonCursor.of(JsonUtil.parse(schemaJson));
+        }
+        if (!WidgetSchemaAdapter.isLegacyWidgets(tree)) {
+            throw new IllegalArgumentException(
+                    "page schema 既不是标准形态（elements）也不是旧写法（widgets 数组）");
+        }
+        // 旧写法：保留更严格的栅格/取数规则，再折成标准形态校一遍结构
+        JsonCursor root = validateLegacy(schemaJson);
+        assertCanonical(WidgetSchemaAdapter.fromLegacyWidgets(tree));
+        return root;
+    }
+
+    /** 解析为 Jackson 树；空/坏 JSON 给能定位的报错 */
+    private static JsonNode parse(String schemaJson) {
         if (schemaJson == null || schemaJson.trim().isEmpty()) {
             throw new IllegalArgumentException("page schema required");
         }
+        JsonNode tree;
+        try {
+            tree = SchemaCodec.mapper().readTree(schemaJson);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("page schema 不是合法 JSON: " + e.getMessage());
+        }
+        if (tree == null || !tree.isObject()) {
+            throw new IllegalArgumentException("page schema 顶层必须是对象");
+        }
+        return tree;
+    }
+
+    /** 标准形态的结构校验（引用完整性/可达性/逻辑流入口） */
+    private static void assertCanonical(JsonNode tree) {
+        PageSchema schema;
+        try {
+            schema = WidgetSchemaAdapter.normalize(tree);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("page schema 归一化失败: " + e.getMessage());
+        }
+        assertCanonical(schema);
+    }
+
+    private static void assertCanonical(PageSchema schema) {
+        SchemaValidator.Result result = SchemaValidator.validate(schema);
+        if (!result.ok()) {
+            throw new IllegalArgumentException("page schema 结构非法: " + result);
+        }
+    }
+
+    /** 旧报表写法（widgets + layout 数组）的校验 */
+    private static JsonCursor validateLegacy(String schemaJson) {
         JsonCursor root;
         try {
             root = JsonCursor.of(JsonUtil.parse(schemaJson));
         } catch (Exception e) {
             throw new IllegalArgumentException("page schema 不是合法 JSON: " + e.getMessage());
-        }
-        if (!root.isObject()) {
-            throw new IllegalArgumentException("page schema 顶层必须是对象");
         }
 
         // ---- widgets ----

@@ -34,6 +34,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: '/pages', label: '页面编排', icon: <BlockOutlined /> },
       { key: '/vapis', label: '接口脚本', icon: <ApiOutlined /> },
       { key: '/designer', label: 'Schema 设计器', icon: <TableOutlined /> },
+      { key: '/designer2/demo', label: '可视化搭建', icon: <BlockOutlined /> },
       { key: '/db-import', label: '从数据库导入', icon: <DatabaseOutlined /> },
       { key: '/admin/ai', label: 'AI 建模', icon: <RobotOutlined /> },
     ],

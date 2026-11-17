@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.yuku123</groupId>
+        <artifactId>z-lc</artifactId>
+        <version>1.0.3</version>
+    </parent>
+
+    <artifactId>z-lc-schema</artifactId>
+    <packaging>jar</packaging>
+    <name>z-lc :: schema</name>
+    <description>低代码统一页面 Schema 契约层：扁平节点表 + 树形结构 + 具名插槽 + 上下文 + 逻辑流；
+        提供校验、规范化、设计态图到执行态的编译、结构化 diff 与三方合并。纯 POJO，无 Spring/Web 依赖。</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
