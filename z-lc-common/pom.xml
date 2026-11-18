@@ -15,7 +15,7 @@
     <description>低代码平台公共层：DTO/枚举/工具与业务域模型（应用、菜单、印章、数据资产等），不含引擎与 Web 接口</description>
 
     <!-- 迁移删掉了这一块 <properties>（maven.compiler.source/target=8、
-         project.build.sourceEncoding=UTF-8）：父链 z-boot-parent:1.0.19 的 properties 就是
+         project.build.sourceEncoding=UTF-8）：父链 z-boot-parent:1.2.4 的 properties 就是
          8 / 8 / UTF-8，逐字同值（z-boot README「消费模型」步骤 3），6 个子 pom 同一批删除。 -->
 
     <dependencies>

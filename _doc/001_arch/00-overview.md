@@ -15,7 +15,7 @@ z-lc 是 z-opc-foundation 的**低代码平台（Low-Code）**：把「建表 �
 - `z-lc-report-*` —— 报表能力域（数据源 / 数据集 / 渲染 / 报表本 / AI 解读），2026-10-11 自 z-report 仓收编。
 
 **Maven 坐标：** `io.github.yuku123:z-lc:1.0.0`（根 POM `packaging=pom`），
-父项目 `io.github.yuku123:z-boot-parent:1.1.0`（`<relativePath/>` 留空）。
+父项目 `io.github.yuku123:z-boot-parent:1.2.4`（`<relativePath/>` 留空）。
 
 **技术栈：** Java 8 + Spring Boot 2.7.18 + Maven 多模块（13 个 reactor 模块）；
 前端两套 —— `_frontend/z-lc-suit`（React 19 + antd 6）与 `z-lc-admin-ui`（React 18 + antd 5 + vitest）。
@@ -24,7 +24,7 @@ z-lc 是 z-opc-foundation 的**低代码平台（Low-Code）**：把「建表 �
 
 ```
 z-lc/
-├── pom.xml                      # 聚合 POM：父 z-boot-parent:1.1.0，13 个 reactor 模块
+├── pom.xml                      # 聚合 POM：父 z-boot-parent:1.2.4，13 个 reactor 模块
 ├── z-lc-common/                 # 公共层（258 文件 / 19561 行，本仓最大）：注解 / aspect / bpmn / cache /
 │                                #   config / dto / enums / exception / param / permission / seal / task / utils
 ├── z-lc-sdk/                    # 业务钩子 SPI + 抽象基类 + 收集器（62 文件）

@@ -14,7 +14,7 @@
 
     <!-- 迁移改动（逐条同值，判据见根 pom 的 properties / DM 注释）：
          · 那块 <properties>（maven.compiler.source/target=8 + project.build.sourceEncoding=UTF-8）删了，
-           父链 z-boot-parent:1.0.19 供同一面值。
+           父链 z-boot-parent:1.2.4 供同一面值。
          · 自家 z-lc-common 那条依赖本来就没写 version（走根 DM），未动。
          · io.github.yuku123:z-util-core 的 <version>${util.version}</version> 删了：
            z-boot-fleet:1.0.0 按同一坐标直钉 1.0.13，与基线树 z-util-core:jar:1.0.13 逐字相同。

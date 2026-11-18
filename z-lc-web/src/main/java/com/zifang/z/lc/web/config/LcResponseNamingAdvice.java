@@ -1,7 +1,7 @@
 package com.zifang.z.lc.web.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -34,7 +34,7 @@ public class LcResponseNamingAdvice implements ResponseBodyAdvice<Object> {
 
     public LcResponseNamingAdvice(ObjectMapper objectMapper) {
         this.camelCaseMapper = objectMapper.copy()
-                .setPropertyNamingStrategy(PropertyNamingStrategy.LOWER_CAMEL_CASE);
+                .setPropertyNamingStrategy(PropertyNamingStrategies.LOWER_CAMEL_CASE);
     }
 
     @Override
