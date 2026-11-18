@@ -31,7 +31,7 @@
     "papaparse": "^5.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.6",
+    "react-router-dom": "^7.18.5",
     "zustand": "^4.5.7"
   },
   "devDependencies": {
@@ -45,20 +45,19 @@
     "@types/react-dom": "^18.3.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^5.1.4",
     "eslint": "^8.57.1",
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.14",
     "jsdom": "^25.0.1",
     "playwright-core": "^1.63.0",
     "typescript": "^5.9.3",
-    "vite": "^5.4.21",
-    "vitest": "^2.1.9"
+    "vite": "^6.4.6",
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "source-map-js": "^1.2.2",
     "path-to-regexp": "^8.4.0",
-    "esbuild": "^0.25.0",
     "minimatch": "^11.0.1",
     "@eslint/eslintrc": {
       "minimatch": "3.1.5"
@@ -71,6 +70,8 @@
     },
     "glob": {
       "minimatch": "3.1.5"
-    }
+    },
+    "tinypool": "^2.1.2",
+    "react-router": "^7.18.2"
   }
 }
