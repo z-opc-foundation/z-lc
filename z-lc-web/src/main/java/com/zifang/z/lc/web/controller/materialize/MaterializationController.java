@@ -3,6 +3,9 @@ package com.zifang.z.lc.web.controller.materialize;
 import com.zifang.z.lc.core.materialize.dto.MaterializationReq;
 import com.zifang.z.lc.core.materialize.dto.MaterializationResp;
 import com.zifang.z.lc.core.materialize.service.MaterializationService;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,8 +50,10 @@ public class MaterializationController {
      */
     @Operation(summary = "触发物化导出 (异步)")
     @PostMapping
-    public Map<String, Object> trigger(@RequestParam String appCode,
-                                       @RequestBody(required = false) MaterializationReq req) {
+    @BizApi(summary = "触发一次物化导出 (异步执行)", description = "触发一次物化导出 (异步执行). 内部会启动异步任务, 立即返回本次物化的响应 (含 id, 可用于后续 status 查询).", tags = { "z-lc" })
+    public Map<String, Object> trigger(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+                                       @RequestBody(required = false)
+                                       @BizParam(name = "req", type = BizField.FieldType.STRING, description = "物化请求参数, 可空 (空时使用默认配置)", position = BizParam.Position.BODY) MaterializationReq req) {
         if (req == null) {
             req = new MaterializationReq();
         }
@@ -70,7 +75,8 @@ public class MaterializationController {
      */
     @Operation(summary = "查询物化执行状态")
     @GetMapping("/status")
-    public Map<String, Object> status(@RequestParam(required = false) String appCode, @RequestParam Long id) {
+    @BizApi(summary = "查询某次物化的执行状态", description = "查询某次物化的执行状态.", tags = { "z-lc" })
+    public Map<String, Object> status(@RequestParam(required = false) @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码 (路由占位, 当前未参与逻辑)", position = BizParam.Position.QUERY) String appCode, @RequestParam @BizParam(name = "id", type = BizField.FieldType.INTEGER, description = "物化批次 id", position = BizParam.Position.QUERY) Long id) {
         MaterializationResp r = service.getStatus(id);
         Map<String, Object> result = new HashMap<>();
         result.put("success", r != null);
@@ -87,8 +93,10 @@ public class MaterializationController {
      */
     @Operation(summary = "列出物化批次")
     @GetMapping("/list")
-    public Map<String, Object> list(@RequestParam String appCode,
-                                    @RequestParam(defaultValue = "20") int limit) {
+    @BizApi(summary = "列出指定 app 的最近物化批次", description = "列出指定 app 的最近物化批次.", tags = { "z-lc" })
+    public Map<String, Object> list(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+                                    @RequestParam(defaultValue = "20")
+                                    @BizParam(name = "limit", type = BizField.FieldType.INTEGER, description = "返回条数上限, 默认 20", position = BizParam.Position.QUERY) int limit) {
         List<MaterializationResp> list = service.listByApp("default", appCode, limit);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
@@ -105,7 +113,8 @@ public class MaterializationController {
      */
     @Operation(summary = "查看物化产出文件清单")
     @GetMapping("/diff")
-    public Map<String, Object> diff(@RequestParam(required = false) String appCode, @RequestParam Long id) {
+    @BizApi(summary = "查看本次物化产出的文件清单 (即 diff: 新增/修改/删除的文件路径)", description = "查看本次物化产出的文件清单 (即 diff: 新增/修改/删除的文件路径).", tags = { "z-lc" })
+    public Map<String, Object> diff(@RequestParam(required = false) @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码 (路由占位, 当前未参与逻辑)", position = BizParam.Position.QUERY) String appCode, @RequestParam @BizParam(name = "id", type = BizField.FieldType.INTEGER, description = "物化批次 id", position = BizParam.Position.QUERY) Long id) {
         List<MaterializationResp.GeneratedFile> files = service.listFiles(id);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
@@ -113,3 +122,6 @@ public class MaterializationController {
         return result;
     }
 }
+
+
+

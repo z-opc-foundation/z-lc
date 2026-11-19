@@ -7,6 +7,9 @@ import com.zifang.z.lc.common.dto.EventDTO;
 import com.zifang.z.lc.core.event.EventConflictException;
 import com.zifang.z.lc.core.event.EventReplayService;
 import com.zifang.z.lc.core.event.EventService;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.logging.log4j.LogManager;
@@ -45,8 +48,10 @@ public class EventController {
      */
     @Operation(summary = "获取 app 当前 schema (回放事件链)")
     @GetMapping("/schema")
-    public Result<List<EntityDefDTO>> schema(@RequestParam String appCode,
-                                             @RequestParam(required = false) String tenantCode) {
+    @BizApi(summary = "获取指定 app 的当前 schema: 通过回放该 app 的全部事件链折叠出最新的实体定义列表", description = "获取指定 app 的当前 schema: 通过回放该 app 的全部事件链折叠出最新的实体定义列表.", tags = { "z-lc" })
+    public Result<List<EntityDefDTO>> schema(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+                                             @RequestParam(required = false)
+                                             @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "租户编码, 可空 (缺省时使用默认租户)", position = BizParam.Position.QUERY) String tenantCode) {
         List<EntityDefDTO> entities = eventReplayService.replay(tenantCode, appCode);
         return Result.success(entities);
     }
@@ -59,8 +64,10 @@ public class EventController {
      */
     @Operation(summary = "获取 app 事件链的最后一个事件 (追加前用来取 parentEventId)")
     @GetMapping("/event/last")
-    public Result<EventDTO> lastEvent(@RequestParam String appCode,
-                                      @RequestParam(required = false) String tenantCode) {
+    @BizApi(summary = "事件链头节点: 客户端要追加事件就得先拿到它, 否则没法填 parentEventId", description = "事件链头节点: 客户端要追加事件就得先拿到它, 否则没法填 parentEventId. 之前这个查询口缺失, 而 parentEventId 是因果校验的必填项, 结果就是除了内部 SchemaAdminBizService 之外, 任何外部调用者追加事件都必然撞 409.", tags = { "z-lc" })
+    public Result<EventDTO> lastEvent(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                      @RequestParam(required = false)
+                                      @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode) {
         return Result.success(eventService.getLastEvent(tenantCode, appCode));
     }
 
@@ -75,8 +82,9 @@ public class EventController {
      */
     @Operation(summary = "追加 schema 事件")
     @PostMapping("/event")
-    public Result<EventDTO> append(@RequestParam String appCode,
-                                   @RequestBody EventAppendRequest req) {
+    @BizApi(summary = "追加一个 schema 事件", description = "追加一个 schema 事件. 事件追加时会进行 parent_event_id 因果校验, 冲突时返回 code=409.", tags = { "z-lc" })
+    public Result<EventDTO> append(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+                                   @RequestBody @BizParam(name = "req", type = BizField.FieldType.STRING, description = "事件追加请求体 (含 tenantCode, eventType, payload, parentEventId 等)", position = BizParam.Position.BODY) EventAppendRequest req) {
         if (req == null) {
             return Result.<EventDTO>fail("body is null").code(400);
         }
@@ -100,3 +108,6 @@ public class EventController {
         }
     }
 }
+
+
+

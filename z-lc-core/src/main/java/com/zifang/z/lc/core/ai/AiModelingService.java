@@ -1,10 +1,6 @@
 package com.zifang.z.lc.core.ai;
 
 import com.zifang.util.json.JsonUtil;
-import com.zifang.z.llm.gateway.api.dto.UnifiedMessage;
-import com.zifang.z.llm.gateway.api.dto.UnifiedRequest;
-import com.zifang.z.llm.gateway.api.dto.UnifiedResponse;
-import com.zifang.z.llm.gateway.core.service.ChatGatewayService;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
 import com.zifang.z.lc.common.dto.RelationCreateReq;
@@ -13,12 +9,17 @@ import com.zifang.z.lc.core.app.AppAdminService;
 import com.zifang.z.lc.core.event.EventService;
 import com.zifang.z.lc.core.relation.RelationService;
 import com.zifang.z.lc.core.schema.SchemaAdminService;
+import com.zifang.z.llm.gateway.api.dto.UnifiedMessage;
+import com.zifang.z.llm.gateway.api.dto.UnifiedRequest;
+import com.zifang.z.llm.gateway.api.dto.UnifiedResponse;
+import com.zifang.z.llm.gateway.core.service.ChatGatewayService;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -77,6 +78,7 @@ public class AiModelingService {
     /**
      * T10: 对话式建模 - 解析用户自然语言描述，生成实体定义建议
      */
+    @BizMethod(name = "T10: 对话式建模 - 解析用户自然语言描述，生成实体定义建议", module = "z-lc", description = "T10: 对话式建模 - 解析用户自然语言描述，生成实体定义建议", operation = BizMethod.Operation.ACTION)
     public Map<String, Object> generateModelSuggestion(String appCode, String userDescription) {
         log.info("AI modeling suggestion requested: app={} desc={}", appCode, userDescription);
 
@@ -228,6 +230,7 @@ public class AiModelingService {
      *   <li>{@code reason} / {@code failedItem} String —— 仅失败时存在，点名失败原因与失败项。</li>
      * </ul>
      */
+    @BizMethod(name = "T10: 应用 AI 建模建议 —— 把建议里的实体 / 字段 / 关系真正落库到元数据表", module = "z-lc", description = "T10: 应用 AI 建模建议 —— 把建议里的实体 / 字段 / 关系真正落库到元数据表。 落库路径 ：复用 SchemaAdminService#createEntity（SchemaAdminBizService， 自带事务、app 存在校验、entityCode 重复校验、字段编码校验与 CREATE 事件）与 RelationService#createRelation（RelationServiceImpl）。写入 z_lc_entity / z_lc_field / z_lc_relation。 不 provision 物理表 —— 物理表由设计器单独触发，与前端「落库后仍需 provision」口径一致。 事务边界 ：每个实体 / 关系由落库服务自身的事务独立提交，本方法不提供跨项原子性。 任一落库调用抛异常时立即停止，返回 success=false 且返回值不含任何 createdXxx 假数据，绝不把异常吞成「部分成功」。 幂等 ：落库前按编码预检，已存在的实体 / 关系跳过并计入 skippedEntities / skippedRelations，不重复插入。 非法建议 （缺 appCode / entityCode / relationCode、结构不是数组或对象、 字段编码非法）直接返回 success=false + reason，不落库。 tenantCode 取 suggestion.tenantCode，缺失时按仓内既有默认口径用 \"default\"（见 RelationServiceImpl），并在返回值里显式带出实际使用的租户编码。 返回契约 （Map ）： success Boolean —— 仅当所有待处理项都真实落库（或幂等跳过）且无异常才 true； appCode / tenantCode String —— 本次落库的作用域； createdEntities / createdFields / createdRelations List&lt;String&gt; —— 只含落库服务真正返回成功的项（字段形如 entity.field）； skippedEntities / skippedRelations List&lt;String&gt; —— 幂等跳过的项； reason / failedItem String —— 仅失败时存在，点名失败原因与失败项。", operation = BizMethod.Operation.ACTION)
     public Map<String, Object> applyModelSuggestion(String appCode, Map<String, Object> suggestion) {
         log.info("Applying model suggestion (persist metadata): app={}", appCode);
 
@@ -461,6 +464,7 @@ public class AiModelingService {
     /**
      * T11: 智能表单生成
      */
+    @BizMethod(name = "T11: 智能表单生成", module = "z-lc", description = "T11: 智能表单生成", operation = BizMethod.Operation.ACTION)
     public Map<String, Object> generateFormLayout(String appCode, String entityCode) {
         log.info("Generating form layout: app={} entity={}", appCode, entityCode);
 
@@ -477,6 +481,7 @@ public class AiModelingService {
     /**
      * T12: 数据洞察
      */
+    @BizMethod(name = "T12: 数据洞察", module = "z-lc", description = "T12: 数据洞察", operation = BizMethod.Operation.ACTION)
     public Map<String, Object> analyzeData(String appCode, String entityCode) {
         log.info("Analyzing data: app={} entity={}", appCode, entityCode);
 
@@ -493,6 +498,7 @@ public class AiModelingService {
     /**
      * T13: 一键产品化
      */
+    @BizMethod(name = "T13: 一键产品化", module = "z-lc", description = "T13: 一键产品化", operation = BizMethod.Operation.ACTION)
     public Map<String, Object> oneClickProductize(String appCode) {
         log.info("One-click productize: app={}", appCode);
 
@@ -519,6 +525,7 @@ public class AiModelingService {
     /**
      * T9: MCP Tool 定义
      */
+    @BizMethod(name = "T9: MCP Tool 定义", module = "z-lc", description = "T9: MCP Tool 定义", operation = BizMethod.Operation.QUERY)
     public List<Map<String, Object>> getMcpToolDefinitions() {
         List<Map<String, Object>> tools = new ArrayList<>();
 
@@ -602,3 +609,6 @@ public class AiModelingService {
         return message.getContent();
     }
 }
+
+
+

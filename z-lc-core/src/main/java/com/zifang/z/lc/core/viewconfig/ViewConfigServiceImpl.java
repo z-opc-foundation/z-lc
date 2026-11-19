@@ -6,12 +6,13 @@ import com.zifang.z.lc.common.dto.ViewConfigDTO;
 import com.zifang.z.lc.common.dto.ViewConfigUpdateReq;
 import com.zifang.z.lc.core.viewconfig.entity.ViewConfigEntity;
 import com.zifang.z.lc.mapper.viewconfig.ViewConfigMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,6 +26,7 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     private ViewConfigMapper viewConfigMapper;
 
     @Override
+    @BizMethod(name = "createViewConfig", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public ViewConfigDTO createViewConfig(ViewConfigCreateReq req) {
         ViewConfigEntity entity = new ViewConfigEntity();
         BeanUtils.copyProperties(req, entity);
@@ -41,6 +43,7 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     }
 
     @Override
+    @BizMethod(name = "updateViewConfig", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public ViewConfigDTO updateViewConfig(ViewConfigUpdateReq req) {
         ViewConfigEntity entity = viewConfigMapper.selectById(req.getId());
         if (entity == null) {
@@ -61,6 +64,7 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     }
 
     @Override
+    @BizMethod(name = "deleteViewConfig", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteViewConfig(Long id) {
         ViewConfigEntity entity = viewConfigMapper.selectById(id);
         if (entity == null) {
@@ -73,6 +77,7 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     }
 
     @Override
+    @BizMethod(name = "getViewConfig", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public ViewConfigDTO getViewConfig(String tenantCode, String appCode, String entityCode, String viewType) {
         ViewConfigEntity entity = viewConfigMapper.selectOne(
                 new QueryWrapper<ViewConfigEntity>()
@@ -85,6 +90,7 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     }
 
     @Override
+    @BizMethod(name = "listViewConfigs", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<ViewConfigDTO> listViewConfigs(String tenantCode, String appCode, String entityCode) {
         List<ViewConfigEntity> list = viewConfigMapper.selectList(
                 new QueryWrapper<ViewConfigEntity>()
@@ -97,6 +103,7 @@ public class ViewConfigServiceImpl implements ViewConfigService {
     }
 
     @Override
+    @BizMethod(name = "listViewConfigsByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<ViewConfigDTO> listViewConfigsByApp(String tenantCode, String appCode) {
         List<ViewConfigEntity> list = viewConfigMapper.selectList(
                 new QueryWrapper<ViewConfigEntity>()
@@ -113,3 +120,6 @@ public class ViewConfigServiceImpl implements ViewConfigService {
         return dto;
     }
 }
+
+
+

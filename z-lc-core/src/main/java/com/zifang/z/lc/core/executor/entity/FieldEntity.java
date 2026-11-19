@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizModel;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -11,56 +13,74 @@ import java.util.Date;
 /**
  * z_lc_field 表实体
  */
+@BizModel(name = "z_lc_field 表实体", module = "z-lc", description = "z_lc_field 表实体")
 @TableName("z_lc_field")
 public class FieldEntity implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @TableId(type = IdType.AUTO)
+    @BizField(name = "id", type = BizField.FieldType.INTEGER)
     private Long id;
 
     @TableField("tenant_code")
+    @BizField(name = "tenantCode", type = BizField.FieldType.STRING)
     private String tenantCode;
 
     @TableField("entity_id")
+    @BizField(name = "entityId", type = BizField.FieldType.INTEGER)
     private Long entityId;
 
     @TableField("field_code")
+    @BizField(name = "fieldCode", type = BizField.FieldType.STRING)
     private String fieldCode;
 
     @TableField("field_name")
+    @BizField(name = "fieldName", type = BizField.FieldType.STRING)
     private String fieldName;
 
     @TableField("field_type")
+    @BizField(name = "fieldType", type = BizField.FieldType.STRING)
     private String fieldType;
 
+    @BizField(name = "required", type = BizField.FieldType.INTEGER)
     private Integer required;
 
     @TableField("default_value")
+    @BizField(name = "defaultValue", type = BizField.FieldType.STRING)
     private String defaultValue;
 
     @TableField("dict_code")
+    @BizField(name = "dictCode", type = BizField.FieldType.STRING)
     private String dictCode;
 
     @TableField("ref_entity")
+    @BizField(name = "refEntity", type = BizField.FieldType.STRING)
     private String refEntity;
 
     @TableField("field_length")
+    @BizField(name = "fieldLength", type = BizField.FieldType.INTEGER)
     private Integer fieldLength;
 
+    @BizField(name = "scale", type = BizField.FieldType.INTEGER)
     private Integer scale;
 
     @TableField("sort_order")
+    @BizField(name = "sortOrder", type = BizField.FieldType.INTEGER)
     private Integer sortOrder;
 
+    @BizField(name = "description", type = BizField.FieldType.STRING)
     private String description;
 
+    @BizField(name = "deleted", type = BizField.FieldType.INTEGER)
     private Integer deleted;
 
     @TableField("create_time")
+    @BizField(name = "createTime", type = BizField.FieldType.DATETIME)
     private Date createTime;
 
     @TableField("update_time")
+    @BizField(name = "updateTime", type = BizField.FieldType.DATETIME)
     private Date updateTime;
 
     public Long getId() {
@@ -199,3 +219,6 @@ public class FieldEntity implements Serializable {
         this.updateTime = updateTime;
     }
 }
+
+
+

@@ -6,6 +6,9 @@ import com.zifang.z.lc.common.dto.ProvisionReport;
 import com.zifang.z.lc.core.datasource.LcDataSourceResolver;
 import com.zifang.z.lc.core.mapper.DbTableMapperService;
 import com.zifang.z.lc.core.schema.SchemaAdminService;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.logging.log4j.LogManager;
@@ -67,6 +70,7 @@ public class DbTableController {
      */
     @Operation(summary = "数据源目录列表 (z-dms 桥接, 未装配时 available=false)")
     @GetMapping("/datasources")
+    @BizApi(summary = "数据源目录列表（V1 数据源管理域，2026-10-26）", description = "数据源目录列表（V1 数据源管理域，2026-10-26）。 只透出非敏感元信息（id / name / type / credentialRef 引用），连接参数永不返回。 z-dms 未装配时返回 available=false + 空目录，前端据此降级。", tags = { "z-lc" })
     public Result<Map<String, Object>> listDataSources() {
         LcDataSourceResolver resolver = dataSourceResolver.getIfAvailable();
         Map<String, Object> body = new HashMap<>();
@@ -89,10 +93,14 @@ public class DbTableController {
      */
     @Operation(summary = "扫描数据库表 (前缀过滤; 可选 dataSourceId 指向 z-dms 目录源)")
     @GetMapping("/tables")
+    @BizApi(summary = "扫描数据库表 (前缀过滤), 即将表结构逆向映射为低代码模型预览", description = "扫描数据库表 (前缀过滤), 即将表结构逆向映射为低代码模型预览.", tags = { "z-lc" })
     public Result<List<EntityDefDTO>> scanTables(
-            @RequestParam(required = false, defaultValue = "") String prefix,
-            @RequestParam(required = false) String schema,
-            @RequestParam(required = false) String dataSourceId) {
+            @RequestParam(required = false, defaultValue = "")
+            @BizParam(name = "prefix", type = BizField.FieldType.STRING, description = "表名前缀过滤, 默认空字符串表示扫描全部", position = BizParam.Position.QUERY) String prefix,
+            @RequestParam(required = false)
+            @BizParam(name = "schema", type = BizField.FieldType.STRING, description = "schema 名, 可空", position = BizParam.Position.QUERY) String schema,
+            @RequestParam(required = false)
+            @BizParam(name = "dataSourceId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String dataSourceId) {
         List<EntityDefDTO> entities;
         try {
             entities = tableMapper.scanTables(dataSourceId, prefix, schema);
@@ -111,9 +119,12 @@ public class DbTableController {
      */
     @Operation(summary = "单表映射预览 (不落库)")
     @GetMapping("/table")
-    public Result<EntityDefDTO> previewTable(@RequestParam String tableName,
-                                             @RequestParam(required = false) String schema,
-                                             @RequestParam(required = false) String dataSourceId) {
+    @BizApi(summary = "预览单张表的逆向映射结果 (不落库, 仅做结构转换)", description = "预览单张表的逆向映射结果 (不落库, 仅做结构转换).", tags = { "z-lc" })
+    public Result<EntityDefDTO> previewTable(@RequestParam @BizParam(name = "tableName", type = BizField.FieldType.STRING, description = "表名", position = BizParam.Position.QUERY) String tableName,
+                                             @RequestParam(required = false)
+                                             @BizParam(name = "schema", type = BizField.FieldType.STRING, description = "schema 名, 可空", position = BizParam.Position.QUERY) String schema,
+                                             @RequestParam(required = false)
+                                             @BizParam(name = "dataSourceId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String dataSourceId) {
         try {
             EntityDefDTO entity = tableMapper.mapTable(dataSourceId, tableName, schema);
             return entity == null
@@ -143,12 +154,16 @@ public class DbTableController {
      */
     @Operation(summary = "导入单张 DB 表为低代码模型")
     @PostMapping("/table/import")
-    public Result<EntityDefDTO> importTable(@RequestParam String tableName,
-                                            @RequestParam String tenantCode,
-                                            @RequestParam String appCode,
-                                            @RequestParam(required = false) String schema,
-                                            @RequestParam(required = false) String entityCode,
-                                            @RequestParam(required = false, defaultValue = "false") boolean autoProvision) {
+    @BizApi(summary = "将单张 DB 表导入为低代码模型", description = "将单张 DB 表导入为低代码模型. 流程: 1) 逆向映射表结构; 2) 通过 SchemaAdminService#createEntity 注册为低代码模型, 内部会触发 CREATE 事件以使 RuntimeCrudController 可用; 3) 若 autoProvision=true, 尝试建表 (表已存在会被忽略).", tags = { "z-lc" })
+    public Result<EntityDefDTO> importTable(@RequestParam @BizParam(name = "tableName", type = BizField.FieldType.STRING, description = "表名", position = BizParam.Position.QUERY) String tableName,
+                                            @RequestParam @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "租户编码", position = BizParam.Position.QUERY) String tenantCode,
+                                            @RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+                                            @RequestParam(required = false)
+                                            @BizParam(name = "schema", type = BizField.FieldType.STRING, description = "schema 名, 可空", position = BizParam.Position.QUERY) String schema,
+                                            @RequestParam(required = false)
+                                            @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "自定义实体编码, 缺省时使用表名", position = BizParam.Position.QUERY) String entityCode,
+                                            @RequestParam(required = false, defaultValue = "false")
+                                            @BizParam(name = "autoProvision", type = BizField.FieldType.BOOLEAN, description = "是否在导入后自动建表", position = BizParam.Position.QUERY) boolean autoProvision) {
         try {
             // 1. 逆向映射
             EntityDefDTO mapped = tableMapper.mapTable(tableName, schema);
@@ -209,12 +224,15 @@ public class DbTableController {
      */
     @Operation(summary = "批量导入 DB 表为低代码模型")
     @PostMapping("/tables/batch-import")
+    @BizApi(summary = "批量将指定前缀的 DB 表导入为低代码模型", description = "批量将指定前缀的 DB 表导入为低代码模型. 流程: 1) 按前缀扫描; 2) 逐张注册为低代码模型 (单表失败不中断整体); 3) 若 autoProvision=true 同步建表 (表已存在忽略).", tags = { "z-lc" })
     public Result<java.util.List<EntityDefDTO>> batchImport(
-            @RequestParam String tenantCode,
-            @RequestParam String appCode,
-            @RequestParam String prefix,
-            @RequestParam(required = false) String schema,
-            @RequestParam(required = false, defaultValue = "false") boolean autoProvision) {
+            @RequestParam @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "租户编码", position = BizParam.Position.QUERY) String tenantCode,
+            @RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+            @RequestParam @BizParam(name = "prefix", type = BizField.FieldType.STRING, description = "表名前缀", position = BizParam.Position.QUERY) String prefix,
+            @RequestParam(required = false)
+            @BizParam(name = "schema", type = BizField.FieldType.STRING, description = "schema 名, 可空", position = BizParam.Position.QUERY) String schema,
+            @RequestParam(required = false, defaultValue = "false")
+            @BizParam(name = "autoProvision", type = BizField.FieldType.BOOLEAN, description = "是否在导入后自动建表", position = BizParam.Position.QUERY) boolean autoProvision) {
         try {
             // 1. 扫描
             List<EntityDefDTO> scanned = tableMapper.scanTables(prefix, schema);
@@ -259,3 +277,6 @@ public class DbTableController {
         }
     }
 }
+
+
+

@@ -4,6 +4,11 @@ import com.zifang.util.core.meta.Result;
 import com.zifang.z.lc.common.dto.VapiDTO;
 import com.zifang.z.lc.core.vapi.VapiScriptExecutor;
 import com.zifang.z.lc.core.vapi.VapiService;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.ObjectProvider;
@@ -16,12 +21,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletRequest;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,28 +57,33 @@ public class VapiController {
     // ---------- 注册表管理面 ----------
 
     @PostMapping("/create")
-    public Result<?> create(@RequestBody com.zifang.z.lc.common.dto.VapiCreateReq request) {
+    @BizApi(summary = "create", description = "", tags = { "z-lc" })
+    public Result<?> create(@RequestBody @BizParam(name = "request", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) com.zifang.z.lc.common.dto.VapiCreateReq request) {
         return Result.success(vapiService.createVapi(request));
     }
 
     @PostMapping("/update")
-    public Result<?> update(@RequestBody com.zifang.z.lc.common.dto.VapiUpdateReq request) {
+    @BizApi(summary = "update", description = "", tags = { "z-lc" })
+    public Result<?> update(@RequestBody @BizParam(name = "request", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) com.zifang.z.lc.common.dto.VapiUpdateReq request) {
         return Result.success(vapiService.updateVapi(request));
     }
 
     @PostMapping("/delete")
-    public Result<?> delete(@RequestParam("id") Long id) {
+    @BizApi(summary = "delete", description = "", tags = { "z-lc" })
+    public Result<?> delete(@RequestParam("id") @BizParam(name = "id", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long id) {
         vapiService.deleteVapi(id);
         return Result.success("deleted");
     }
 
     @GetMapping("/get")
-    public Result<?> get(@RequestParam("id") Long id) {
+    @BizApi(summary = "get", description = "", tags = { "z-lc" })
+    public Result<?> get(@RequestParam("id") @BizParam(name = "id", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long id) {
         return Result.success(vapiService.getVapi(id));
     }
 
     @GetMapping("/list")
-    public Result<List<VapiDTO>> list(@RequestParam("appCode") String appCode) {
+    @BizApi(summary = "list", description = "", tags = { "z-lc" })
+    public Result<List<VapiDTO>> list(@RequestParam("appCode") @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode) {
         return Result.success(vapiService.listByApp(appCode));
     }
 
@@ -83,8 +91,10 @@ public class VapiController {
 
     @RequestMapping(value = "/invoke/{appCode}/**",
             method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE})
-    public ResponseEntity<Result<Object>> invoke(@PathVariable("appCode") String appCode,
-                                                 @RequestBody(required = false) Map<String, Object> body,
+    @BizApi(summary = "invoke", description = "", tags = { "z-lc" })
+    public ResponseEntity<Result<Object>> invoke(@PathVariable("appCode") @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String appCode,
+                                                 @RequestBody(required = false)
+                                                 @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, Object> body,
                                                  HttpServletRequest request) {
         String method = request.getMethod().toUpperCase(java.util.Locale.ROOT);
         String relative = relativePath(request, "/api/lc/vapi/invoke/" + appCode);
@@ -144,3 +154,6 @@ public class VapiController {
         return path;
     }
 }
+
+
+

@@ -3,11 +3,12 @@ package com.zifang.z.lc.core.permission;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.zifang.z.lc.core.permission.entity.PermissionEntity;
 import com.zifang.z.lc.mapper.permission.LcPermissionMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 
@@ -35,6 +36,7 @@ public class PermissionService {
     @Resource
     private LcPermissionMapper lcPermissionMapper;
 
+    @BizMethod(name = "listByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PermissionEntity> listByApp(String tenantCode, String appCode) {
         return lcPermissionMapper.selectList(
                 new QueryWrapper<PermissionEntity>()
@@ -43,6 +45,7 @@ public class PermissionService {
                         .orderByAsc("entity_code", "role_code"));
     }
 
+    @BizMethod(name = "listByEntity", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PermissionEntity> listByEntity(String tenantCode, String appCode, String entityCode) {
         return lcPermissionMapper.selectList(
                 new QueryWrapper<PermissionEntity>()
@@ -51,6 +54,7 @@ public class PermissionService {
                         .eq("entity_code", require(entityCode, "entityCode")));
     }
 
+    @BizMethod(name = "listByRole", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PermissionEntity> listByRole(String tenantCode, String appCode, String roleCode) {
         return lcPermissionMapper.selectList(
                 new QueryWrapper<PermissionEntity>()
@@ -67,6 +71,7 @@ public class PermissionService {
      * 恒为 unknown，一行也匹配不上，于是每点一次多一行。这一支恰恰是矩阵页默认的那一支
      * (不选实体时点格子就是应用级授权)，所以重复得最快。空范围必须用 {@code IS NULL} 比。
      */
+    @BizMethod(name = "授予一条权限。幂等：同一 (租户, 应用, 实体范围, 角色, 权限项) 反复点只有一行", module = "z-lc", description = "授予一条权限。幂等：同一 (租户, 应用, 实体范围, 角色, 权限项) 反复点只有一行。 幂等这一条以前是假的：查重写的是 eq(\"entity_code\", entity.getEntityCode())， 而\"整个应用\"的授权 entityCode 是 null —— SQL 里的 entity_code = NULL 恒为 unknown，一行也匹配不上，于是每点一次多一行。这一支恰恰是矩阵页默认的那一支 (不选实体时点格子就是应用级授权)，所以重复得最快。空范围必须用 IS NULL 比。", operation = BizMethod.Operation.ACTION)
     public PermissionEntity grant(PermissionEntity entity) {
         if (entity == null) {
             throw new IllegalArgumentException("授权内容不能为空");
@@ -117,6 +122,7 @@ public class PermissionService {
      * 返回受影响行数 (0 = 那个 id 不存在或不属于这个租户)，而不是 void —— 以前的
      * {@code deleteById} 谁都删得掉，而控制器把返回值无条件说成"已回收"。
      */
+    @BizMethod(name = "回收一条授权，只允许回收本租户的那一条", module = "z-lc", description = "回收一条授权，只允许回收本租户的那一条。 返回受影响行数 (0 = 那个 id 不存在或不属于这个租户)，而不是 void —— 以前的 deleteById 谁都删得掉，而控制器把返回值无条件说成\"已回收\"。", operation = BizMethod.Operation.ACTION)
     public int revoke(String tenantCode, Long id) {
         if (id == null) {
             throw new IllegalArgumentException("id 是必填的");
@@ -137,6 +143,7 @@ public class PermissionService {
      *   <li>{@code entityCode} 为空 —— 只问应用级那一条，不拿某个实体的授权冒充"整个应用都能干"。</li>
      * </ul>
      */
+    @BizMethod(name = "检查某角色是否有某权限", module = "z-lc", description = "检查某角色是否有某权限。 作用范围有两种，语义不同，所以两个维度都得进条件： entityCode 给了具体实体 —— 该实体的授权 或 应用级授权 ( entity_code IS NULL ) 都算成立。以前只比前者，于是矩阵里明明白白 渲染成「整个应用」的那些行，在 /check 里对任何一个实体都答\"拒绝\"。 entityCode 为空 —— 只问应用级那一条，不拿某个实体的授权冒充\"整个应用都能干\"。", operation = BizMethod.Operation.ACTION)
     public boolean hasPermission(String tenantCode, String appCode, String entityCode,
                                  String roleCode, String permission) {
         String wanted = PermissionKeys.canonical(permission);
@@ -170,3 +177,6 @@ public class PermissionService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 }
+
+
+

@@ -10,12 +10,13 @@ import com.zifang.z.lc.core.materialize.entity.MaterializationEntity;
 import com.zifang.z.lc.core.materialize.mapper.MaterializationMapper;
 import com.zifang.z.lc.core.schema.SchemaAdminService;
 import com.zifang.z.lc.mapper.deployment.DeploymentMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -41,6 +42,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     private MaterializationMapper materializationMapper;
 
     @Override
+    @BizMethod(name = "createDeployment", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public DeploymentDTO createDeployment(DeploymentCreateReq req) {
         if (req == null) {
             throw new IllegalArgumentException("部署请求不能为空");
@@ -151,6 +153,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
+    @BizMethod(name = "updateDeploymentStatus", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public DeploymentDTO updateDeploymentStatus(Long id, String status, String deployLog) {
         DeploymentEntity entity = deploymentMapper.selectById(id);
         if (entity == null) {
@@ -168,12 +171,14 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
+    @BizMethod(name = "getDeployment", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public DeploymentDTO getDeployment(Long id) {
         DeploymentEntity entity = deploymentMapper.selectById(id);
         return entity == null ? null : toDTO(entity);
     }
 
     @Override
+    @BizMethod(name = "listDeploymentsByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<DeploymentDTO> listDeploymentsByApp(String tenantCode, String appCode) {
         List<DeploymentEntity> list = deploymentMapper.selectList(
                 new QueryWrapper<DeploymentEntity>()
@@ -184,6 +189,7 @@ public class DeploymentServiceImpl implements DeploymentService {
     }
 
     @Override
+    @BizMethod(name = "getLatestDeployment", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public DeploymentDTO getLatestDeployment(String tenantCode, String appCode) {
         DeploymentEntity entity = deploymentMapper.selectOne(
                 new QueryWrapper<DeploymentEntity>()
@@ -200,3 +206,6 @@ public class DeploymentServiceImpl implements DeploymentService {
         return dto;
     }
 }
+
+
+

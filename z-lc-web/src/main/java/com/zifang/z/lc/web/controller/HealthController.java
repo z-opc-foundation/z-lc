@@ -5,6 +5,7 @@ import com.zifang.z.lc.core.adapter.AdapterRegistry;
 import com.zifang.z.lc.core.adapter.CtcAdapter;
 import com.zifang.z.lc.core.adapter.MetaAdapter;
 import com.zifang.z.lc.web.health.DataSourceHealthProber;
+import com.zifang.z.meta.api.annotation.BizApi;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,10 +13,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.sql.DataSource;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.sql.DataSource;
 
 /**
  * Schema 健康检查 + Adapter 自检控制器.
@@ -64,6 +65,7 @@ public class HealthController {
      */
     @Operation(summary = "总体健康检查")
     @GetMapping("")
+    @BizApi(summary = "总体健康检查: 对每个连接池真开一条连接跑 SELECT 1，全部通才算 UP", description = "总体健康检查: 对每个连接池真开一条连接跑 SELECT 1，全部通才算 UP.", tags = { "z-lc" })
     public Result<Map<String, Object>> health() {
         Map<String, Object> data = new LinkedHashMap<>(healthProber.report(dataSources));
         data.put("adapters", adapterRegistry.all().stream().map(a -> {
@@ -82,6 +84,7 @@ public class HealthController {
      */
     @Operation(summary = "列出全部适配器")
     @GetMapping("/adapters")
+    @BizApi(summary = "列出全部已注册 adapter 的详细信息: name, priority, 完整类名", description = "列出全部已注册 adapter 的详细信息: name, priority, 完整类名.", tags = { "z-lc" })
     public Result<List<Map<String, Object>>> adapters() {
         return Result.success(adapterRegistry.all().stream().map(a -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -99,6 +102,7 @@ public class HealthController {
      */
     @Operation(summary = "探活 z-meta 适配器")
     @GetMapping("/meta-ping")
+    @BizApi(summary = "探活 z-meta adapter", description = "探活 z-meta adapter.", tags = { "z-lc" })
     public Result<Boolean> metaPing() {
         return Result.success(metaAdapter.ping());
     }
@@ -110,7 +114,11 @@ public class HealthController {
      */
     @Operation(summary = "探活 z-ctc 适配器")
     @GetMapping("/ctc-ping")
+    @BizApi(summary = "探活 z-ctc adapter", description = "探活 z-ctc adapter.", tags = { "z-lc" })
     public Result<Boolean> ctcPing() {
         return Result.success(ctcAdapter.ping());
     }
 }
+
+
+

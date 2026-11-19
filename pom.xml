@@ -354,6 +354,11 @@
                     （基线树 io.github.yuku123:z-util-expr-obj:jar:1.0.13，迁后一样）。
                  6) 三个数据源依赖统一走 z-boot-datasource-starter（这句原注释保留原意：
                     依赖口径没变，只是 starter 的版本改由 parent 下发）。 -->
+            <dependency>
+                <groupId>io.github.yuku123</groupId>
+                <artifactId>z-meta-api</artifactId>
+                <version>${z-meta.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
     <dependencies>
@@ -448,6 +453,9 @@
          maven-source-plugin 3.3.0、maven-javadoc-plugin 3.11.2（doclint=none + failOnError=false）、
          maven-gpg-plugin 3.2.7（passphrase 只从 -Dgpg.passphrase 传，不写进 pom 也不写进命令行历史）。
          发布用 pom 的自包含由上面常开的 flatten(oss) + updatePomFile 负责。 -->
+    <properties>
+        <z-meta.version>1.0.2</z-meta.version>
+    </properties>
     <profiles>
         <profile>
             <id>central</id>

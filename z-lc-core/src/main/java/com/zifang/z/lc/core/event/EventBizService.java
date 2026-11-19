@@ -5,6 +5,7 @@ import com.zifang.z.lc.common.dto.EventAppendRequest;
 import com.zifang.z.lc.common.dto.EventDTO;
 import com.zifang.z.lc.core.event.entity.EventEntity;
 import com.zifang.z.lc.mapper.event.EventMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
@@ -29,6 +30,7 @@ public class EventBizService implements EventService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "append", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public EventDTO append(String appCode, EventAppendRequest req) {
         // 1. 校验 parent_event_id (因果链)
         EventDTO last = getLastEvent(req.getTenantCode(), appCode);
@@ -65,6 +67,7 @@ public class EventBizService implements EventService {
     }
 
     @Override
+    @BizMethod(name = "getLastEvent", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public EventDTO getLastEvent(String tenantCode, String appCode) {
         // 取最大 seq 的事件
         List<EventEntity> list = eventMapper.selectList(
@@ -77,6 +80,7 @@ public class EventBizService implements EventService {
     }
 
     @Override
+    @BizMethod(name = "listSince", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<EventDTO> listSince(String tenantCode, String appCode, Long fromSeq) {
         List<EventEntity> list = eventMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<EventEntity>()
@@ -93,3 +97,6 @@ public class EventBizService implements EventService {
         return dto;
     }
 }
+
+
+

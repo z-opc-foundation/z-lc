@@ -5,6 +5,9 @@ import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.core.event.EventReplayService;
 import com.zifang.z.lc.core.undo.UndoService;
 import com.zifang.z.lc.core.undo.entity.DataChangeEntity;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.logging.log4j.LogManager;
@@ -45,8 +48,9 @@ public class UndoController {
      */
     @Operation(summary = "撤销上一次数据变更")
     @PostMapping("/undo")
-    public Result<Map<String, Object>> undo(@RequestParam String entityCode,
-                                            @RequestBody Map<String, String> body) {
+    @BizApi(summary = "撤销该实体作用域内最近一次未被撤销的变更", description = "撤销该实体作用域内最近一次未被撤销的变更.", tags = { "z-lc" })
+    public Result<Map<String, Object>> undo(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+                                            @RequestBody @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, String> body) {
         String appCode = body == null ? null : body.get("appCode");
         String tenantCode = body == null ? null : body.get("tenantCode");
         EntityDefDTO def = resolveEntity(appCode, entityCode, tenantCode);
@@ -62,8 +66,9 @@ public class UndoController {
      */
     @Operation(summary = "重做上一次被撤销的变更")
     @PostMapping("/redo")
-    public Result<Map<String, Object>> redo(@RequestParam String entityCode,
-                                            @RequestBody Map<String, String> body) {
+    @BizApi(summary = "重做最近一次被撤销的变更", description = "重做最近一次被撤销的变更. 注意: 重做「新建」时自增主键会变, 原 recordId 仍留在变更日志里以便追溯.", tags = { "z-lc" })
+    public Result<Map<String, Object>> redo(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+                                            @RequestBody @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, String> body) {
         String appCode = body == null ? null : body.get("appCode");
         String tenantCode = body == null ? null : body.get("tenantCode");
         EntityDefDTO def = resolveEntity(appCode, entityCode, tenantCode);
@@ -77,11 +82,16 @@ public class UndoController {
      */
     @Operation(summary = "数据变更历史")
     @GetMapping("/history")
-    public Result<List<Map<String, Object>>> history(@RequestParam String appCode,
-                                                     @RequestParam(required = false) String entityCode,
-                                                     @RequestParam(required = false) String tenantCode,
-                                                     @RequestParam(required = false, defaultValue = "50") int limit,
-                                                     @RequestParam(required = false) String owner) {
+    @BizApi(summary = "变更历史 (倒序). 返回前像/后像便于 UI 展示\"将要回退成什么\"", description = "变更历史 (倒序). 返回前像/后像便于 UI 展示\"将要回退成什么\".", tags = { "z-lc" })
+    public Result<List<Map<String, Object>>> history(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                                     @RequestParam(required = false)
+                                                     @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+                                                     @RequestParam(required = false)
+                                                     @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode,
+                                                     @RequestParam(required = false, defaultValue = "50")
+                                                     @BizParam(name = "limit", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) int limit,
+                                                     @RequestParam(required = false)
+                                                     @BizParam(name = "owner", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String owner) {
         List<DataChangeEntity> rows = undoService.history(tenantCode, appCode, entityCode, limit,
                 "mine".equalsIgnoreCase(owner) ? com.zifang.z.lc.web.support.ActorResolver.resolve(null) : null);
         List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
@@ -134,3 +144,6 @@ public class UndoController {
         throw new IllegalArgumentException("Entity not found: appCode=" + appCode + ", entityCode=" + entityCode);
     }
 }
+
+
+

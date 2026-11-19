@@ -6,11 +6,14 @@ import com.zifang.z.lc.core.workflow.WorkflowBindingService;
 import com.zifang.z.lc.core.workflow.WorkflowTriggers;
 import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,8 +41,10 @@ public class WorkflowBindingController {
 
     @Operation(summary = "流程绑定列表")
     @GetMapping("/list")
-    public Result<List<WorkflowBindingEntity>> list(@RequestParam String appCode,
-                                                    @RequestParam(required = false) String entityCode) {
+    @BizApi(summary = "list", description = "", tags = { "z-lc" })
+    public Result<List<WorkflowBindingEntity>> list(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                                    @RequestParam(required = false)
+                                                    @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode) {
         if (entityCode != null) {
             return Result.success(workflowBindingService.listByEntity(DEFAULT_TENANT, appCode, entityCode));
         }
@@ -48,6 +53,7 @@ public class WorkflowBindingController {
 
     @Operation(summary = "引擎真正兑现的触发事件（界面清单的唯一来源）")
     @GetMapping("/vocabulary")
+    @BizApi(summary = "vocabulary", description = "", tags = { "z-lc" })
     public Result<Map<String, Object>> vocabulary() {
         List<Map<String, String>> rejected = new ArrayList<Map<String, String>>();
         for (Map.Entry<String, String> entry : WorkflowTriggers.unimplementedReasons().entrySet()) {
@@ -64,14 +70,16 @@ public class WorkflowBindingController {
 
     @Operation(summary = "创建流程绑定")
     @PostMapping("/create")
-    public Result<WorkflowBindingEntity> create(@RequestBody WorkflowBindingEntity entity) {
+    @BizApi(summary = "create", description = "", tags = { "z-lc" })
+    public Result<WorkflowBindingEntity> create(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) WorkflowBindingEntity entity) {
         entity.setTenantCode(DEFAULT_TENANT);
         return Result.success(workflowBindingService.create(entity));
     }
 
     @Operation(summary = "更新流程绑定")
     @PostMapping("/update")
-    public Result<WorkflowBindingEntity> update(@RequestBody WorkflowBindingEntity entity) {
+    @BizApi(summary = "update", description = "", tags = { "z-lc" })
+    public Result<WorkflowBindingEntity> update(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) WorkflowBindingEntity entity) {
         // 归一化而不是覆盖：update 里租户仍取库里那一份（service 负责），这里只是明确
         // "body 带的 tenantCode 不会把绑定搬去别的租户"。
         entity.setTenantCode(null);
@@ -80,7 +88,8 @@ public class WorkflowBindingController {
 
     @Operation(summary = "删除流程绑定")
     @PostMapping("/delete")
-    public Result<Boolean> delete(@RequestBody WorkflowBindingEntity entity) {
+    @BizApi(summary = "delete", description = "", tags = { "z-lc" })
+    public Result<Boolean> delete(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) WorkflowBindingEntity entity) {
         int affected = workflowBindingService.delete(entity.getId());
         if (affected == 0) {
             throw new IllegalArgumentException("没有删掉任何绑定：id=" + entity.getId()
@@ -91,12 +100,20 @@ public class WorkflowBindingController {
 
     @Operation(summary = "某条记录的流程发起结局（STARTED/FAILED 逐条，含失败原因；分页读，total 是真总数）")
     @GetMapping("/fires")
-    public Result<PageResult<WorkflowFireEntity>> fires(@RequestParam String appCode,
-                                                        @RequestParam(required = false) String entityCode,
-                                                        @RequestParam(required = false) Long recordId,
-                                                        @RequestParam(required = false) Integer page,
-                                                        @RequestParam(required = false) Integer size) {
+    @BizApi(summary = "fires", description = "", tags = { "z-lc" })
+    public Result<PageResult<WorkflowFireEntity>> fires(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                                        @RequestParam(required = false)
+                                                        @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+                                                        @RequestParam(required = false)
+                                                        @BizParam(name = "recordId", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Long recordId,
+                                                        @RequestParam(required = false)
+                                                        @BizParam(name = "page", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Integer page,
+                                                        @RequestParam(required = false)
+                                                        @BizParam(name = "size", type = BizField.FieldType.INTEGER, description = "", position = BizParam.Position.QUERY) Integer size) {
         return Result.success(workflowBindingService.pageFires(
                 DEFAULT_TENANT, appCode, entityCode, recordId, page, size));
     }
 }
+
+
+

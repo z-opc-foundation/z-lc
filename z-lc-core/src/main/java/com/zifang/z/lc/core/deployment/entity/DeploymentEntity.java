@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizModel;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -11,6 +13,7 @@ import java.util.Date;
 /**
  * z_lc_deployment 表实体 (F035 T7: Deployment)
  */
+@BizModel(name = "z_lc_deployment 表实体 (F035 T7: Deployment)", module = "z-lc", description = "z_lc_deployment 表实体 (F035 T7: Deployment)")
 @TableName("z_lc_deployment")
 public class DeploymentEntity implements Serializable {
 
@@ -23,31 +26,41 @@ public class DeploymentEntity implements Serializable {
     public static final String TYPE_GIT_PUSH = "GIT_PUSH";
     private static final long serialVersionUID = 1L;
     @TableId(type = IdType.AUTO)
+    @BizField(name = "id", type = BizField.FieldType.INTEGER)
     private Long id;
 
     @TableField("app_code")
+    @BizField(name = "appCode", type = BizField.FieldType.STRING)
     private String appCode;
 
     @TableField("materialization_id")
+    @BizField(name = "materializationId", type = BizField.FieldType.INTEGER)
     private Long materializationId;
 
     @TableField("deploy_type")
+    @BizField(name = "deployType", type = BizField.FieldType.STRING)
     private String deployType;
 
+    @BizField(name = "status", type = BizField.FieldType.STRING)
     private String status;
 
     @TableField("deploy_log")
+    @BizField(name = "deployLog", type = BizField.FieldType.STRING)
     private String deployLog;
 
+    @BizField(name = "version", type = BizField.FieldType.STRING)
     private String version;
 
     @TableField("tenant_code")
+    @BizField(name = "tenantCode", type = BizField.FieldType.STRING)
     private String tenantCode;
 
     @TableField("create_time")
+    @BizField(name = "createTime", type = BizField.FieldType.DATETIME)
     private Date createTime;
 
     @TableField("update_time")
+    @BizField(name = "updateTime", type = BizField.FieldType.DATETIME)
     private Date updateTime;
 
     public Long getId() {
@@ -130,3 +143,6 @@ public class DeploymentEntity implements Serializable {
         this.updateTime = updateTime;
     }
 }
+
+
+

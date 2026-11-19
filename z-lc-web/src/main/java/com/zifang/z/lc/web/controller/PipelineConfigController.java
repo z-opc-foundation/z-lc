@@ -3,11 +3,14 @@ package com.zifang.z.lc.web.controller;
 import com.zifang.util.core.meta.Result;
 import com.zifang.z.lc.core.pipeline.config.PipelineConfigService;
 import com.zifang.z.lc.core.pipeline.config.entity.PipelineConfigEntity;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.annotation.Resource;
 import java.util.List;
 
 @Tag(name = "低代码-Pipeline配置")
@@ -20,8 +23,10 @@ public class PipelineConfigController {
 
     @Operation(summary = "Pipeline配置列表")
     @GetMapping("/list")
-    public Result<List<PipelineConfigEntity>> list(@RequestParam String appCode,
-                                                   @RequestParam(required = false) String entityCode) {
+    @BizApi(summary = "list", description = "", tags = { "z-lc" })
+    public Result<List<PipelineConfigEntity>> list(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                                   @RequestParam(required = false)
+                                                   @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode) {
         if (entityCode != null) {
             return Result.success(pipelineConfigService.listByEntity(appCode, entityCode));
         }
@@ -30,26 +35,30 @@ public class PipelineConfigController {
 
     @Operation(summary = "创建Pipeline配置")
     @PostMapping("/create")
-    public Result<PipelineConfigEntity> create(@RequestBody PipelineConfigEntity entity) {
+    @BizApi(summary = "create", description = "", tags = { "z-lc" })
+    public Result<PipelineConfigEntity> create(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PipelineConfigEntity entity) {
         return Result.success(pipelineConfigService.create(entity));
     }
 
     @Operation(summary = "更新Pipeline配置")
     @PostMapping("/update")
-    public Result<PipelineConfigEntity> update(@RequestBody PipelineConfigEntity entity) {
+    @BizApi(summary = "update", description = "", tags = { "z-lc" })
+    public Result<PipelineConfigEntity> update(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PipelineConfigEntity entity) {
         return Result.success(pipelineConfigService.update(entity));
     }
 
     @Operation(summary = "删除Pipeline配置")
     @PostMapping("/delete")
-    public Result<Boolean> delete(@RequestBody PipelineConfigEntity entity) {
+    @BizApi(summary = "delete", description = "", tags = { "z-lc" })
+    public Result<Boolean> delete(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PipelineConfigEntity entity) {
         pipelineConfigService.delete(entity.getId());
         return Result.success(true);
     }
 
     @Operation(summary = "启用/禁用Pipeline")
     @PostMapping("/toggle")
-    public Result<Boolean> toggle(@RequestBody PipelineConfigEntity entity) {
+    @BizApi(summary = "toggle", description = "", tags = { "z-lc" })
+    public Result<Boolean> toggle(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PipelineConfigEntity entity) {
         Integer enabled = entity == null ? null : entity.getEnabled();
         if (enabled == null) {
             // 少了 enabled 就按"关掉"处理的话, 一次漏写字段的请求会把别人的流水线悄悄停用
@@ -64,3 +73,6 @@ public class PipelineConfigController {
         return Result.success(true);
     }
 }
+
+
+

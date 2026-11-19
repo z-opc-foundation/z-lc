@@ -7,6 +7,9 @@ import com.zifang.z.lc.core.page.PageService;
 import com.zifang.z.lc.schema.model.PageSchema;
 import com.zifang.z.lc.schema.util.SchemaCodec;
 import com.zifang.z.lc.schema.util.WidgetSchemaAdapter;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -46,8 +49,10 @@ public class PageRuntimeController {
 
     @Operation(summary = "读取页面运行态 schema")
     @GetMapping("/{appCode}/{pageCode}")
-    public ResponseEntity<Result<Object>> get(@PathVariable("appCode") String appCode,
-                                              @PathVariable("pageCode") String pageCode) {
+    @BizApi(summary = "get", description = "", tags = { "z-lc" })
+    public ResponseEntity<Result<Object>> get(@PathVariable("appCode") @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String appCode,
+                                              @PathVariable("pageCode")
+                                              @BizParam(name = "pageCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String pageCode) {
         PageDTO page = pageService.getPage(DEFAULT_TENANT, appCode, pageCode);
         if (page == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -81,3 +86,6 @@ public class PageRuntimeController {
         }
     }
 }
+
+
+

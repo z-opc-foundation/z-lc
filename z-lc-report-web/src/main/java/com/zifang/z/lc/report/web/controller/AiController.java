@@ -4,9 +4,12 @@ import com.zifang.z.lc.report.ai.AiReportService;
 import com.zifang.z.lc.report.common.schema.DatasetSchema;
 import com.zifang.z.lc.report.common.schema.FieldDef;
 import com.zifang.z.lc.report.common.schema.ViewSchema;
-import com.zifang.z.lc.report.datasource.spi.DataSourceRegistry;
 import com.zifang.z.lc.report.dataset.DatasetExecutor;
+import com.zifang.z.lc.report.datasource.spi.DataSourceRegistry;
 import com.zifang.z.lc.report.web.store.SchemaStore;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -43,7 +46,8 @@ public class AiController {
 
     /** NL → 数据集定义 (生成并注册) */
     @PostMapping("/dataset")
-    public DatasetSchema toDataset(@RequestBody Map<String, String> body) {
+    @BizApi(summary = "NL → 数据集定义 (生成并注册)", tags = { "z-lc" })
+    public DatasetSchema toDataset(@RequestBody @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, String> body) {
         String requirement = require(body, "requirement");
         String sourceId = require(body, "sourceId");
         // 元数据: 源内全部表的列清单 (LLM 上下文)
@@ -61,7 +65,8 @@ public class AiController {
 
     /** NL → 视图页 schema (生成并注册) */
     @PostMapping("/view")
-    public ViewSchema toView(@RequestBody Map<String, String> body) {
+    @BizApi(summary = "NL → 视图页 schema (生成并注册)", tags = { "z-lc" })
+    public ViewSchema toView(@RequestBody @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, String> body) {
         String requirement = require(body, "requirement");
         String viewId = body.getOrDefault("viewId", "view-ai-" + System.currentTimeMillis());
         Map<String, List<FieldDef>> datasetFields = new LinkedHashMap<>();
@@ -86,3 +91,6 @@ public class AiController {
         return v;
     }
 }
+
+
+

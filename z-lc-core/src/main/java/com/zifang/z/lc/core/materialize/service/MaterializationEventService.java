@@ -1,10 +1,11 @@
 package com.zifang.z.lc.core.materialize.service;
 
-import com.zifang.util.json.JsonUtil;
 import com.zifang.util.core.lang.RandomUtil;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.core.event.entity.EventEntity;
 import com.zifang.z.lc.core.materialize.entity.MaterializationEntity;
 import com.zifang.z.lc.mapper.event.EventMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +32,7 @@ public class MaterializationEventService {
      *
      * @return event_id
      */
+    @BizMethod(name = "记录一次 MATERIALIZE 事件", module = "z-lc", description = "记录一次 MATERIALIZE 事件.", operation = BizMethod.Operation.ACTION)
     public String recordMaterializeEvent(MaterializationEntity m, int fileCount) {
         EventEntity e = new EventEntity();
         e.setTenantCode(m.getTenantCode());
@@ -57,3 +59,6 @@ public class MaterializationEventService {
         return e.getEventId();
     }
 }
+
+
+

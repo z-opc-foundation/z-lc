@@ -7,12 +7,13 @@ import com.zifang.z.lc.core.dict.entity.DictEntity;
 import com.zifang.z.lc.core.dict.entity.DictItemEntity;
 import com.zifang.z.lc.mapper.dict.DictItemMapper;
 import com.zifang.z.lc.mapper.dict.DictMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -29,6 +30,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     private DictItemMapper dictItemMapper;
 
     @Override
+    @BizMethod(name = "createDict", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public DictDTO createDict(DictDTO req) {
         DictEntity entity = new DictEntity();
         BeanUtils.copyProperties(req, entity);
@@ -68,6 +70,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "updateDict", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public DictDTO updateDict(DictDTO req) {
         DictEntity entity = dictMapper.selectById(req.getId());
         if (entity == null) {
@@ -88,6 +91,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "deleteDict", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteDict(Long id) {
         DictEntity entity = dictMapper.selectById(id);
         if (entity == null) {
@@ -108,6 +112,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "listDicts", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<DictDTO> listDicts(String tenantCode) {
         List<DictEntity> list = dictMapper.selectList(
                 new QueryWrapper<DictEntity>()
@@ -118,6 +123,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "getDictByCode", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public DictDTO getDictByCode(String tenantCode, String dictCode) {
         DictEntity entity = dictMapper.selectOne(
                 new QueryWrapper<DictEntity>()
@@ -128,6 +134,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "saveItems", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public List<DictItemDTO> saveItems(String tenantCode, String dictCode, List<DictItemDTO> items) {
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (DictItemDTO item : items) {
@@ -165,6 +172,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "addItem", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public DictItemDTO addItem(String tenantCode, String dictCode, DictItemDTO item) {
         assertItemCodeFree(tenantCode, dictCode, item.getItemCode(), null);
         DictItemEntity entity = new DictItemEntity();
@@ -181,6 +189,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "updateItem", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public DictItemDTO updateItem(String tenantCode, String dictCode, DictItemDTO item) {
         if (item.getId() == null) {
             throw new IllegalArgumentException("dict item id required for update");
@@ -202,6 +211,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "listItems", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<DictItemDTO> listItems(String tenantCode, String dictCode) {
         List<DictItemEntity> list = dictItemMapper.selectList(
                 new QueryWrapper<DictItemEntity>()
@@ -213,6 +223,7 @@ public class DictAdminServiceImpl implements DictAdminService {
     }
 
     @Override
+    @BizMethod(name = "deleteItem", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteItem(Long id) {
         DictItemEntity entity = dictItemMapper.selectById(id);
         if (entity == null) {
@@ -266,3 +277,6 @@ public class DictAdminServiceImpl implements DictAdminService {
         return dto;
     }
 }
+
+
+

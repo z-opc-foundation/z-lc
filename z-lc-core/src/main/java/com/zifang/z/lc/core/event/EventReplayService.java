@@ -5,6 +5,7 @@ import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.EventDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +35,7 @@ public class EventReplayService {
     /**
      * 回放所有事件, 返回该 app 下所有 entity 的当前态
      */
+    @BizMethod(name = "回放所有事件, 返回该 app 下所有 entity 的当前态", module = "z-lc", description = "回放所有事件, 返回该 app 下所有 entity 的当前态", operation = BizMethod.Operation.ACTION)
     public List<EntityDefDTO> replay(String tenantCode, String appCode) {
         List<EventDTO> events = eventService.listSince(tenantCode, appCode, null);
         log.debug("Replaying {} events for app={}", events.size(), appCode);
@@ -179,3 +181,6 @@ public class EventReplayService {
         return f;
     }
 }
+
+
+

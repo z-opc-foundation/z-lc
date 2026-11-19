@@ -3,11 +3,14 @@ package com.zifang.z.lc.web.controller;
 import com.zifang.util.core.meta.Result;
 import com.zifang.z.lc.core.permission.PermissionService;
 import com.zifang.z.lc.core.permission.entity.PermissionEntity;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
-import jakarta.annotation.Resource;
 import java.util.List;
 
 @Tag(name = "低代码-权限管理")
@@ -30,9 +33,12 @@ public class PermissionController {
 
     @Operation(summary = "权限列表")
     @GetMapping("/list")
-    public Result<List<PermissionEntity>> list(@RequestParam String appCode,
-                                               @RequestParam(required = false) String entityCode,
-                                               @RequestParam(required = false) String roleCode) {
+    @BizApi(summary = "list", description = "", tags = { "z-lc" })
+    public Result<List<PermissionEntity>> list(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                               @RequestParam(required = false)
+                                               @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+                                               @RequestParam(required = false)
+                                               @BizParam(name = "roleCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String roleCode) {
         if (roleCode != null && !roleCode.trim().isEmpty()) {
             return Result.success(permissionService.listByRole(DEFAULT_TENANT, appCode, roleCode));
         }
@@ -44,7 +50,8 @@ public class PermissionController {
 
     @Operation(summary = "授予权限")
     @PostMapping("/grant")
-    public Result<PermissionEntity> grant(@RequestBody PermissionEntity entity) {
+    @BizApi(summary = "grant", description = "", tags = { "z-lc" })
+    public Result<PermissionEntity> grant(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PermissionEntity entity) {
         if (entity != null) {
             entity.setTenantCode(DEFAULT_TENANT);
         }
@@ -53,7 +60,8 @@ public class PermissionController {
 
     @Operation(summary = "撤销权限")
     @PostMapping("/revoke")
-    public Result<Boolean> revoke(@RequestBody PermissionEntity entity) {
+    @BizApi(summary = "revoke", description = "", tags = { "z-lc" })
+    public Result<Boolean> revoke(@RequestBody @BizParam(name = "entity", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PermissionEntity entity) {
         Long id = entity == null ? null : entity.getId();
         int removed = permissionService.revoke(DEFAULT_TENANT, id);
         if (removed == 0) {
@@ -67,11 +75,16 @@ public class PermissionController {
 
     @Operation(summary = "检查权限")
     @GetMapping("/check")
-    public Result<Boolean> check(@RequestParam String appCode,
-                                @RequestParam(required = false) String entityCode,
-                                @RequestParam String roleCode,
-                                @RequestParam String permission) {
+    @BizApi(summary = "check", description = "", tags = { "z-lc" })
+    public Result<Boolean> check(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                @RequestParam(required = false)
+                                @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+                                @RequestParam @BizParam(name = "roleCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String roleCode,
+                                @RequestParam @BizParam(name = "permission", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String permission) {
         return Result.success(permissionService.hasPermission(
                 DEFAULT_TENANT, appCode, entityCode, roleCode, permission));
     }
 }
+
+
+

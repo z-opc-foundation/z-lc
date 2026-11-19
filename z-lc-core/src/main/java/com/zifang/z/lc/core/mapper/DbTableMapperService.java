@@ -4,13 +4,13 @@ import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
 import com.zifang.z.lc.core.datasource.LcDataSourceResolver;
 import com.zifang.z.lc.core.schema.SchemaAdminBizService;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import javax.sql.DataSource;
 
 /**
  * DB 表逆向映射服务: 扫描已有物理表 → EntityDefDTO 模型定义
@@ -197,6 +198,7 @@ public class DbTableMapperService {
     /**
      * 扫描数据库下所有表（支持前缀过滤）。等价 {@code scanTables(null, prefix, schema)}（主库）。
      */
+    @BizMethod(name = "扫描数据库下所有表（支持前缀过滤）。等价 scanTables(null, prefix, schema)（主库）", module = "z-lc", description = "扫描数据库下所有表（支持前缀过滤）。等价 scanTables(null, prefix, schema)（主库）。", operation = BizMethod.Operation.ACTION)
     public List<EntityDefDTO> scanTables(String tableNamePrefix, String schema) {
         return scanTables(null, tableNamePrefix, schema);
     }
@@ -207,6 +209,7 @@ public class DbTableMapperService {
      * @throws IllegalStateException    目录未装配
      * @throws IllegalArgumentException 目录里不存在该 id
      */
+    @BizMethod(name = "按数据源目录 id 扫描（V1 数据源管理域）。dataSourceId=null = 主库（历史行为）", module = "z-lc", description = "按数据源目录 id 扫描（V1 数据源管理域）。dataSourceId=null = 主库（历史行为）。", operation = BizMethod.Operation.ACTION)
     public List<EntityDefDTO> scanTables(String dataSourceId, String tableNamePrefix, String schema) {
         List<EntityDefDTO> result = new ArrayList<>();
         try (Connection conn = openConnection(dataSourceId)) {
@@ -239,6 +242,7 @@ public class DbTableMapperService {
     /**
      * 映射单张表为 EntityDefDTO（主库）。等价 {@code mapTable(null, tableName, schema)}。
      */
+    @BizMethod(name = "映射单张表为 EntityDefDTO（主库）。等价 mapTable(null, tableName, schema)", module = "z-lc", description = "映射单张表为 EntityDefDTO（主库）。等价 mapTable(null, tableName, schema)。", operation = BizMethod.Operation.ACTION)
     public EntityDefDTO mapTable(String tableName, String schema) {
         return mapTable((String) null, tableName, schema);
     }
@@ -249,6 +253,7 @@ public class DbTableMapperService {
      * @throws IllegalStateException    目录未装配
      * @throws IllegalArgumentException 目录里不存在该 id
      */
+    @BizMethod(name = "按数据源目录 id 映射单张表（V1 数据源管理域）。dataSourceId=null = 主库（历史行为）", module = "z-lc", description = "按数据源目录 id 映射单张表（V1 数据源管理域）。dataSourceId=null = 主库（历史行为）。", operation = BizMethod.Operation.ACTION)
     public EntityDefDTO mapTable(String dataSourceId, String tableName, String schema) {
         try (Connection conn = openConnection(dataSourceId)) {
             return mapTable(conn.getMetaData(), tableName, null);
@@ -347,3 +352,6 @@ public class DbTableMapperService {
         return entity;
     }
 }
+
+
+

@@ -14,6 +14,9 @@ import com.zifang.z.lc.report.common.schema.WidgetSpec;
 import com.zifang.z.lc.report.datasource.impl.MemoryDataSource;
 import com.zifang.z.lc.report.datasource.spi.DataSourceRegistry;
 import com.zifang.z.lc.report.web.store.SchemaStore;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -53,6 +56,7 @@ public class TemplateController {
 
     /** 模板清单 (静态声明, 前端模板画廊用) */
     @GetMapping
+    @BizApi(summary = "模板清单 (静态声明, 前端模板画廊用)", tags = { "z-lc" })
     public List<Map<String, Object>> list() {
         List<Map<String, Object>> out = new ArrayList<>();
         Map<String, Object> sales = new LinkedHashMap<>();
@@ -66,7 +70,8 @@ public class TemplateController {
 
     /** 应用模板: 幂等装配 demo 源/数据集/视图, 并创建一本挂好节点的报表书 */
     @PostMapping("/{tplId}/apply")
-    public Map<String, Object> apply(@PathVariable("tplId") String tplId) {
+    @BizApi(summary = "应用模板: 幂等装配 demo 源/数据集/视图, 并创建一本挂好节点的报表书", tags = { "z-lc" })
+    public Map<String, Object> apply(@PathVariable("tplId") @BizParam(name = "tplId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String tplId) {
         if (!"sales-overview".equals(tplId)) {
             throw new IllegalArgumentException("unknown template: " + tplId);
         }
@@ -194,3 +199,6 @@ public class TemplateController {
         return l;
     }
 }
+
+
+

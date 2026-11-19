@@ -13,8 +13,12 @@ import com.zifang.z.lc.report.common.schema.QueryResult;
 import com.zifang.z.lc.report.common.schema.WidgetSpec;
 import com.zifang.z.lc.report.dataset.DatasetExecutor;
 import com.zifang.z.lc.report.render.EChartsRenderService;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.ObjectProvider;
@@ -28,7 +32,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -70,13 +73,15 @@ public class PageController {
 
     @Operation(summary = "创建页面")
     @PostMapping("/create")
-    public Result<PageDTO> create(@RequestBody PageCreateReq request) {
+    @BizApi(summary = "create", description = "", tags = { "z-lc" })
+    public Result<PageDTO> create(@RequestBody @BizParam(name = "request", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PageCreateReq request) {
         return Result.success(pageService.createPage(request));
     }
 
     @Operation(summary = "更新页面 (schema/pageName)")
     @PostMapping("/update")
-    public Result<?> update(@RequestBody PageUpdateReq request) {
+    @BizApi(summary = "update", description = "", tags = { "z-lc" })
+    public Result<?> update(@RequestBody @BizParam(name = "request", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) PageUpdateReq request) {
         PageDTO dto = pageService.updatePage(request);
         if (dto == null) {
             return Result.fail("页面不存在: id=" + request.getId()).code(404);
@@ -86,21 +91,25 @@ public class PageController {
 
     @Operation(summary = "删除页面 (逻辑删)")
     @PostMapping("/delete")
-    public Result<Boolean> delete(@RequestBody Map<String, Long> body) {
+    @BizApi(summary = "delete", description = "", tags = { "z-lc" })
+    public Result<Boolean> delete(@RequestBody @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, Long> body) {
         pageService.deletePage(body.get("id"));
         return Result.success(true);
     }
 
     @Operation(summary = "页面列表 (按应用)")
     @GetMapping("/list")
-    public Result<List<PageDTO>> list(@RequestParam String appCode) {
+    @BizApi(summary = "list", description = "", tags = { "z-lc" })
+    public Result<List<PageDTO>> list(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode) {
         return Result.success(pageService.listPages(DEFAULT_TENANT, appCode));
     }
 
     @Operation(summary = "页面详情")
     @GetMapping("/{appCode}/{pageCode}")
-    public Result<PageDTO> get(@PathVariable("appCode") String appCode,
-                               @PathVariable("pageCode") String pageCode) {
+    @BizApi(summary = "get", description = "", tags = { "z-lc" })
+    public Result<PageDTO> get(@PathVariable("appCode") @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String appCode,
+                               @PathVariable("pageCode")
+                               @BizParam(name = "pageCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String pageCode) {
         return Result.success(pageService.getPage(DEFAULT_TENANT, appCode, pageCode));
     }
 
@@ -110,8 +119,10 @@ public class PageController {
      */
     @Operation(summary = "页面渲染 (组件树 → 渲染产物)")
     @GetMapping("/{appCode}/{pageCode}/render")
-    public ResponseEntity<Result<Object>> render(@PathVariable("appCode") String appCode,
-                                                              @PathVariable("pageCode") String pageCode) {
+    @BizApi(summary = "页面渲染: schema → {layout, options, forms}", description = "页面渲染: schema → {layout, options, forms}。 options 供 UniversalRenderer 直接消费；forms 供前端画实体表单。", tags = { "z-lc" })
+    public ResponseEntity<Result<Object>> render(@PathVariable("appCode") @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String appCode,
+                                                              @PathVariable("pageCode")
+                                                              @BizParam(name = "pageCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String pageCode) {
         PageDTO page = pageService.getPage(DEFAULT_TENANT, appCode, pageCode);
         if (page == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
@@ -222,3 +233,6 @@ public class PageController {
         return out;
     }
 }
+
+
+

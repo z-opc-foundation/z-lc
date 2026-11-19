@@ -1,9 +1,12 @@
 package com.zifang.z.lc.report.web.controller;
 
-import com.zifang.z.lc.report.web.store.SchemaStore;
 import com.zifang.z.lc.report.common.schema.ViewSchema;
-import org.springframework.web.bind.annotation.PathVariable;
+import com.zifang.z.lc.report.web.store.SchemaStore;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,13 +29,18 @@ public class ViewController {
     }
 
     @PostMapping
-    public Map<String, Object> register(@RequestBody ViewSchema view) {
+    @BizApi(summary = "register", description = "", tags = { "z-lc" })
+    public Map<String, Object> register(@RequestBody @BizParam(name = "view", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) ViewSchema view) {
         store.putView(view);
         return java.util.Collections.singletonMap("ok", true);
     }
 
     @GetMapping("/{id}")
-    public ViewSchema get(@PathVariable("id") String id) {
+    @BizApi(summary = "get", description = "", tags = { "z-lc" })
+    public ViewSchema get(@PathVariable("id") @BizParam(name = "id", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String id) {
         return store.requireView(id);
     }
 }
+
+
+

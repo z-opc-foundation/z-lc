@@ -6,12 +6,13 @@ import com.zifang.z.lc.common.dto.RelationDTO;
 import com.zifang.z.lc.common.dto.RelationUpdateReq;
 import com.zifang.z.lc.core.relation.entity.RelationEntity;
 import com.zifang.z.lc.mapper.relation.RelationMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,6 +26,7 @@ public class RelationServiceImpl implements RelationService {
     private RelationMapper relationMapper;
 
     @Override
+    @BizMethod(name = "createRelation", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public RelationDTO createRelation(RelationCreateReq req) {
         RelationEntity entity = new RelationEntity();
         BeanUtils.copyProperties(req, entity);
@@ -63,6 +65,7 @@ public class RelationServiceImpl implements RelationService {
     }
 
     @Override
+    @BizMethod(name = "updateRelation", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public RelationDTO updateRelation(RelationUpdateReq req) {
         RelationEntity entity = relationMapper.selectById(req.getId());
         if (entity == null) {
@@ -91,6 +94,7 @@ public class RelationServiceImpl implements RelationService {
     }
 
     @Override
+    @BizMethod(name = "deleteRelation", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteRelation(Long id) {
         RelationEntity entity = relationMapper.selectById(id);
         if (entity == null) {
@@ -103,6 +107,7 @@ public class RelationServiceImpl implements RelationService {
     }
 
     @Override
+    @BizMethod(name = "listRelationsByEntity", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<RelationDTO> listRelationsByEntity(String tenantCode, String appCode, String entityCode) {
         List<RelationEntity> list = relationMapper.selectList(
                 new QueryWrapper<RelationEntity>()
@@ -115,6 +120,7 @@ public class RelationServiceImpl implements RelationService {
     }
 
     @Override
+    @BizMethod(name = "listRelationsByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<RelationDTO> listRelationsByApp(String tenantCode, String appCode) {
         List<RelationEntity> list = relationMapper.selectList(
                 new QueryWrapper<RelationEntity>()
@@ -126,6 +132,7 @@ public class RelationServiceImpl implements RelationService {
     }
 
     @Override
+    @BizMethod(name = "getRelation", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public RelationDTO getRelation(Long id) {
         RelationEntity entity = relationMapper.selectById(id);
         return entity == null ? null : toDTO(entity);
@@ -137,3 +144,6 @@ public class RelationServiceImpl implements RelationService {
         return dto;
     }
 }
+
+
+

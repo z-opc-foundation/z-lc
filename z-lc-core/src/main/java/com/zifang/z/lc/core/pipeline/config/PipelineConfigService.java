@@ -3,11 +3,12 @@ package com.zifang.z.lc.core.pipeline.config;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.zifang.z.lc.core.pipeline.config.entity.PipelineConfigEntity;
 import com.zifang.z.lc.mapper.pipeline.PipelineConfigMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 
@@ -23,6 +24,7 @@ public class PipelineConfigService {
     @Resource
     private PipelineConfigMapper pipelineConfigMapper;
 
+    @BizMethod(name = "listByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PipelineConfigEntity> listByApp(String appCode) {
         return pipelineConfigMapper.selectList(
                 new QueryWrapper<PipelineConfigEntity>()
@@ -31,6 +33,7 @@ public class PipelineConfigService {
                         .orderByDesc("id"));
     }
 
+    @BizMethod(name = "listByEntity", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PipelineConfigEntity> listByEntity(String appCode, String entityCode) {
         return pipelineConfigMapper.selectList(
                 new QueryWrapper<PipelineConfigEntity>()
@@ -40,6 +43,7 @@ public class PipelineConfigService {
                         .orderByDesc("id"));
     }
 
+    @BizMethod(name = "listByEvent", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PipelineConfigEntity> listByEvent(String appCode, String entityCode, String triggerEvent) {
         return pipelineConfigMapper.selectList(
                 new QueryWrapper<PipelineConfigEntity>()
@@ -50,6 +54,7 @@ public class PipelineConfigService {
                         .eq("deleted", 0));
     }
 
+    @BizMethod(name = "create", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public PipelineConfigEntity create(PipelineConfigEntity entity) {
         validateForWrite(entity, null);
         entity.setDeleted(0);
@@ -60,6 +65,7 @@ public class PipelineConfigService {
         return entity;
     }
 
+    @BizMethod(name = "update", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public PipelineConfigEntity update(PipelineConfigEntity entity) {
         validateForWrite(entity, entity.getId());
         entity.setUpdateTime(new Date());
@@ -112,6 +118,7 @@ public class PipelineConfigService {
         return v == null || v.trim().isEmpty();
     }
 
+    @BizMethod(name = "delete", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int delete(Long id) {
         PipelineConfigEntity entity = pipelineConfigMapper.selectById(requireId(id));
         if (entity == null) {
@@ -123,6 +130,7 @@ public class PipelineConfigService {
         return pipelineConfigMapper.updateById(entity);
     }
 
+    @BizMethod(name = "toggleEnabled", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public int toggleEnabled(Long id, boolean enabled) {
         PipelineConfigEntity entity = pipelineConfigMapper.selectById(requireId(id));
         if (entity == null) {
@@ -157,3 +165,6 @@ public class PipelineConfigService {
         return id;
     }
 }
+
+
+

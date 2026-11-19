@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizModel;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -11,6 +13,7 @@ import java.util.Date;
 /**
  * z_lc_materialization 表实体 (FEATURE006 T1: 代码物化).
  */
+@BizModel(name = "z_lc_materialization 表实体 (FEATURE006 T1: 代码物化)", module = "z-lc", description = "z_lc_materialization 表实体 (FEATURE006 T1: 代码物化).")
 @TableName("z_lc_materialization")
 public class MaterializationEntity implements Serializable {
 
@@ -23,43 +26,57 @@ public class MaterializationEntity implements Serializable {
     public static final String SOURCE_SYSTEM = "SYSTEM";
     private static final long serialVersionUID = 1L;
     @TableId(type = IdType.AUTO)
+    @BizField(name = "id", type = BizField.FieldType.INTEGER)
     private Long id;
 
     @TableField("tenant_code")
+    @BizField(name = "tenantCode", type = BizField.FieldType.STRING)
     private String tenantCode;
 
     @TableField("app_code")
+    @BizField(name = "appCode", type = BizField.FieldType.STRING)
     private String appCode;
 
     @TableField("materialization_path")
+    @BizField(name = "materializationPath", type = BizField.FieldType.STRING)
     private String materializationPath;
 
     @TableField("entity_codes")
+    @BizField(name = "entityCodes", type = BizField.FieldType.STRING)
     private String entityCodes;
 
     @TableField("export_version")
+    @BizField(name = "exportVersion", type = BizField.FieldType.STRING)
     private String exportVersion;
 
+    @BizField(name = "status", type = BizField.FieldType.STRING)
     private String status;
 
     @TableField("file_count")
+    @BizField(name = "fileCount", type = BizField.FieldType.INTEGER)
     private Integer fileCount;
 
+    @BizField(name = "description", type = BizField.FieldType.STRING)
     private String description;
 
     @TableField("error_message")
+    @BizField(name = "errorMessage", type = BizField.FieldType.STRING)
     private String errorMessage;
 
     @TableField("trigger_source")
+    @BizField(name = "triggerSource", type = BizField.FieldType.STRING)
     private String triggerSource;
 
     @TableField("event_id")
+    @BizField(name = "eventId", type = BizField.FieldType.STRING)
     private String eventId;
 
     @TableField("create_time")
+    @BizField(name = "createTime", type = BizField.FieldType.DATETIME)
     private Date createTime;
 
     @TableField("update_time")
+    @BizField(name = "updateTime", type = BizField.FieldType.DATETIME)
     private Date updateTime;
 
     public Long getId() {
@@ -174,3 +191,6 @@ public class MaterializationEntity implements Serializable {
         this.updateTime = v;
     }
 }
+
+
+

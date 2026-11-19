@@ -4,6 +4,9 @@ import com.zifang.z.lc.report.common.schema.DatasetSchema;
 import com.zifang.z.lc.report.common.schema.QueryResult;
 import com.zifang.z.lc.report.dataset.DatasetExecutor;
 import com.zifang.z.lc.report.web.store.SchemaStore;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,14 +31,19 @@ public class DatasetController {
     }
 
     @PostMapping
-    public Map<String, Object> register(@RequestBody DatasetSchema schema) {
+    @BizApi(summary = "register", description = "", tags = { "z-lc" })
+    public Map<String, Object> register(@RequestBody @BizParam(name = "schema", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) DatasetSchema schema) {
         store.putDataset(schema);
         return java.util.Collections.singletonMap("ok", true);
     }
 
     @PostMapping("/{id}/preview")
-    public QueryResult preview(@PathVariable("id") String id) {
+    @BizApi(summary = "preview", description = "", tags = { "z-lc" })
+    public QueryResult preview(@PathVariable("id") @BizParam(name = "id", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String id) {
         DatasetSchema schema = store.requireDataset(id);
         return executor.execute(schema);
     }
 }
+
+
+

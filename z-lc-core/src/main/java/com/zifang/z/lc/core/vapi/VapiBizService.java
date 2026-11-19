@@ -6,12 +6,13 @@ import com.zifang.z.lc.common.dto.VapiDTO;
 import com.zifang.z.lc.common.dto.VapiUpdateReq;
 import com.zifang.z.lc.core.vapi.entity.VapiEntity;
 import com.zifang.z.lc.mapper.vapi.VapiMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -40,6 +41,7 @@ public class VapiBizService implements VapiService {
     private VapiMapper vapiMapper;
 
     @Override
+    @BizMethod(name = "createVapi", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public VapiDTO createVapi(VapiCreateReq req) {
         String appCode = required(req.getAppCode(), "appCode required");
         String method = normalizeMethod(req.getMethod());
@@ -77,6 +79,7 @@ public class VapiBizService implements VapiService {
     }
 
     @Override
+    @BizMethod(name = "updateVapi", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public VapiDTO updateVapi(VapiUpdateReq req) {
         if (req.getId() == null) {
             throw new IllegalArgumentException("id required");
@@ -115,6 +118,7 @@ public class VapiBizService implements VapiService {
     }
 
     @Override
+    @BizMethod(name = "deleteVapi", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public void deleteVapi(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("id required");
@@ -129,6 +133,7 @@ public class VapiBizService implements VapiService {
     }
 
     @Override
+    @BizMethod(name = "getVapi", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public VapiDTO getVapi(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("id required");
@@ -141,6 +146,7 @@ public class VapiBizService implements VapiService {
     }
 
     @Override
+    @BizMethod(name = "listByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<VapiDTO> listByApp(String appCode) {
         return vapiMapper.selectList(new QueryWrapper<VapiEntity>()
                         .eq("tenant_code", DEFAULT_TENANT)
@@ -151,6 +157,7 @@ public class VapiBizService implements VapiService {
     }
 
     @Override
+    @BizMethod(name = "resolve", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public VapiDTO resolve(String appCode, String method, String path) {
         if (appCode == null || method == null || path == null) {
             return null;
@@ -219,3 +226,6 @@ public class VapiBizService implements VapiService {
         return dto;
     }
 }
+
+
+

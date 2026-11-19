@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizModel;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -11,40 +13,52 @@ import java.util.Date;
 /**
  * z_lc_dict_item 表实体 (F035 T6: Dict Management)
  */
+@BizModel(name = "z_lc_dict_item 表实体 (F035 T6: Dict Management)", module = "z-lc", description = "z_lc_dict_item 表实体 (F035 T6: Dict Management)")
 @TableName("z_lc_dict_item")
 public class DictItemEntity implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
     @TableId(type = IdType.AUTO)
+    @BizField(name = "id", type = BizField.FieldType.INTEGER)
     private Long id;
 
     @TableField("tenant_code")
+    @BizField(name = "tenantCode", type = BizField.FieldType.STRING)
     private String tenantCode;
 
     @TableField("dict_code")
+    @BizField(name = "dictCode", type = BizField.FieldType.STRING)
     private String dictCode;
 
     @TableField("item_code")
+    @BizField(name = "itemCode", type = BizField.FieldType.STRING)
     private String itemCode;
 
     @TableField("item_label")
+    @BizField(name = "itemLabel", type = BizField.FieldType.STRING)
     private String itemLabel;
 
     @TableField("item_value")
+    @BizField(name = "itemValue", type = BizField.FieldType.STRING)
     private String itemValue;
 
     @TableField("sort_order")
+    @BizField(name = "sortOrder", type = BizField.FieldType.INTEGER)
     private Integer sortOrder;
 
+    @BizField(name = "description", type = BizField.FieldType.STRING)
     private String description;
 
+    @BizField(name = "deleted", type = BizField.FieldType.INTEGER)
     private Integer deleted;
 
     @TableField("create_time")
+    @BizField(name = "createTime", type = BizField.FieldType.DATETIME)
     private Date createTime;
 
     @TableField("update_time")
+    @BizField(name = "updateTime", type = BizField.FieldType.DATETIME)
     private Date updateTime;
 
     public Long getId() {
@@ -135,3 +149,6 @@ public class DictItemEntity implements Serializable {
         this.updateTime = updateTime;
     }
 }
+
+
+

@@ -9,6 +9,7 @@ import com.zifang.z.lc.core.executor.RuntimeCrudExecutor;
 import com.zifang.z.lc.core.pipeline.Pipeline;
 import com.zifang.z.lc.core.undo.UndoService;
 import com.zifang.z.lc.core.undo.entity.DataChangeEntity;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,7 @@ public class RuntimeImportService {
     private DictAdminService dictAdminService;
 
     /** 只校验，不写任何东西。 */
+    @BizMethod(name = "只校验，不写任何东西", module = "z-lc", description = "只校验，不写任何东西。", operation = BizMethod.Operation.ACTION)
     public ImportDto.Result preview(EntityDefDTO entity, ImportDto.Request request) {
         ImportDto.Result result = new ImportDto.Result();
         List<ImportDto.RowError> errors = new ArrayList<ImportDto.RowError>();
@@ -87,6 +89,7 @@ public class RuntimeImportService {
     /**
      * 落库。任何一行校验不过就整批不写；写途中出错则补偿回滚本批已插入的行。
      */
+    @BizMethod(name = "落库。任何一行校验不过就整批不写；写途中出错则补偿回滚本批已插入的行", module = "z-lc", description = "落库。任何一行校验不过就整批不写；写途中出错则补偿回滚本批已插入的行。", operation = BizMethod.Operation.ACTION)
     public ImportDto.Result commit(EntityDefDTO entity, ImportDto.Request request, String actor) {
         ImportDto.Result result = new ImportDto.Result();
         List<ImportDto.RowError> errors = new ArrayList<ImportDto.RowError>();
@@ -275,3 +278,6 @@ public class RuntimeImportService {
         return new ArrayList<ImportDto.RowError>(errors.subList(0, ImportDto.MAX_ERRORS_RETURNED));
     }
 }
+
+
+

@@ -4,6 +4,9 @@ import com.zifang.util.core.meta.Result;
 import com.zifang.z.lc.design.collector.LowCodeModelServiceCollector;
 import com.zifang.z.lc.design.dto.ServiceListResponse;
 import com.zifang.z.lc.design.model.PageTemplate;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +47,7 @@ public class PageTemplateController {
      */
     @Operation(summary = "健康检查: 列出所有已注册的低代码服务")
     @GetMapping("/services")
+    @BizApi(summary = "列出当前已注册到 LowCodeModelServiceCollector 的全部低代码服务", description = "列出当前已注册到 LowCodeModelServiceCollector 的全部低代码服务. 每个服务会附带其声明的 @InterfaceMapping 注解的 group/code/name 三元组. 主要用于设计态自检与运行时探查.", tags = { "z-lc" })
     public Result<ServiceListResponse> listServices() {
         java.util.List<ServiceListResponse.ServiceEntry> list = new java.util.ArrayList<>();
         for (Object bean : collector.all()) {
@@ -77,8 +81,9 @@ public class PageTemplateController {
      */
     @Operation(summary = "按 (group, code) 取一个已注册的低代码服务 (返回 bean 标识, 不返回对象避免泄漏)")
     @GetMapping("/services/pick")
-    public Result<Map<String, String>> pickService(@RequestParam String group,
-                                                   @RequestParam String code) {
+    @BizApi(summary = "按 (group, code) 拾取一个已注册的低代码服务", description = "按 (group, code) 拾取一个已注册的低代码服务. 出于避免内部对象泄漏, 仅返回 bean 的类名与命中状态, 不直接返回 bean 本身.", tags = { "z-lc" })
+    public Result<Map<String, String>> pickService(@RequestParam @BizParam(name = "group", type = BizField.FieldType.STRING, description = "服务的 group 标识 (来自 {@code @InterfaceMapping.group()})", position = BizParam.Position.QUERY) String group,
+                                                   @RequestParam @BizParam(name = "code", type = BizField.FieldType.STRING, description = "服务的 code 标识 (来自 {@code @InterfaceMapping.code()})", position = BizParam.Position.QUERY) String code) {
         Object bean = collector.pickByGroupAndCode(group, code);
         Map<String, String> out = new HashMap<>();
         if (bean == null) {
@@ -105,8 +110,9 @@ public class PageTemplateController {
      */
     @Operation(summary = "演示: 返回一个 PageTemplate 空模板 (前端可基于此渲染设计器)")
     @PostMapping("/template/sample")
-    public Result<PageTemplate> sampleTemplate(@RequestParam String appCode,
-                                               @RequestParam String modelCode) {
+    @BizApi(summary = "演示接口: 基于 appCode 与 modelCode 构造一个空白的 PageTemplate 模板", description = "演示接口: 基于 appCode 与 modelCode 构造一个空白的 PageTemplate 模板. 前端可基于此模板渲染设计器画布, 页面类型默认为 form, 状态默认为 0, 视图 JSON 为空组件数组.", tags = { "z-lc" })
+    public Result<PageTemplate> sampleTemplate(@RequestParam @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码", position = BizParam.Position.QUERY) String appCode,
+                                               @RequestParam @BizParam(name = "modelCode", type = BizField.FieldType.STRING, description = "模型编码", position = BizParam.Position.QUERY) String modelCode) {
         PageTemplate t = new PageTemplate();
         t.setAppCode(appCode);
         t.setModelCode(modelCode);
@@ -117,3 +123,6 @@ public class PageTemplateController {
         return Result.success(t);
     }
 }
+
+
+

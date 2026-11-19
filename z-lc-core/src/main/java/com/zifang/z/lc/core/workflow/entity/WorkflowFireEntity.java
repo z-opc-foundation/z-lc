@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizModel;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -17,6 +19,7 @@ import java.util.Date;
  * {@code GET /api/lc/workflow-binding/fires} 能把"发起了 / 没发起、为什么"直接回读出来
  * （与 #43/#47 的"provision 之后回读库作证"同一口径）。
  */
+@BizModel(name = "z_lc_workflow_fire 表实体: 每一次「记录写成功后去发起流程」的实际结局", module = "z-lc", description = "z_lc_workflow_fire 表实体: 每一次「记录写成功后去发起流程」的实际结局. 为什么要有这张表（缺陷 #61）：绑定行只能说明\"用户希望发生什么\"，说明不了\"发生过什么\"。 发起流程是一次用户看不见的对外调用 —— 只往日志里写一句的话，\"已保存绑定\"就会重新变成 这一族最常见的那个谎：配置在、界面在、什么也没发生。有了这张表， GET /api/lc/workflow-binding/fires 能把\"发起了 / 没发起、为什么\"直接回读出来 （与 #43/#47 的\"provision 之后回读库作证\"同一口径）。")
 @TableName("z_lc_workflow_fire")
 public class WorkflowFireEntity implements Serializable {
 
@@ -28,47 +31,61 @@ public class WorkflowFireEntity implements Serializable {
     private static final long serialVersionUID = 1L;
 
     @TableId(type = IdType.AUTO)
+    @BizField(name = "id", type = BizField.FieldType.INTEGER)
     private Long id;
 
     @TableField("tenant_code")
+    @BizField(name = "tenantCode", type = BizField.FieldType.STRING)
     private String tenantCode;
 
     @TableField("app_code")
+    @BizField(name = "appCode", type = BizField.FieldType.STRING)
     private String appCode;
 
     @TableField("entity_code")
+    @BizField(name = "entityCode", type = BizField.FieldType.STRING)
     private String entityCode;
 
     /** 触发这次发起的那条业务记录的主键. */
     @TableField("record_id")
+    @BizField(name = "触发这次发起的那条业务记录的主键", type = BizField.FieldType.INTEGER)
     private Long recordId;
 
     /** 是哪条绑定发的（绑定可能已被删掉，所以只是指针不是外键）. */
     @TableField("binding_id")
+    @BizField(name = "是哪条绑定发的（绑定可能已被删掉，所以只是指针不是外键）", type = BizField.FieldType.INTEGER)
     private Long bindingId;
 
     @TableField("trigger_event")
+    @BizField(name = "triggerEvent", type = BizField.FieldType.STRING)
     private String triggerEvent;
 
     @TableField("process_definition_key")
+    @BizField(name = "processDefinitionKey", type = BizField.FieldType.STRING)
     private String processDefinitionKey;
 
     /** STARTED / FAILED. */
+    @BizField(name = "STARTED / FAILED", type = BizField.FieldType.STRING)
     private String status;
 
     /** z-camuda 的流程实例 id；FAILED 时为 null. */
     @TableField("instance_id")
+    @BizField(name = "z-camuda 的流程实例 id；FAILED 时为 null", type = BizField.FieldType.STRING)
     private String instanceId;
 
     /** 失败原因（http 状态/超时/引擎的拒绝消息）；STARTED 时为 null. */
+    @BizField(name = "失败原因（http 状态/超时/引擎的拒绝消息）；STARTED 时为 null", type = BizField.FieldType.STRING)
     private String detail;
 
     @TableField("create_time")
+    @BizField(name = "createTime", type = BizField.FieldType.DATETIME)
     private Date createTime;
 
     @TableField("update_time")
+    @BizField(name = "updateTime", type = BizField.FieldType.DATETIME)
     private Date updateTime;
 
+    @BizField(name = "deleted", type = BizField.FieldType.INTEGER)
     private Integer deleted;
 
     public Long getId() {
@@ -183,3 +200,6 @@ public class WorkflowFireEntity implements Serializable {
         this.deleted = deleted;
     }
 }
+
+
+

@@ -10,13 +10,14 @@ import com.zifang.z.lc.core.executor.entity.FieldEntity;
 import com.zifang.z.lc.mapper.executor.EntityMapper;
 import com.zifang.z.lc.mapper.executor.FieldMapper;
 import com.zifang.z.lc.mapper.executor.LcAppEntityMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -45,6 +46,7 @@ public class AppAdminBizService implements AppAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "createApp", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public AppDTO createApp(AppCreateReq req) {
         if (req.getAppCode() == null || req.getAppCode().isEmpty()) {
             throw new IllegalArgumentException("appCode is required");
@@ -86,6 +88,7 @@ public class AppAdminBizService implements AppAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "updateApp", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public AppDTO updateApp(AppUpdateReq req) {
         if (req.getId() == null) {
             throw new IllegalArgumentException("id is required");
@@ -115,6 +118,7 @@ public class AppAdminBizService implements AppAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "deleteApp", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteApp(Long id) {
         AppEntity entity = lcAppEntityMapper.selectById(id);
         if (entity == null) {
@@ -132,6 +136,7 @@ public class AppAdminBizService implements AppAdminService {
     }
 
     @Override
+    @BizMethod(name = "listApps", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public PageResult<AppDTO> listApps(String tenantCode, int page, int size) {
         if (page < 1) {
             page = 1;
@@ -161,6 +166,7 @@ public class AppAdminBizService implements AppAdminService {
     }
 
     @Override
+    @BizMethod(name = "getAppByCode", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public AppDTO getAppByCode(String tenantCode, String appCode) {
         AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
@@ -172,6 +178,7 @@ public class AppAdminBizService implements AppAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "publishApp", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public AppDTO publishApp(String tenantCode, String appCode) {
         AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
@@ -197,6 +204,7 @@ public class AppAdminBizService implements AppAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "archiveApp", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public AppDTO archiveApp(String tenantCode, String appCode) {
         AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
@@ -272,3 +280,6 @@ public class AppAdminBizService implements AppAdminService {
         }
     }
 }
+
+
+

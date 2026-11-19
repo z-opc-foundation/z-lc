@@ -4,6 +4,7 @@ import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.core.executor.RuntimeCrudExecutor;
 import com.zifang.z.lc.core.undo.UndoService;
 import com.zifang.z.lc.core.undo.entity.DataChangeEntity;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,7 @@ public class RuntimeBatchDeleteService {
     @Autowired
     private UndoService undoService;
 
+    @BizMethod(name = "deleteBatch", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public BatchDeleteDto.Result deleteBatch(EntityDefDTO entity, BatchDeleteDto.Request request, String actor) {
         BatchDeleteDto.Result result = new BatchDeleteDto.Result();
         List<Long> ids = dedupe(request.getIds());
@@ -158,3 +160,6 @@ public class RuntimeBatchDeleteService {
         return new ArrayList<BatchDeleteDto.RowError>(errors.subList(0, BatchDeleteDto.MAX_ERRORS_RETURNED));
     }
 }
+
+
+

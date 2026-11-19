@@ -4,6 +4,9 @@ import com.zifang.z.lc.report.book.BookService;
 import com.zifang.z.lc.report.book.PublicationSnapshot;
 import com.zifang.z.lc.report.common.schema.BookNodeDef;
 import com.zifang.z.lc.report.common.schema.BookNodeType;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -68,30 +71,39 @@ public class BookController {
     }
 
     @PostMapping
-    public Map<String, Object> createBook(@RequestBody Map<String, String> body) {
+    @BizApi(summary = "createBook", description = "", tags = { "z-lc" })
+    public Map<String, Object> createBook(@RequestBody @BizParam(name = "body", type = BizField.FieldType.JSON, description = "", position = BizParam.Position.BODY) Map<String, String> body) {
         String bookId = bookService.createBook(body.get("title"));
         return java.util.Collections.<String, Object>singletonMap("bookId", bookId);
     }
 
     @PostMapping("/{bookId}/node")
-    public Map<String, Object> addNode(@PathVariable("bookId") String bookId, @RequestBody AddNodeRequest req) {
+    @BizApi(summary = "addNode", description = "", tags = { "z-lc" })
+    public Map<String, Object> addNode(@PathVariable("bookId") @BizParam(name = "bookId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String bookId, @RequestBody @BizParam(name = "req", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) AddNodeRequest req) {
         String nodeId = bookService.addNode(bookId, req.getParentId(), req.getNodeType(), req.getTitle(), req.getViewId());
         return java.util.Collections.<String, Object>singletonMap("nodeId", nodeId);
     }
 
     @GetMapping("/{bookId}/tree")
-    public List<BookNodeDef> tree(@PathVariable("bookId") String bookId) {
+    @BizApi(summary = "tree", description = "", tags = { "z-lc" })
+    public List<BookNodeDef> tree(@PathVariable("bookId") @BizParam(name = "bookId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String bookId) {
         return bookService.tree(bookId);
     }
 
     @PostMapping("/{bookId}/publish")
-    public PublicationSnapshot publish(@PathVariable("bookId") String bookId) {
+    @BizApi(summary = "publish", description = "", tags = { "z-lc" })
+    public PublicationSnapshot publish(@PathVariable("bookId") @BizParam(name = "bookId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String bookId) {
         return bookService.publish(bookId);
     }
 
     @GetMapping("/publication/{publishId}")
-    public PublicationSnapshot publication(@PathVariable("publishId") String publishId,
-                                           @org.springframework.web.bind.annotation.RequestParam("token") String token) {
+    @BizApi(summary = "publication", description = "", tags = { "z-lc" })
+    public PublicationSnapshot publication(@PathVariable("publishId") @BizParam(name = "publishId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String publishId,
+                                           @org.springframework.web.bind.annotation.RequestParam("token")
+                                           @BizParam(name = "token", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String token) {
         return bookService.getPublication(publishId, token);
     }
 }
+
+
+

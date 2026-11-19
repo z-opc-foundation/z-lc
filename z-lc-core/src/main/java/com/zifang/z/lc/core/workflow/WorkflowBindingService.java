@@ -6,11 +6,12 @@ import com.zifang.z.lc.core.workflow.entity.WorkflowBindingEntity;
 import com.zifang.z.lc.core.workflow.entity.WorkflowFireEntity;
 import com.zifang.z.lc.mapper.workflow.WorkflowBindingMapper;
 import com.zifang.z.lc.mapper.workflow.WorkflowFireMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -59,6 +60,7 @@ public class WorkflowBindingService {
      * H2 {@code MODE=MySQL} 会直接报 "Column id must be in the GROUP BY list"，
      * 这条教训抄自 {@code AppAdminBizService.listApps}）。
      */
+    @BizMethod(name = "某条记录（或某个实体近期）的流程发起结局，按 id 倒序<b>分页</b>读，带真总数", module = "z-lc", description = "某条记录（或某个实体近期）的流程发起结局，按 id 倒序 分页 读，带真总数。 缺陷 #65 之前这一格是 listFires(...).last(\"LIMIT 200\")：一个不带总数的硬截断。 这张表是\"绑定到底兑现过没有\"的唯一证据面，静默截断的后果不是\"少看几条\"，而是 一个查旧账的人把\"第 201 条之后根本没读出来\"读成\"这条记录没发起过流程\"， 而界面上那句「这个实体还没有发起记录」正好把误读说圆了（同 #19/#22/#23 一族： 把\"没读到\"报成\"没有\"）。 三条口径：① total 是真的 COUNT，且和取数用 同一个谓词 （各算各的话， \"共 250 条 / 这一页 20 条\"和\"这一页其实是别的实体混进来的\"分不开）；② 页大小按 #FIRE_PAGE_MAX 收口，且 pageSize 回显的是 收口后 的值 —— 请求 5000 却自称 5000 是第二种撒谎；③ COUNT 那一条不带 ORDER BY（MySQL 宽松、 H2 MODE=MySQL 会直接报 \"Column id must be in the GROUP BY list\"， 这条教训抄自 AppAdminBizService.listApps）。", operation = BizMethod.Operation.QUERY)
     public PageResult<WorkflowFireEntity> pageFires(
             String tenantCode, String appCode, String entityCode, Long recordId,
             Integer page, Integer size) {
@@ -88,6 +90,7 @@ public class WorkflowBindingService {
                 workflowFireMapper.selectList(q), total, (long) p, (long) s);
     }
 
+    @BizMethod(name = "listByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<WorkflowBindingEntity> listByApp(String tenantCode, String appCode) {
         return workflowBindingMapper.selectList(
                 new QueryWrapper<WorkflowBindingEntity>()
@@ -97,6 +100,7 @@ public class WorkflowBindingService {
                         .orderByDesc("id"));
     }
 
+    @BizMethod(name = "listByEntity", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<WorkflowBindingEntity> listByEntity(String tenantCode, String appCode, String entityCode) {
         return workflowBindingMapper.selectList(
                 new QueryWrapper<WorkflowBindingEntity>()
@@ -113,6 +117,7 @@ public class WorkflowBindingService {
      * {@code auto_submit = 1} 是这个查询的硬条件而不是装饰：写入口已经拒掉过 0，走到这里还留着 0
      * 的行只可能是校验存在之前落的旧数据，把它们当"已启用"会让一条不发单的旧行混进结局账。
      */
+    @BizMethod(name = "某个挂接点上真正会执行的绑定 —— WorkflowTriggerDispatcher 在每条记录写成功后读它", module = "z-lc", description = "某个挂接点上真正会执行的绑定 —— WorkflowTriggerDispatcher 在每条记录写成功后读它。 auto_submit = 1 是这个查询的硬条件而不是装饰：写入口已经拒掉过 0，走到这里还留着 0 的行只可能是校验存在之前落的旧数据，把它们当\"已启用\"会让一条不发单的旧行混进结局账。", operation = BizMethod.Operation.QUERY)
     public List<WorkflowBindingEntity> listByEvent(String tenantCode, String appCode, String entityCode,
                                                   String triggerEvent) {
         return workflowBindingMapper.selectList(
@@ -126,6 +131,7 @@ public class WorkflowBindingService {
                         .orderByAsc("id"));
     }
 
+    @BizMethod(name = "create", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public WorkflowBindingEntity create(WorkflowBindingEntity entity) {
         normalizeBeforeJudgement(entity);
         WorkflowTriggers.validateForWrite(entity);
@@ -149,6 +155,7 @@ public class WorkflowBindingService {
      * 按 id 原地更新。早先这条链路只有 {@code updateById} 而没有任何校验，改完的绑定能不能兑现
      * 无人过问 —— 与 create 不同口径的话，"先建一条合法的再改成合法的以外"就是绕过闸的那条路。
      */
+    @BizMethod(name = "按 id 原地更新。早先这条链路只有 updateById 而没有任何校验，改完的绑定能不能兑现", module = "z-lc", description = "按 id 原地更新。早先这条链路只有 updateById 而没有任何校验，改完的绑定能不能兑现 无人过问 —— 与 create 不同口径的话，\"先建一条合法的再改成合法的以外\"就是绕过闸的那条路。", operation = BizMethod.Operation.UPDATE)
     public WorkflowBindingEntity update(WorkflowBindingEntity entity) {
         if (entity.getId() == null) {
             throw new IllegalArgumentException("流程绑定更新必须带 id");
@@ -196,6 +203,7 @@ public class WorkflowBindingService {
      * 软删一条绑定。删 0 行要说话：{@code deleteById} 风格的"无条件返回 true"会让界面在
      * 什么都没删掉的情况下报"已删除"（#48 的 ④ 就是这一支）。
      */
+    @BizMethod(name = "软删一条绑定。删 0 行要说话：deleteById 风格的\"无条件返回 true\"会让界面在", module = "z-lc", description = "软删一条绑定。删 0 行要说话：deleteById 风格的\"无条件返回 true\"会让界面在 什么都没删掉的情况下报\"已删除\"（#48 的 ④ 就是这一支）。", operation = BizMethod.Operation.DELETE)
     public int delete(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("流程绑定删除必须带 id");
@@ -234,3 +242,6 @@ public class WorkflowBindingService {
         }
     }
 }
+
+
+

@@ -11,6 +11,9 @@ import com.zifang.z.lc.core.event.EventReplayService;
 import com.zifang.z.lc.core.executor.RuntimeCrudExecutor;
 import com.zifang.z.lc.core.pipeline.Pipeline;
 import com.zifang.z.lc.core.pipeline.Pipeline.PipelineException;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.logging.log4j.LogManager;
@@ -103,11 +106,15 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "分页查询 (POST 形式, 用于 body 携带 filter)")
     @PostMapping("/list")
+    @BizApi(summary = "分页查询: 用 POST body 携带复杂 filter, 返回分页结果; 查询后会触发 postReadList 管道钩子", description = "分页查询: 用 POST body 携带复杂 filter, 返回分页结果; 查询后会触发 postReadList 管道钩子.", tags = { "z-lc" })
     public Result<PageResult<Map<String, Object>>> list(
-            @RequestParam String entityCode,
-            @RequestParam(required = false) String tenantCode,
-            @RequestParam(required = false) String appCode,
-            @RequestBody(required = false) RuntimeQueryDTO query) {
+            @RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+            @RequestParam(required = false)
+            @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "租户编码 (可覆盖 query 内的值)", position = BizParam.Position.QUERY) String tenantCode,
+            @RequestParam(required = false)
+            @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码 (可覆盖 query 内的值)", position = BizParam.Position.QUERY) String appCode,
+            @RequestBody(required = false)
+            @BizParam(name = "query", type = BizField.FieldType.STRING, description = "查询条件 (filter / 分页 / 排序), 可空", position = BizParam.Position.BODY) RuntimeQueryDTO query) {
         if (query == null) {
             query = new RuntimeQueryDTO();
         }
@@ -138,8 +145,9 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "按 id 取单条")
     @PostMapping("/get")
-    public Result<Map<String, Object>> get(@RequestParam String entityCode,
-                                           @RequestBody RuntimeByIdDTO body) {
+    @BizApi(summary = "按 id 取单条; 查询后会触发 postRead 管道钩子", description = "按 id 取单条; 查询后会触发 postRead 管道钩子.", tags = { "z-lc" })
+    public Result<Map<String, Object>> get(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+                                           @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "请求体, 含 id / appCode / tenantCode", position = BizParam.Position.BODY) RuntimeByIdDTO body) {
         if (body == null) {
             return Result.<Map<String, Object>>fail("body is null");
         }
@@ -163,8 +171,9 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "创建记录")
     @PostMapping("/create")
-    public Result<Long> create(@RequestParam String entityCode,
-                               @RequestBody RuntimeCrudDTO body) {
+    @BizApi(summary = "创建一条记录; 写入前会触发 preWrite 管道钩子, 钩子异常会被映射为 400", description = "创建一条记录; 写入前会触发 preWrite 管道钩子, 钩子异常会被映射为 400.", tags = { "z-lc" })
+    public Result<Long> create(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+                               @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "字段值请求体 (含 fieldValues / appCode / tenantCode)", position = BizParam.Position.BODY) RuntimeCrudDTO body) {
         if (body == null) {
             return Result.<Long>fail("body is null");
         }
@@ -203,11 +212,14 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "分组聚合 (group by + count/sum/avg/min/max)")
     @PostMapping("/aggregate")
+    @BizApi(summary = "分组聚合. 筛选入参与 /list 同构, 所以前端把当前视图的筛选原样发过来即可", description = "分组聚合. 筛选入参与 /list 同构, 所以前端把当前视图的筛选原样发过来即可.", tags = { "z-lc" })
     public Result<java.util.List<java.util.Map<String, Object>>> aggregate(
-            @RequestParam String entityCode,
-            @RequestParam(required = false) String appCode,
-            @RequestParam(required = false) String tenantCode,
-            @RequestBody com.zifang.z.lc.common.dto.AggregateQueryDTO body) {
+            @RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+            @RequestParam(required = false)
+            @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+            @RequestParam(required = false)
+            @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode,
+            @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "{@link com.zifang.z.lc.common.dto.AggregateQueryDTO}", position = BizParam.Position.BODY) com.zifang.z.lc.common.dto.AggregateQueryDTO body) {
         if (body == null) {
             return Result.<java.util.List<java.util.Map<String, Object>>>fail("body is null").code(400);
         }
@@ -241,10 +253,13 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "分组聚合并整形为任意结构 (二维 → 高维)")
     @PostMapping("/shape")
-    public Result<Object> shape(@RequestParam String entityCode,
-                                @RequestParam(required = false) String appCode,
-                                @RequestParam(required = false) String tenantCode,
-                                @RequestBody ShapeQueryDTO body) {
+    @BizApi(summary = "分组聚合并整形为任意结构: 库出原始行 → 聚合出二维分组结果 → 对象语言抬成高维文档", description = "分组聚合并整形为任意结构: 库出原始行 → 聚合出二维分组结果 → 对象语言抬成高维文档. 存在的理由是\"二维不够表达一个视图\": 树形视图要 parent/children, 分组小计要 region/lines/total, 透视表要行转列。这些形状属于视图, 不属于实体, 所以既不该建表也不该在前端拼。 shape 就是一段 JSON 程序, 由 z-util-expr-obj 执行; 引擎报的语义错误 (未知步骤/槽位取不到) 一律 400 原样带回, 不能兜底成空结构骗过配置的人。", tags = { "z-lc" })
+    public Result<Object> shape(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+                                @RequestParam(required = false)
+                                @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+                                @RequestParam(required = false)
+                                @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode,
+                                @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "{@link ShapeQueryDTO}: 聚合入参 + shape 程序", position = BizParam.Position.BODY) ShapeQueryDTO body) {
         if (body == null) {
             return Result.<Object>fail("body is null").code(400);
         }
@@ -277,11 +292,14 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "批量导入 · 预检（不落库）")
     @PostMapping("/import/preview")
+    @BizApi(summary = "批量导入 · 第一段：只校验，零写入", description = "批量导入 · 第一段：只校验，零写入。 校验走的是与单条 create 完全相同的 pipeline，所以\"预览说能过\"和\"真写能过\"是同一个口径。", tags = { "z-lc" })
     public Result<com.zifang.z.lc.core.importer.ImportDto.Result> importPreview(
-            @RequestParam String entityCode,
-            @RequestParam(required = false) String appCode,
-            @RequestParam(required = false) String tenantCode,
-            @RequestBody com.zifang.z.lc.core.importer.ImportDto.Request body) {
+            @RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+            @RequestParam(required = false)
+            @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+            @RequestParam(required = false)
+            @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode,
+            @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "records 为已映射成 fieldCode -&gt; 值 的记录数组", position = BizParam.Position.BODY) com.zifang.z.lc.core.importer.ImportDto.Request body) {
         return doImport(entityCode, appCode, tenantCode, body, false);
     }
 
@@ -293,11 +311,14 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "批量导入 · 提交")
     @PostMapping("/import/commit")
+    @BizApi(summary = "批量导入 · 第二段：落库", description = "批量导入 · 第二段：落库。 保证是\"只要有一行校验不过就整批不写\"；写入中途意外失败则对本批已插入的行做补偿回滚。 数据库事务级别的原子性这里不提供，原因见 RuntimeImportService 的类注释。", tags = { "z-lc" })
     public Result<com.zifang.z.lc.core.importer.ImportDto.Result> importCommit(
-            @RequestParam String entityCode,
-            @RequestParam(required = false) String appCode,
-            @RequestParam(required = false) String tenantCode,
-            @RequestBody com.zifang.z.lc.core.importer.ImportDto.Request body) {
+            @RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String entityCode,
+            @RequestParam(required = false)
+            @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+            @RequestParam(required = false)
+            @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode,
+            @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) com.zifang.z.lc.core.importer.ImportDto.Request body) {
         return doImport(entityCode, appCode, tenantCode, body, true);
     }
 
@@ -341,8 +362,9 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "按 id 更新")
     @PostMapping("/update")
-    public Result<Integer> update(@RequestParam String entityCode,
-                                  @RequestBody RuntimeCrudDTO body) {
+    @BizApi(summary = "按 id 更新一条记录; fieldValues.id 必填, 写入前会触发 preWrite 管道钩子", description = "按 id 更新一条记录; fieldValues.id 必填, 写入前会触发 preWrite 管道钩子.", tags = { "z-lc" })
+    public Result<Integer> update(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+                                  @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "字段值请求体 (含 fieldValues, 其中 id 字段会被消费)", position = BizParam.Position.BODY) RuntimeCrudDTO body) {
         if (body == null || body.getFieldValues() == null || body.getFieldValues().get("id") == null) {
             return Result.<Integer>fail("body.fieldValues.id required");
         }
@@ -383,8 +405,9 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "按 id 删除 (软删)")
     @PostMapping("/delete")
-    public Result<Integer> delete(@RequestParam String entityCode,
-                                  @RequestBody RuntimeByIdDTO body) {
+    @BizApi(summary = "按 id 软删一条记录", description = "按 id 软删一条记录.", tags = { "z-lc" })
+    public Result<Integer> delete(@RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+                                  @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "请求体, 含 id / appCode / tenantCode", position = BizParam.Position.BODY) RuntimeByIdDTO body) {
         if (body == null || body.getId() == null) {
             return Result.<Integer>fail("body.id required");
         }
@@ -416,11 +439,14 @@ public class RuntimeCrudController {
      */
     @Operation(summary = "批量删除 (软删, 整批预检)")
     @PostMapping("/delete-batch")
+    @BizApi(summary = "批量软删：一次请求删一整批，且先整批预检", description = "批量软删：一次请求删一整批，且先整批预检。 存在的理由是\"删了一半\"这件事：早先批量删除是浏览器 for 循环发 N 个 /delete， 中间任何一个失败就留下半删现场，也没有回滚。这里任何一条 id 不存在/读不到， 整批一条都不删；写入途中意外失败则把本批已删的还原（补偿回滚）。 与 /import 同一个口径：始终返回 HTTP 200 + success 信封，成败由 body 里的 applied/deletedCount/errors 说明 —— 部分失败不该变成一个笼统的 4xx。", tags = { "z-lc" })
     public Result<com.zifang.z.lc.core.deleter.BatchDeleteDto.Result> deleteBatch(
-            @RequestParam String entityCode,
-            @RequestParam(required = false) String appCode,
-            @RequestParam(required = false) String tenantCode,
-            @RequestBody com.zifang.z.lc.core.deleter.BatchDeleteDto.Request body) {
+            @RequestParam @BizParam(name = "entityCode", type = BizField.FieldType.STRING, description = "实体编码", position = BizParam.Position.QUERY) String entityCode,
+            @RequestParam(required = false)
+            @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String appCode,
+            @RequestParam(required = false)
+            @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.QUERY) String tenantCode,
+            @RequestBody @BizParam(name = "body", type = BizField.FieldType.STRING, description = "请求体, 含 ids / appCode / tenantCode", position = BizParam.Position.BODY) com.zifang.z.lc.core.deleter.BatchDeleteDto.Request body) {
         if (body == null) {
             return Result.<com.zifang.z.lc.core.deleter.BatchDeleteDto.Result>fail("body is null").code(400);
         }
@@ -461,3 +487,6 @@ public class RuntimeCrudController {
                         + ". 请先通过 POST /api/lc/app/{appCode}/event 提交 CREATE 事件定义实体.");
     }
 }
+
+
+

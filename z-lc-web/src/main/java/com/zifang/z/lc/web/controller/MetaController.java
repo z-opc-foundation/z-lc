@@ -12,8 +12,12 @@ import com.zifang.z.lc.core.event.EventReplayService;
 import com.zifang.z.lc.core.fieldtype.FieldTypeRegistry;
 import com.zifang.z.lc.core.relation.RelationService;
 import com.zifang.z.lc.core.viewconfig.ViewConfigService;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,7 +25,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -77,6 +80,7 @@ public class MetaController {
      */
     @Operation(summary = "字段类型元数据")
     @GetMapping("/field-types")
+    @BizApi(summary = "fieldType 注册表自描述. 每行 key 顺序即契约", description = "fieldType 注册表自描述. 每行 key 顺序即契约: fieldType/cellValueType/label/dbType/widget/sortable/groupable/filterable/inlineEditable/operators.", tags = { "z-lc" })
     public Result<List<Map<String, Object>>> fieldTypes() {
         return Result.success(fieldTypeRegistry.describe());
     }
@@ -91,9 +95,12 @@ public class MetaController {
      */
     @Operation(summary = "应用元数据聚合包")
     @GetMapping("/bundle")
+    @BizApi(summary = "应用元数据包. appCode 为空 → 仅返回 {fieldTypes}; 否则补齐 app/entities/dicts/views/relations", description = "应用元数据包. appCode 为空 → 仅返回 {fieldTypes}; 否则补齐 app/entities/dicts/views/relations. 单个下游聚合失败时降级为空集合, 绝不整体 500.", tags = { "z-lc" })
     public Result<Map<String, Object>> bundle(
-            @RequestParam(required = false) String appCode,
-            @RequestParam(required = false) String tenantCode) {
+            @RequestParam(required = false)
+            @BizParam(name = "appCode", type = BizField.FieldType.STRING, description = "应用编码, 可空", position = BizParam.Position.QUERY) String appCode,
+            @RequestParam(required = false)
+            @BizParam(name = "tenantCode", type = BizField.FieldType.STRING, description = "租户编码, 可空 (缺省 default)", position = BizParam.Position.QUERY) String tenantCode) {
 
         String tenant = (tenantCode == null || tenantCode.trim().isEmpty()) ? DEFAULT_TENANT : tenantCode.trim();
 
@@ -190,3 +197,6 @@ public class MetaController {
         }
     }
 }
+
+
+

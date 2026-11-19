@@ -1,13 +1,14 @@
 package com.zifang.z.lc.core.undo;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.FieldDefDTO;
 import com.zifang.z.lc.common.dto.RuntimeCrudDTO;
 import com.zifang.z.lc.core.executor.RuntimeCrudExecutor;
 import com.zifang.z.lc.core.undo.entity.DataChangeEntity;
 import com.zifang.z.lc.mapper.undo.DataChangeMapper;
-import com.zifang.util.json.JsonUtil;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +47,7 @@ public class UndoService {
     /**
      * 记一条变更日志. 记录失败绝不能把主写路径带崩, 所以这里吞掉异常只告警.
      */
+    @BizMethod(name = "记一条变更日志. 记录失败绝不能把主写路径带崩, 所以这里吞掉异常只告警", module = "z-lc", description = "记一条变更日志. 记录失败绝不能把主写路径带崩, 所以这里吞掉异常只告警.", operation = BizMethod.Operation.ACTION)
     public void record(String tenantCode, String appCode, EntityDefDTO entity, Long recordId,
                        String operation, Map<String, Object> before, Map<String, Object> after,
                        String actor) {
@@ -170,6 +172,7 @@ public class UndoService {
         return types;
     }
 
+    @BizMethod(name = "history", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public List<DataChangeEntity> history(String tenantCode, String appCode, String entityCode, int limit) {
         return history(tenantCode, appCode, entityCode, limit, null);
     }
@@ -178,6 +181,7 @@ public class UndoService {
      * @param actor 非空时只返回这个人的改动. 列表默认给全量 —— 历史是协作信息,
      *              但"撤销"只作用于自己的栈, 这两件事刻意分开.
      */
+    @BizMethod(name = "history", module = "z-lc", description = "但\"撤销\"只作用于自己的栈, 这两件事刻意分开.", operation = BizMethod.Operation.ACTION)
     public List<DataChangeEntity> history(String tenantCode, String appCode, String entityCode,
                                           int limit, String actor) {
         int capped = limit <= 0 ? 50 : Math.min(limit, 500);
@@ -195,6 +199,7 @@ public class UndoService {
      *                  否则 A 点"撤销"会把 B 刚写的改动回滚掉.
      */
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "撤销最近一次未被撤销的变更", module = "z-lc", description = "撤销最近一次未被撤销的变更. 否则 A 点\"撤销\"会把 B 刚写的改动回滚掉.", operation = BizMethod.Operation.ACTION)
     public UndoOutcome undo(String tenantCode, String appCode, EntityDefDTO entity,
                             String actor, boolean ownerOnly) {
         DataChangeEntity target = latestReversible(tenantCode, appCode, entity.getEntityCode(),
@@ -210,6 +215,7 @@ public class UndoService {
 
     /** 重做最近一次被自己撤销的变更. */
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "重做最近一次被自己撤销的变更", module = "z-lc", description = "重做最近一次被自己撤销的变更.", operation = BizMethod.Operation.ACTION)
     public UndoOutcome redo(String tenantCode, String appCode, EntityDefDTO entity,
                             String actor, boolean ownerOnly) {
         DataChangeEntity target = latestUndone(tenantCode, appCode, entity.getEntityCode(),
@@ -424,3 +430,6 @@ public class UndoService {
         }
     }
 }
+
+
+

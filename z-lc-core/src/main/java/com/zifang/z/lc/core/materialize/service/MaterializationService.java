@@ -1,7 +1,7 @@
 package com.zifang.z.lc.core.materialize.service;
 
-import com.zifang.util.json.JsonUtil;
 import com.zifang.util.core.time.DateUtil;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.core.executor.entity.EntityEntity;
 import com.zifang.z.lc.core.executor.entity.FieldEntity;
 import com.zifang.z.lc.core.materialize.dto.MaterializationReq;
@@ -9,6 +9,7 @@ import com.zifang.z.lc.core.materialize.dto.MaterializationResp;
 import com.zifang.z.lc.core.materialize.entity.MaterializationEntity;
 import com.zifang.z.lc.core.materialize.mapper.MaterializationMapper;
 import com.zifang.z.lc.core.materialize.template.CodeTemplateEngine;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +68,7 @@ public class MaterializationService {
     /**
      * 同步触发 (返回实体, 包含 PENDING 状态)
      */
+    @BizMethod(name = "同步触发 (返回实体, 包含 PENDING 状态)", module = "z-lc", description = "同步触发 (返回实体, 包含 PENDING 状态)", operation = BizMethod.Operation.ACTION)
     public MaterializationResp trigger(MaterializationReq req, String tenantCode) {
         if (req == null || req.getAppCode() == null || req.getAppCode().isEmpty()) {
             throw new IllegalArgumentException("appCode is required");
@@ -102,6 +104,7 @@ public class MaterializationService {
     }
 
     @Async
+    @BizMethod(name = "runAsync", module = "z-lc", description = "", operation = BizMethod.Operation.ACTION)
     public CompletableFuture<Void> runAsync(Long materializationId) {
         try {
             run(materializationId);
@@ -306,6 +309,7 @@ public class MaterializationService {
         }
     }
 
+    @BizMethod(name = "getStatus", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public MaterializationResp getStatus(Long id) {
         MaterializationEntity e = materializationMapper.selectById(id);
         if (e == null) {
@@ -315,6 +319,7 @@ public class MaterializationService {
         return toResp(e, null);
     }
 
+    @BizMethod(name = "listByApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<MaterializationResp> listByApp(String tenantCode, String appCode, int limit) {
         return materializationMapper.listByApp(tenantCode, appCode, Math.max(1, Math.min(limit, 100)))
                 .stream().map(e -> toResp(e, null)).collect(java.util.stream.Collectors.toList());
@@ -323,6 +328,7 @@ public class MaterializationService {
     /**
      * 列出某次物化实际写出的文件 (扫描文件系统, 配合 export_version 子目录)
      */
+    @BizMethod(name = "列出某次物化实际写出的文件 (扫描文件系统, 配合 export_version 子目录)", module = "z-lc", description = "列出某次物化实际写出的文件 (扫描文件系统, 配合 export_version 子目录)", operation = BizMethod.Operation.QUERY)
     public List<MaterializationResp.GeneratedFile> listFiles(Long id) {
         MaterializationEntity e = materializationMapper.selectById(id);
         if (e == null) {
@@ -381,3 +387,6 @@ public class MaterializationService {
         return r;
     }
 }
+
+
+

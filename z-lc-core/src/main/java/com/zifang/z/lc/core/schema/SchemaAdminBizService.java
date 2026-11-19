@@ -1,8 +1,8 @@
 package com.zifang.z.lc.core.schema;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.zifang.util.json.JsonUtil;
 import com.zifang.util.core.meta.page.PageResult;
+import com.zifang.util.json.JsonUtil;
 import com.zifang.z.lc.common.dto.AppDTO;
 import com.zifang.z.lc.common.dto.EntityDefDTO;
 import com.zifang.z.lc.common.dto.EventAppendRequest;
@@ -16,6 +16,7 @@ import com.zifang.z.lc.core.executor.entity.FieldEntity;
 import com.zifang.z.lc.mapper.executor.EntityMapper;
 import com.zifang.z.lc.mapper.executor.FieldMapper;
 import com.zifang.z.lc.mapper.executor.LcAppEntityMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
@@ -24,13 +25,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.sql.DataSource;
 
 /**
  * Schema 管理服务实现: App / Entity / Field CRUD + DDL 建表
@@ -71,6 +72,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "createApp", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public AppDTO createApp(AppDTO req) {
         if (req.getAppCode() == null || req.getAppCode().isEmpty()) {
             throw new IllegalArgumentException("appCode is required");
@@ -104,6 +106,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
     }
 
     @Override
+    @BizMethod(name = "listApps", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public PageResult<AppDTO> listApps(String tenantCode, int page, int size) {
         if (page < 1) {
             page = 1;
@@ -133,12 +136,14 @@ public class SchemaAdminBizService implements SchemaAdminService {
     }
 
     @Override
+    @BizMethod(name = "getApp", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public AppDTO getApp(Long id) {
         AppEntity entity = lcAppEntityMapper.selectById(id);
         return entity == null || entity.getDeleted() == 1 ? null : toAppDTO(entity);
     }
 
     @Override
+    @BizMethod(name = "getAppByCode", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public AppDTO getAppByCode(String tenantCode, String appCode) {
         AppEntity entity = lcAppEntityMapper.selectOne(
                 new QueryWrapper<AppEntity>()
@@ -150,6 +155,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "updateApp", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public int updateApp(Long id, AppDTO req) {
         AppEntity entity = lcAppEntityMapper.selectById(id);
         if (entity == null || entity.getDeleted() == 1) {
@@ -174,6 +180,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "deleteApp", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteApp(Long id) {
         AppEntity entity = lcAppEntityMapper.selectById(id);
         if (entity == null) {
@@ -189,6 +196,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "createEntity", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public EntityDefDTO createEntity(String tenantCode, String appCode, EntityDefDTO req) {
         if (req.getEntityCode() == null || req.getEntityCode().isEmpty()) {
             throw new IllegalArgumentException("entityCode is required");
@@ -254,6 +262,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
     }
 
     @Override
+    @BizMethod(name = "listEntities", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<EntityDefDTO> listEntities(String tenantCode, String appCode) {
         List<EntityEntity> entities = entityMapper.selectList(
                 new QueryWrapper<EntityEntity>()
@@ -272,6 +281,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
     }
 
     @Override
+    @BizMethod(name = "getEntity", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public EntityDefDTO getEntity(Long id) {
         EntityEntity e = entityMapper.selectById(id);
         if (e == null || e.getDeleted() == 1) {
@@ -285,6 +295,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "updateEntity", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public int updateEntity(Long id, EntityDefDTO req) {
         EntityEntity e = entityMapper.selectById(id);
         if (e == null || e.getDeleted() == 1) {
@@ -362,6 +373,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    @BizMethod(name = "deleteEntity", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deleteEntity(Long id) {
         EntityEntity e = entityMapper.selectById(id);
         if (e == null) {
@@ -400,6 +412,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
      * 事务反而骗人。真正的保证是"建完回读物理列"。
      */
     @Override
+    @BizMethod(name = "单个实体建表", module = "z-lc", description = "单个实体建表。 这里不带 @Transactional: DDL 在 MySQL 里本来就隐式提交，套一个看起来能回滚的 事务反而骗人。真正的保证是\"建完回读物理列\"。", operation = BizMethod.Operation.ACTION)
     public ProvisionReport.Item provisionTable(Long entityId) {
         EntityDefDTO def = getEntity(entityId);
         if (def == null) {
@@ -415,6 +428,7 @@ public class SchemaAdminBizService implements SchemaAdminService {
      * 500，不知道哪些建成了、哪些没建成。
      */
     @Override
+    @BizMethod(name = "逐个实体建，坏的那支只红自己", module = "z-lc", description = "逐个实体建，坏的那支只红自己。 旧写法是整批一个事务 + 直接抛: 第一个坏实体把同应用其他实体的表一起挡住，调用方只拿到一句 500，不知道哪些建成了、哪些没建成。", operation = BizMethod.Operation.ACTION)
     public ProvisionReport provisionAllTables(String tenantCode, String appCode) {
         List<EntityDefDTO> entities = listEntities(tenantCode, appCode);
         ProvisionReport report = new ProvisionReport();
@@ -1038,3 +1052,6 @@ public class SchemaAdminBizService implements SchemaAdminService {
         fe.setDescription(dto.getDescription());
     }
 }
+
+
+

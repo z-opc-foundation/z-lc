@@ -2,12 +2,15 @@ package com.zifang.z.lc.report.web.controller;
 
 import com.zifang.z.lc.report.common.schema.DataSourceDef;
 import com.zifang.z.lc.report.common.schema.DataSourceType;
+import com.zifang.z.lc.report.common.schema.FieldType;
 import com.zifang.z.lc.report.datasource.impl.CsvReportDataSource;
 import com.zifang.z.lc.report.datasource.impl.InMemoryReportDataSource;
 import com.zifang.z.lc.report.datasource.impl.JdbcReportDataSource;
 import com.zifang.z.lc.report.datasource.impl.MemoryDataSource;
 import com.zifang.z.lc.report.datasource.spi.DataSourceRegistry;
-import com.zifang.z.lc.report.common.schema.FieldType;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -67,7 +70,8 @@ public class DataSourceController {
     }
 
     @PostMapping("/memory")
-    public Map<String, Object> registerMemory(@RequestBody MemorySourceRequest req) {
+    @BizApi(summary = "registerMemory", description = "", tags = { "z-lc" })
+    public Map<String, Object> registerMemory(@RequestBody @BizParam(name = "req", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) MemorySourceRequest req) {
         if (req.getDef() == null) {
             req.setDef(new DataSourceDef());
             req.getDef().setType(DataSourceType.MEMORY);
@@ -78,14 +82,16 @@ public class DataSourceController {
 
     /** JDBC(Mysql) 源: properties = host/port/database/username/password/max-rows (对齐 z-boot 连接参数) */
     @PostMapping("/jdbc")
-    public Map<String, Object> registerJdbc(@RequestBody DataSourceDef def) {
+    @BizApi(summary = "JDBC(Mysql) 源: properties = host/port/database/username/password/max-rows (对齐 z-boot 连接参数)", tags = { "z-lc" })
+    public Map<String, Object> registerJdbc(@RequestBody @BizParam(name = "def", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) DataSourceDef def) {
         registry.register(new JdbcReportDataSource(def));
         return ok(def.getId());
     }
 
     /** CSV 源: properties = path 或 inline, max-rows */
     @PostMapping("/csv")
-    public Map<String, Object> registerCsv(@RequestBody DataSourceDef def) {
+    @BizApi(summary = "CSV 源: properties = path 或 inline, max-rows", tags = { "z-lc" })
+    public Map<String, Object> registerCsv(@RequestBody @BizParam(name = "def", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) DataSourceDef def) {
         registry.register(new CsvReportDataSource(def));
         return ok(def.getId());
     }
@@ -137,7 +143,8 @@ public class DataSourceController {
      * 基表必须先注册, 之后每次取数现读, 不需要重注册。
      */
     @PostMapping("/memory-sql")
-    public Map<String, Object> registerMemorySql(@RequestBody MemorySqlRequest req) {
+    @BizApi(summary = "内存 SQL 源: 基表来自已注册源 (JDBC/CSV/内存均可), 数据单元是一条跨源 join/聚合的 SELECT", description = "内存 SQL 源: 基表来自已注册源 (JDBC/CSV/内存均可), 数据单元是一条跨源 join/聚合的 SELECT。 基表必须先注册, 之后每次取数现读, 不需要重注册。", tags = { "z-lc" })
+    public Map<String, Object> registerMemorySql(@RequestBody @BizParam(name = "req", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) MemorySqlRequest req) {
         DataSourceDef def = req.getDef();
         if (def == null) {
             throw new IllegalArgumentException("def required");
@@ -176,8 +183,9 @@ public class DataSourceController {
      * 目录桥缺席/目录未装配 → 503 语义；id 不存在/类型不支持 → 400（resolver 抛出）。
      */
     @PostMapping("/external")
+    @BizApi(summary = "外部目录源注册: 按目录 id 取宿主挂进来的已建池源（z-dms 桥接，2026-10-26 收口）", description = "外部目录源注册: 按目录 id 取宿主挂进来的已建池源（z-dms 桥接，2026-10-26 收口）。 目录桥缺席/目录未装配 → 503 语义；id 不存在/类型不支持 → 400（resolver 抛出）。", tags = { "z-lc" })
     public org.springframework.http.ResponseEntity<Map<String, Object>> registerExternal(
-            @RequestBody ExternalSourceRequest req) {
+            @RequestBody @BizParam(name = "req", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) ExternalSourceRequest req) {
         com.zifang.z.lc.report.datasource.spi.ExternalReportDataSourceResolver resolver =
                 externalResolverProvider.getIfAvailable();
         if (resolver == null || !resolver.available()) {
@@ -197,6 +205,7 @@ public class DataSourceController {
 
     /** 已注册源清单 (前端 AI 页/源管理下拉用) */
     @org.springframework.web.bind.annotation.GetMapping
+    @BizApi(summary = "已注册源清单 (前端 AI 页/源管理下拉用)", tags = { "z-lc" })
     public java.util.List<Map<String, Object>> list() {
         java.util.List<Map<String, Object>> out = new java.util.ArrayList<>();
         for (com.zifang.z.lc.report.datasource.spi.ReportDataSource s : registry.all()) {
@@ -211,7 +220,8 @@ public class DataSourceController {
 
     /** 源内数据单元清单 (元数据探测) */
     @org.springframework.web.bind.annotation.GetMapping("/{id}/tables")
-    public List<String> tables(@org.springframework.web.bind.annotation.PathVariable("id") String id) {
+    @BizApi(summary = "源内数据单元清单 (元数据探测)", tags = { "z-lc" })
+    public List<String> tables(@org.springframework.web.bind.annotation.PathVariable("id") @BizParam(name = "id", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String id) {
         return registry.require(id).tables();
     }
 
@@ -222,3 +232,6 @@ public class DataSourceController {
         return resp;
     }
 }
+
+
+

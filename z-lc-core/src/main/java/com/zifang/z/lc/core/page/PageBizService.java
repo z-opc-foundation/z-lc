@@ -6,12 +6,13 @@ import com.zifang.z.lc.common.dto.PageDTO;
 import com.zifang.z.lc.common.dto.PageUpdateReq;
 import com.zifang.z.lc.core.page.entity.PageEntity;
 import com.zifang.z.lc.mapper.page.PageMapper;
+import com.zifang.z.meta.api.annotation.BizMethod;
+import jakarta.annotation.Resource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.Resource;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -34,6 +35,7 @@ public class PageBizService implements PageService {
     private PageMapper pageMapper;
 
     @Override
+    @BizMethod(name = "createPage", module = "z-lc", description = "", operation = BizMethod.Operation.CREATE)
     public PageDTO createPage(PageCreateReq req) {
         if (req.getAppCode() == null || req.getAppCode().trim().isEmpty()) {
             throw new IllegalArgumentException("appCode required");
@@ -65,6 +67,7 @@ public class PageBizService implements PageService {
     }
 
     @Override
+    @BizMethod(name = "updatePage", module = "z-lc", description = "", operation = BizMethod.Operation.UPDATE)
     public PageDTO updatePage(PageUpdateReq req) {
         if (req.getId() == null) {
             throw new IllegalArgumentException("id required");
@@ -86,6 +89,7 @@ public class PageBizService implements PageService {
     }
 
     @Override
+    @BizMethod(name = "deletePage", module = "z-lc", description = "", operation = BizMethod.Operation.DELETE)
     public int deletePage(Long id) {
         PageEntity entity = pageMapper.selectById(id);
         if (entity == null || entity.getDeleted() != null && entity.getDeleted() == 1) {
@@ -97,6 +101,7 @@ public class PageBizService implements PageService {
     }
 
     @Override
+    @BizMethod(name = "getPage", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public PageDTO getPage(String tenantCode, String appCode, String pageCode) {
         PageEntity entity = pageMapper.selectOne(new QueryWrapper<PageEntity>()
                 .eq("tenant_code", tenantCode == null ? DEFAULT_TENANT : tenantCode)
@@ -107,6 +112,7 @@ public class PageBizService implements PageService {
     }
 
     @Override
+    @BizMethod(name = "listPages", module = "z-lc", description = "", operation = BizMethod.Operation.QUERY)
     public List<PageDTO> listPages(String tenantCode, String appCode) {
         List<PageEntity> list = pageMapper.selectList(new QueryWrapper<PageEntity>()
                 .eq("tenant_code", tenantCode == null ? DEFAULT_TENANT : tenantCode)
@@ -123,3 +129,6 @@ public class PageBizService implements PageService {
         return dto;
     }
 }
+
+
+

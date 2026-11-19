@@ -6,6 +6,9 @@ import com.zifang.z.lc.report.common.schema.WidgetSpec;
 import com.zifang.z.lc.report.dataset.DatasetExecutor;
 import com.zifang.z.lc.report.render.EChartsRenderService;
 import com.zifang.z.lc.report.web.store.SchemaStore;
+import com.zifang.z.meta.api.annotation.BizApi;
+import com.zifang.z.meta.api.annotation.BizField;
+import com.zifang.z.meta.api.annotation.BizParam;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,7 +40,8 @@ public class RenderController {
 
     /** 单图表渲染: 数据按 widget.datasetId 现取 */
     @PostMapping("/widget")
-    public Map<String, Object> renderWidget(@RequestBody WidgetSpec widget) {
+    @BizApi(summary = "单图表渲染: 数据按 widget.datasetId 现取", tags = { "z-lc" })
+    public Map<String, Object> renderWidget(@RequestBody @BizParam(name = "widget", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.BODY) WidgetSpec widget) {
         QueryResult data = executor.execute(store.requireDataset(widget.getDatasetId()));
         Map<String, Object> option = renderService.render(widget, data);
         return wrap(widget, option);
@@ -45,7 +49,8 @@ public class RenderController {
 
     /** 整页渲染: ViewSchema → {widgetId: option} */
     @GetMapping("/view/{viewId}")
-    public Map<String, Object> renderView(@PathVariable("viewId") String viewId) {
+    @BizApi(summary = "整页渲染: ViewSchema → {widgetId: option}", tags = { "z-lc" })
+    public Map<String, Object> renderView(@PathVariable("viewId") @BizParam(name = "viewId", type = BizField.FieldType.STRING, description = "", position = BizParam.Position.PATH) String viewId) {
         ViewSchema view = store.requireView(viewId);
         Map<String, Object> options = new LinkedHashMap<>();
         if (view.getWidgets() != null) {
@@ -70,3 +75,6 @@ public class RenderController {
         return option;
     }
 }
+
+
+
