@@ -36,6 +36,8 @@ export default defineConfig({
                 'index': path.resolve(srcDir, 'index.tsx'),
                 'store/index': path.resolve(srcDir, 'store/index.ts'),
                 'pages': path.resolve(srcDir, 'pages.ts'),
+                // 零依赖的菜单清单入口：宿主侧栏引用它，不把 LcApp 拖进主 chunk。
+                'menu': path.resolve(srcDir, 'menu.ts'),
             },
             formats: ['es'],
         },

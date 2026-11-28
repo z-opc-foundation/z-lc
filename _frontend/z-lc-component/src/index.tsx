@@ -97,4 +97,7 @@ function LcRoutes() {
  */
 export { ComponentDocPage };
 
+// 全局入口菜单清单（宿主侧栏引用，别在宿主手抄路径）。
+export {GLOBAL_MENU_ITEMS, type LcGlobalMenuItem} from './menu';
+
 export default LcRoutes;
